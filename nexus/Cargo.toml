@@ -8,6 +8,13 @@ keywords.workspace = true
 repository.workspace = true
 
 [dependencies]
+anyhow.workspace = true
+clap = { workspace = true, features = ["derive", "env"] }
+fastrace = { workspace = true, features = ["enable"] }
+jiff = "0.2.15"
+log = { workspace = true, features = ["kv_unstable_std"] }
+logforth = { workspace = true, features = ["append-fastrace", "colored", "diagnostic-fastrace", "layout-json"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "tokio-macros"] }
 
 [lints]
 workspace = true

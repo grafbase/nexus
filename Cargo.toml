@@ -10,6 +10,12 @@ keywords = ["nexus", "llm", "ai", "mcp"]
 repository = "https://github.com/grafbase/nexus"
 
 [workspace.dependencies]
+anyhow = "1.0.98"
+clap = "4.5.41"
+fastrace = "0.7.14"
+log = "0.4.27"
+logforth = "0.26.1"
+tokio = { version = "1.46.1", default-features = false }
 
 [profile.release]
 lto = "thin"
