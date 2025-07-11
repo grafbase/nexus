@@ -1,0 +1,23 @@
+[workspace]
+members = ["nexus"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MPL-2.0"
+homepage = "https://grafbase.com"
+keywords = ["nexus", "llm", "ai", "mcp"]
+repository = "https://github.com/grafbase/grafbase"
+
+[workspace.dependencies]
+
+[profile.release]
+lto = "thin"
+
+[workspace.lints.rust]
+nonstandard-style = "deny"
+rust-2018-idioms = "deny"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+panic = "deny"
