@@ -12,7 +12,9 @@ anyhow.workspace = true
 axum = { workspace = true, features = ["macros", "json", "http2"] }
 axum-server.workspace = true
 config.workspace = true
+http.workspace = true
 log = { workspace = true, features = ["kv"] }
+serde.workspace = true
 tokio = { workspace = true, features = ["signal"] }
 
 [lints]

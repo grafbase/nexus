@@ -1,3 +1,5 @@
+mod health;
+
 use std::net::SocketAddr;
 
 use anyhow::anyhow;
@@ -18,6 +20,18 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
     // Add the MCP endpoint if enabled
     if config.mcp.enabled {
         app = app.route(&config.mcp.path, get(hello_world));
+    }
+
+    if config.server.health.enabled {
+        if let Some(listen) = config.server.health.listen {
+            tokio::spawn(health::bind_health_endpoint(
+                listen,
+                config.server.tls.clone(),
+                config.server.health,
+            ));
+        } else {
+            app = app.route(&config.server.health.path, get(health::health));
+        }
     }
 
     // Create TCP listener

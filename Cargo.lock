@@ -4268,7 +4268,9 @@ dependencies = [
  "axum",
  "axum-server",
  "config",
+ "http",
  "log",
+ "serde",
  "tokio",
 ]
 

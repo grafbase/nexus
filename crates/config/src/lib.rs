@@ -2,6 +2,7 @@ mod loader;
 mod mcp;
 
 use std::{
+    borrow::Cow,
     net::SocketAddr,
     path::{Path, PathBuf},
 };
@@ -29,6 +30,8 @@ impl Config {
 pub struct ServerConfig {
     pub listen_address: Option<SocketAddr>,
     pub tls: Option<TlsConfig>,
+    #[serde(default)]
+    pub health: HealthConfig,
 }
 
 #[derive(Default, Debug, Clone, Deserialize)]
@@ -36,6 +39,25 @@ pub struct ServerConfig {
 pub struct TlsConfig {
     pub certificate: PathBuf,
     pub key: PathBuf,
+}
+
+/// Health endpoint configuration.
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct HealthConfig {
+    pub enabled: bool,
+    pub listen: Option<SocketAddr>,
+    pub path: Cow<'static, str>,
+}
+
+impl Default for HealthConfig {
+    fn default() -> Self {
+        HealthConfig {
+            enabled: true,
+            listen: None,
+            path: Cow::Borrowed("/health"),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -65,6 +87,11 @@ mod tests {
                     127.0.0.1:8080,
                 ),
                 tls: None,
+                health: HealthConfig {
+                    enabled: true,
+                    listen: None,
+                    path: "/health",
+                },
             },
             mcp: McpConfig {
                 enabled: false,
@@ -84,6 +111,11 @@ mod tests {
             server: ServerConfig {
                 listen_address: None,
                 tls: None,
+                health: HealthConfig {
+                    enabled: true,
+                    listen: None,
+                    path: "/health",
+                },
             },
             mcp: McpConfig {
                 enabled: true,
