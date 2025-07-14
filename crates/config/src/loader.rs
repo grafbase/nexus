@@ -38,7 +38,7 @@ fn expand_dynamic_strings<'a>(path: &mut Vec<Result<&'a str, usize>>, value: &'a
                     p.pop();
                 }
 
-                return Err(Error::EnvVarSubstitutionError { path: p, reason: err });
+                return Err(Error::EnvVarSubstitution { path: p, reason: err });
             }
         },
         Value::Array(values) => {

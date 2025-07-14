@@ -1,0 +1,23 @@
+[package]
+name = "integration-tests"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+repository.workspace = true
+
+[dependencies]
+config.workspace = true
+indoc.workspace = true
+insta.workspace = true
+reqwest = { workspace = true, features = ["json"] }
+rustls.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+server.workspace = true
+tokio = { workspace = true, features = ["full"] }
+toml.workspace = true
+
+[lints]
+workspace = true

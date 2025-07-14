@@ -67,6 +67,7 @@ mod tests {
                 listen_address: Some(
                     127.0.0.1:8080,
                 ),
+                tls: None,
             },
             mcp: McpConfig {
                 enabled: false,
@@ -85,6 +86,7 @@ mod tests {
         Config {
             server: ServerConfig {
                 listen_address: None,
+                tls: None,
             },
             mcp: McpConfig {
                 enabled: true,

@@ -54,19 +54,5 @@ formatting = { reorder_keys = true }
 schema = { path = ".config/workspace-schema.json" }
 include = [
     "crates/**/Cargo.toml",
-    "gateway/**/Cargo.toml",
-    "cli/**/Cargo.toml",
-    "crates/engine/**/Cargo.toml",
-]
-exclude = [
-    "crates/wasi-component-loader/examples/**/Cargo.toml",
-    "crates/integration-tests/data/**/Cargo.toml",
-    "crates/grafbase-workspace-hack/Cargo.toml",
-    # We publish those crates, so they must have versions
-    "crates/grafbase-sdk/**.toml",
-    "crates/grafbase-hooks/**.toml",
-    "crates/graphql-federated-graph/Cargo.toml",
-    "crates/graphql-composition/Cargo.toml",
-    # We cannot upgrade rand here just now
-    "crates/integration-tests/Cargo.toml",
+    "nexus/**/Cargo.toml",
 ]

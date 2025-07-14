@@ -24,29 +24,27 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> crate
     }
 
     // Create TCP listener
-    let listener = TcpListener::bind(listen_address)
-        .await
-        .map_err(|e| error::Error::BindError(e))?;
+    let listener = TcpListener::bind(listen_address).await.map_err(error::Error::Bind)?;
 
     match &config.server.tls {
         Some(tls_config) => {
             // Setup TLS
             let rustls_config = RustlsConfig::from_pem_file(&tls_config.certificate, &tls_config.key)
                 .await
-                .map_err(|e| error::Error::TlsError(e.to_string()))?;
+                .map_err(|e| error::Error::Tls(e.to_string()))?;
 
             if config.mcp.enabled {
                 log::info!("MCP endpoint available at: https://{listen_address}{}", config.mcp.path);
             }
 
             // Convert tokio listener to std listener for axum-server
-            let std_listener = listener.into_std().map_err(|e| error::Error::BindError(e))?;
+            let std_listener = listener.into_std().map_err(error::Error::Bind)?;
 
             // Start the HTTPS server
             axum_server::from_tcp_rustls(std_listener, rustls_config)
                 .serve(app.into_make_service())
                 .await
-                .map_err(|e| error::Error::ServerError(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
+                .map_err(|e| error::Error::Server(std::io::Error::other(e)))?;
         }
         None => {
             if config.mcp.enabled {
@@ -54,9 +52,7 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> crate
             }
 
             // Start the HTTP server
-            axum::serve(listener, app)
-                .await
-                .map_err(|e| error::Error::ServerError(e))?;
+            axum::serve(listener, app).await.map_err(error::Error::Server)?;
         }
     }
 

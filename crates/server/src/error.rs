@@ -1,11 +1,11 @@
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Failed to bind to address: {0}")]
-    BindError(#[source] std::io::Error),
+    Bind(#[source] std::io::Error),
 
     #[error("Server error: {0}")]
-    ServerError(#[source] std::io::Error),
+    Server(#[source] std::io::Error),
 
     #[error("TLS error: {0}")]
-    TlsError(String),
+    Tls(String),
 }
