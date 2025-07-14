@@ -1,5 +1,5 @@
-name: Install rust
-description: Install Rust, Rust Install
+name: Install Rust
+description: Install Rust
 
 inputs:
   components:
