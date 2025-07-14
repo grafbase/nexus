@@ -8,9 +8,9 @@ keywords.workspace = true
 repository.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde-dynamic-string.workspace = true
-thiserror.workspace = true
 toml.workspace = true
 
 [lints]

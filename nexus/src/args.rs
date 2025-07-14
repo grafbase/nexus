@@ -25,7 +25,7 @@ pub struct Args {
 
 impl Args {
     pub fn config(&self) -> anyhow::Result<Config> {
-        Ok(Config::load(&self.config)?)
+        Config::load(&self.config)
     }
 }
 

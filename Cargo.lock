@@ -856,11 +856,11 @@ dependencies = [
 name = "config"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "indoc",
  "insta",
  "serde",
  "serde-dynamic-string",
- "thiserror 2.0.12",
  "toml",
 ]
 
@@ -2495,7 +2495,6 @@ dependencies = [
  "reqwest",
  "rustls",
  "serde",
- "serde_json",
  "server",
  "tokio",
  "toml",
@@ -2957,12 +2956,9 @@ dependencies = [
  "anyhow",
  "clap",
  "config",
- "fastrace",
- "log",
  "logforth",
  "server",
  "tokio",
- "toml",
 ]
 
 [[package]]
@@ -4268,13 +4264,11 @@ dependencies = [
 name = "server"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "axum",
  "axum-server",
  "config",
- "futures-util",
- "http",
  "log",
- "thiserror 2.0.12",
  "tokio",
 ]
 

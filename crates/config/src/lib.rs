@@ -1,4 +1,3 @@
-mod error;
 mod loader;
 mod mcp;
 
@@ -10,8 +9,6 @@ use std::{
 use mcp::McpConfig;
 use serde::Deserialize;
 
-pub(crate) type Result<T> = std::result::Result<T, error::Error>;
-
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -22,7 +19,7 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn load<P: AsRef<Path>>(path: P) -> crate::Result<Config> {
+    pub fn load<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
         loader::load(path)
     }
 }
