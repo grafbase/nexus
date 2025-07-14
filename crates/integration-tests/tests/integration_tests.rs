@@ -18,7 +18,7 @@ async fn default_path() {
 }
 
 #[tokio::test]
-async fn test_custom_path() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn custom_path() {
     let config = indoc! {r#"
         [mcp]
         enabled = true
@@ -32,12 +32,10 @@ async fn test_custom_path() -> Result<(), Box<dyn std::error::Error + Send + Syn
 
     let body = response.text().await.unwrap();
     insta::assert_snapshot!(body, @"<h1>Hello, World!</h1>");
-
-    Ok(())
 }
 
 #[tokio::test]
-async fn successful_tls_connection() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn successful_tls_connection() {
     let config = indoc! {r#"
         [server]
         [server.tls]
@@ -55,6 +53,4 @@ async fn successful_tls_connection() -> Result<(), Box<dyn std::error::Error + S
 
     let body = response.text().await.unwrap();
     insta::assert_snapshot!(body, @"<h1>Hello, World!</h1>");
-
-    Ok(())
 }
