@@ -1,6 +1,7 @@
 use std::{fmt, io::IsTerminal, net::SocketAddr, path::PathBuf, str::FromStr};
 
 use clap::{Parser, ValueEnum};
+use config::Config;
 use logforth::filter::EnvFilter;
 
 #[derive(Debug, Parser)]
@@ -8,7 +9,8 @@ use logforth::filter::EnvFilter;
 /// Grafbase Nexus
 pub struct Args {
     /// IP address on which the server will listen for incomming connections.
-    #[arg(short, long, env = "NEXUS_LISTEN_ADDRESS", default_value = "127.0.0.1:6000")]
+    /// Default: 127.0.0.1:6000
+    #[arg(short, long, env = "NEXUS_LISTEN_ADDRESS")]
     pub listen_address: Option<SocketAddr>,
     /// Path to the TOML configuration file
     #[arg(long, short, env = "NEXUS_CONFIG_PATH", default_value = "./nexus.toml")]
@@ -19,6 +21,12 @@ pub struct Args {
     /// Set the style of log output
     #[arg(long, env = "NEXUS_LOG_STYLE", default_value_t = LogStyle::default())]
     pub log_style: LogStyle,
+}
+
+impl Args {
+    pub fn config(&self) -> anyhow::Result<Config> {
+        Ok(Config::load(&self.config)?)
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]

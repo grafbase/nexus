@@ -1,0 +1,21 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+repository.workspace = true
+
+[dependencies]
+axum = { workspace = true, features = ["macros", "json", "http2"] }
+axum-server.workspace = true
+config.workspace = true
+futures-util.workspace = true
+http.workspace = true
+log = { workspace = true, features = ["kv"] }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["signal"] }
+
+[lints]
+workspace = true

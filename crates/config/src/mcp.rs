@@ -1,12 +1,10 @@
-use std::net::SocketAddr;
-
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct McpConfig {
     #[serde(default = "default_enabled")]
     pub enabled: bool,
-    pub listen_address: Option<SocketAddr>,
     #[serde(default)]
     pub protocol: McpProtocol,
     #[serde(default = "default_path")]
@@ -17,7 +15,6 @@ impl Default for McpConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            listen_address: None,
             protocol: McpProtocol::default(),
             path: "/mcp".to_string(),
         }
