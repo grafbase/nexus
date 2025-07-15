@@ -2,8 +2,8 @@
 
 #![deny(missing_docs)]
 
+mod downstream;
 mod server;
-mod tool;
 
 use std::{sync::Arc, time::Duration};
 
@@ -14,8 +14,9 @@ use rmcp::transport::{
 };
 
 /// Creates an axum router for MCP.
-pub fn router(config: &McpConfig) -> anyhow::Result<Router> {
-    let mcp_server = server::McpServer::new()?;
+pub async fn router(config: &McpConfig) -> anyhow::Result<Router> {
+    log::debug!("Creating MCP router");
+    let mcp_server = server::McpServer::new(config).await?;
 
     let service = StreamableHttpService::new(
         move || Ok(mcp_server.clone()),

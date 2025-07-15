@@ -1,3 +1,5 @@
+mod downstream;
+
 use std::net::SocketAddr;
 use std::sync::Once;
 use std::time::Duration;
@@ -10,15 +12,37 @@ use rmcp::{
 };
 use server::ServeConfig;
 use tokio::net::TcpListener;
-use tokio::time::timeout;
+
+pub use downstream::{ServiceType, TestService, TestTool};
+use tokio_util::sync::CancellationToken;
 
 static INIT: Once = Once::new();
+static LOGGER_INIT: Once = Once::new();
 
+#[ctor::ctor]
 fn init_crypto_provider() {
     INIT.call_once(|| {
         rustls::crypto::aws_lc_rs::default_provider()
             .install_default()
             .expect("Failed to install default crypto provider");
+    });
+}
+
+/// Initialize logger for integration tests
+/// Logs will only be shown when TEST_LOG environment variable is set
+#[ctor::ctor]
+fn init_logger() {
+    LOGGER_INIT.call_once(|| {
+        // Only initialize logger if TEST_LOG is set
+        // This allows running tests with `TEST_LOG=1 cargo test` to see logs
+        if std::env::var("TEST_LOG").is_ok() {
+            logforth::builder()
+                .dispatch(|d| {
+                    d.filter(log::LevelFilter::Debug)
+                        .append(logforth::append::Stderr::default())
+                })
+                .apply();
+        }
     });
 }
 
@@ -64,6 +88,11 @@ impl TestClient {
             .await
             .unwrap()
     }
+
+    /// Send a GET request to the given path, returning Result instead of panicking
+    pub async fn try_get(&self, path: &str) -> reqwest::Result<reqwest::Response> {
+        self.client.get(format!("{}{}", self.base_url, path)).send().await
+    }
 }
 
 /// MCP client for testing MCP protocol functionality
@@ -85,6 +114,7 @@ impl McpTestClient {
         } else {
             StreamableHttpClientTransport::from_uri(mcp_url)
         };
+
         let service = ().serve(transport).await.unwrap();
 
         Self { service }
@@ -134,15 +164,17 @@ impl McpTestClient {
 pub struct TestServer {
     pub client: TestClient,
     pub address: SocketAddr,
+    pub cancellation_tokens: Vec<CancellationToken>,
     _handle: tokio::task::JoinHandle<()>,
 }
 
 impl TestServer {
-    /// Start a new test server with the given TOML configuration
-    pub async fn start(config_toml: &str) -> Self {
-        // Initialize crypto provider for rustls
-        init_crypto_provider();
+    pub fn builder() -> TestServerBuilder {
+        TestServerBuilder::default()
+    }
 
+    /// Start a new test server with the given TOML configuration
+    async fn start(config_toml: &str, cancellation_tokens: Vec<CancellationToken>) -> Self {
         // Parse the configuration from TOML
         let config: Config = toml::from_str(config_toml).unwrap();
 
@@ -176,12 +208,12 @@ impl TestServer {
         });
 
         // Wait for the server to start up or fail
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
 
         // Check if the server failed to start (non-blocking check)
+        #[allow(clippy::panic)]
         if let Ok(Err(e)) = rx.try_recv() {
-            eprintln!("Server failed to start: {e}");
-            std::process::exit(1);
+            panic!("Server failed to start: {e}");
         }
 
         // Create the test client - use HTTPS if TLS is configured
@@ -195,18 +227,33 @@ impl TestServer {
         };
 
         // Verify the server is actually running by making a simple request
-        let mut retries = 10;
+        let mut retries = 30;
+        let mut last_error = None;
+
         while retries > 0 {
-            if timeout(Duration::from_millis(100), client.get("/")).await.is_ok() {
-                break;
+            match client.try_get("/health").await {
+                Ok(_) => break,
+                Err(e) => {
+                    last_error = Some(e);
+                }
             }
             retries -= 1;
-            tokio::time::sleep(Duration::from_millis(50)).await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+
+        if retries == 0 {
+            #[allow(clippy::panic)]
+            if let Some(e) = last_error {
+                panic!("Server failed to become ready after 30 retries. Last error: {e}");
+            } else {
+                panic!("Server failed to become ready after 30 retries. No specific error.");
+            }
         }
 
         TestServer {
             client,
             address,
+            cancellation_tokens,
             _handle: handle,
         }
     }
@@ -222,5 +269,54 @@ impl TestServer {
         let mcp_url = format!("{protocol}://{}{}", self.address, path);
 
         McpTestClient::new(mcp_url).await
+    }
+}
+
+impl Drop for TestServer {
+    fn drop(&mut self) {
+        for token in &self.cancellation_tokens {
+            token.cancel();
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct TestServerBuilder {
+    config: String,
+    cancellation_tokens: Vec<CancellationToken>,
+}
+
+impl TestServerBuilder {
+    pub async fn spawn_service(&mut self, service: TestService) {
+        let (listen_addr, ct) = service.spawn().await;
+
+        if let Some(ct) = ct {
+            self.cancellation_tokens.push(ct);
+        }
+
+        let config = match service.r#type() {
+            ServiceType::Sse => {
+                indoc::formatdoc! {r#"
+                    [mcp.servers.{}]
+                    protocol = "sse"
+                    sse-endpoint = "http://{listen_addr}/sse"
+                "#, service.name()}
+            }
+            ServiceType::StreamableHttp => {
+                indoc::formatdoc! {r#"
+                    [mcp.servers.{}]
+                    protocol = "streamable-http"
+                    uri = "http://{listen_addr}/mcp"
+                "#, service.name()}
+            }
+        };
+
+        self.config.push_str(&format!("\n{config}"));
+    }
+
+    pub async fn build(self, config: &str) -> TestServer {
+        let config = format!("{config}\n{}", self.config);
+
+        TestServer::start(&config, self.cancellation_tokens).await
     }
 }

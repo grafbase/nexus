@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
 use anyhow::anyhow;
-use config::{HealthConfig, TlsConfig};
+use config::{HealthConfig, TlsServerConfig};
 
 use axum::{Json, Router, routing::get};
 use http::StatusCode;
@@ -25,7 +25,7 @@ pub(crate) async fn health() -> (StatusCode, Json<HealthState>) {
 /// Binds the health check endpoint to the specified address and configuration.
 pub(super) async fn bind_health_endpoint(
     addr: SocketAddr,
-    tls_config: Option<TlsConfig>,
+    tls_config: Option<TlsServerConfig>,
     health_config: HealthConfig,
 ) -> anyhow::Result<()> {
     let scheme = if tls_config.is_some() { "https" } else { "http" };

@@ -9,6 +9,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   DEPOT_PROJECT: lc6t0h7bhh
+  RUSTC_WRAPPER: sccache
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-rust-pr

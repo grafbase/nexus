@@ -27,7 +27,7 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
     let mut app = Router::new();
 
     if config.mcp.enabled {
-        app = app.merge(mcp::router(&config.mcp)?);
+        app = app.merge(mcp::router(&config.mcp).await?);
     }
 
     if config.server.health.enabled {

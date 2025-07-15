@@ -8,16 +8,29 @@ keywords.workspace = true
 repository.workspace = true
 
 [dependencies]
+axum = { workspace = true }
 config.workspace = true
+ctor.workspace = true
 indoc.workspace = true
 insta.workspace = true
+log.workspace = true
+logforth = { workspace = true, features = ["colored"] }
 reqwest = { workspace = true, features = ["json"] }
-rmcp = { workspace = true, features = ["client", "reqwest", "transport-streamable-http-client"] }
+rmcp = { workspace = true, features = [
+    "client",
+    "server",
+    "macros",
+    "reqwest",
+    "transport-streamable-http-client",
+    "transport-sse-server",
+    "transport-sse-client",
+] }
 rustls.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 server.workspace = true
 tokio = { workspace = true, features = ["full"] }
+tokio-util.workspace = true
 toml.workspace = true
 
 [lints]

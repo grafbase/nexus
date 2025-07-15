@@ -1,6 +1,9 @@
+mod sse;
+mod streamable_http;
+mod tools;
+
 use indoc::indoc;
-use integration_tests::*;
-use serde_json::json;
+use integration_tests::TestServer;
 
 #[tokio::test]
 async fn mcp_server_info() {
@@ -9,7 +12,7 @@ async fn mcp_server_info() {
         enabled = true
     "#};
 
-    let server = TestServer::start(config).await;
+    let server = TestServer::builder().build(config).await;
     let mcp_client = server.mcp_client("/mcp").await;
 
     let server_info = mcp_client.get_server_info();
@@ -22,153 +25,7 @@ async fn mcp_server_info() {
 }
 
 #[tokio::test]
-async fn mcp_list_tools() {
-    let config = indoc! {r#"
-        [mcp]
-        enabled = true
-    "#};
-
-    let server = TestServer::start(config).await;
-    let mcp_client = server.mcp_client("/mcp").await;
-
-    let tools_result = mcp_client.list_tools().await;
-
-    insta::assert_json_snapshot!(&tools_result, @r#"
-    {
-      "tools": [
-        {
-          "name": "adder",
-          "description": "adds a and b together",
-          "inputSchema": {
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "title": "Request",
-            "type": "object",
-            "required": [
-              "a",
-              "b"
-            ],
-            "properties": {
-              "a": {
-                "type": "integer",
-                "format": "int32"
-              },
-              "b": {
-                "type": "integer",
-                "format": "int32"
-              }
-            }
-          },
-          "annotations": {
-            "readOnlyHint": true,
-            "destructiveHint": false,
-            "idempotentHint": true,
-            "openWorldHint": false
-          }
-        }
-      ]
-    }
-    "#);
-
-    mcp_client.disconnect().await;
-}
-
-#[tokio::test]
-async fn mcp_call_adder_tool() {
-    let config = indoc! {r#"
-        [mcp]
-        enabled = true
-    "#};
-
-    let server = TestServer::start(config).await;
-    let mcp_client = server.mcp_client("/mcp").await;
-
-    // Call the adder tool with test values
-    let result = mcp_client.call_tool("adder", json!({ "a": 5, "b": 3 })).await;
-
-    insta::assert_json_snapshot!(result, @r#"
-    {
-      "content": [
-        {
-          "type": "text",
-          "text": "5 + 3 = 8"
-        }
-      ],
-      "isError": false
-    }
-    "#);
-
-    mcp_client.disconnect().await;
-}
-
-#[tokio::test]
-async fn mcp_call_nonexistent_tool() {
-    let config = indoc! {r#"
-        [mcp]
-        enabled = true
-    "#};
-
-    let server = TestServer::start(config).await;
-    let mcp_client = server.mcp_client("/mcp").await;
-
-    // Try to call a tool that doesn't exist
-    let error = mcp_client.call_tool_expect_error("nonexistent", json!({})).await;
-
-    insta::assert_snapshot!(error.to_string(), @"Mcp error: -32602: Unknown tool 'nonexistent'");
-
-    mcp_client.disconnect().await;
-}
-
-#[tokio::test]
-async fn mcp_custom_path() {
-    let config = indoc! {r#"
-        [mcp]
-        enabled = true
-        path = "/custom-mcp"
-    "#};
-
-    let server = TestServer::start(config).await;
-    let mcp_client = server.mcp_client("/custom-mcp").await;
-
-    // Should be able to connect and list tools on custom path
-    let tools_result = mcp_client.list_tools().await;
-    assert_eq!(tools_result.tools.len(), 1);
-    assert_eq!(tools_result.tools[0].name, "adder");
-
-    mcp_client.disconnect().await;
-}
-
-#[tokio::test]
-async fn mcp_with_tls() {
-    let config = indoc! {r#"
-        [server]
-        [server.tls]
-        certificate = "certs/cert.pem"
-        key = "certs/key.pem"
-
-        [mcp]
-        enabled = true
-    "#};
-
-    let server = TestServer::start(config).await;
-    let mcp_client = server.mcp_client("/mcp").await;
-
-    // Should work over TLS
-    let tools_result = mcp_client.list_tools().await;
-    assert_eq!(tools_result.tools.len(), 1);
-
-    // Test calling the tool over TLS
-    let result = mcp_client.call_tool("adder", json!({ "a": 7, "b": 2 })).await;
-
-    assert!(result.is_error != Some(true));
-    // Check if the content contains the expected text
-    let content_text = format!("{:?}", result.content[0]);
-    assert!(content_text.contains("7 + 2 = 9"));
-
-    mcp_client.disconnect().await;
-}
-
-#[tokio::test]
-async fn health_endpoint_still_works() {
+async fn health_endpoint_enabled() {
     let config = indoc! {r#"
         [server]
         [server.health]
@@ -178,7 +35,7 @@ async fn health_endpoint_still_works() {
         enabled = true
     "#};
 
-    let server = TestServer::start(config).await;
+    let server = TestServer::builder().build(config).await;
 
     // Health endpoint should still work alongside MCP
     let response = server.client.get("/health").await;
@@ -199,7 +56,7 @@ async fn health_endpoint_disabled() {
         enabled = true
     "#};
 
-    let server = TestServer::start(config).await;
+    let server = TestServer::builder().build(config).await;
 
     let response = server.client.get("/health").await;
     assert_eq!(response.status(), 404);
@@ -217,7 +74,7 @@ async fn health_endpoint_custom_path() {
         enabled = true
     "#};
 
-    let server = TestServer::start(config).await;
+    let server = TestServer::builder().build(config).await;
 
     // Custom path should work
     let response = server.client.get("/status").await;
@@ -246,7 +103,7 @@ async fn health_endpoint_with_tls() {
         enabled = true
     "#};
 
-    let server = TestServer::start(config).await;
+    let server = TestServer::builder().build(config).await;
 
     let response = server.client.get("/health").await;
     assert_eq!(response.status(), 200);
@@ -262,7 +119,7 @@ async fn health_endpoint_enabled_by_default() {
         enabled = true
     "#};
 
-    let server = TestServer::start(config).await;
+    let server = TestServer::builder().build(config).await;
 
     // Health endpoint should be enabled by default
     let response = server.client.get("/health").await;
@@ -338,4 +195,26 @@ async fn health_endpoint_separate_listener() {
 
     let body = response.text().await.unwrap();
     insta::assert_snapshot!(body, @r#"{"status":"healthy"}"#);
+}
+
+#[tokio::test]
+async fn no_tools_by_default() {
+    let config = indoc! {r#"
+        [mcp]
+        enabled = true
+    "#};
+
+    let server = TestServer::builder().build(config).await;
+    let mcp_client = server.mcp_client("/mcp").await;
+
+    let tools_result = mcp_client.list_tools().await;
+
+    // Should have no tools when no services are configured
+    insta::assert_json_snapshot!(&tools_result, @r#"
+    {
+      "tools": []
+    }
+    "#);
+
+    mcp_client.disconnect().await;
 }

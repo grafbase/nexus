@@ -1087,6 +1087,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b10589d1a5e400d61f9f38f12f884cfd080ff345de8f17efda36fe0e4a02aa8"
 
 [[package]]
+name = "ctor"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4735f265ba6a1188052ca32d461028a7d1125868be18e287e756019da7607b5"
+dependencies = [
+ "ctor-proc-macro",
+ "dtor",
+]
+
+[[package]]
+name = "ctor-proc-macro"
+version = "0.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f211af61d8efdd104f96e57adf5e426ba1bc3ed7a4ead616e15e5881fd79c4d"
+
+[[package]]
 name = "ctr"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1279,6 +1295,21 @@ dependencies = [
  "quote",
  "syn 2.0.104",
 ]
+
+[[package]]
+name = "dtor"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97cbdf2ad6846025e8e25df05171abfb30e3ababa12ee0a0e44b9bbe570633a8"
+dependencies = [
+ "dtor-proc-macro",
+]
+
+[[package]]
+name = "dtor-proc-macro"
+version = "0.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7454e41ff9012c00d53cf7f475c5e3afa3b91b7c90568495495e8d9bf47a1055"
 
 [[package]]
 name = "dunce"
@@ -2504,9 +2535,13 @@ dependencies = [
 name = "integration-tests"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "config",
+ "ctor",
  "indoc",
  "insta",
+ "log",
+ "logforth",
  "reqwest",
  "rmcp",
  "rustls",
@@ -2514,6 +2549,7 @@ dependencies = [
  "serde_json",
  "server",
  "tokio",
+ "tokio-util",
  "toml",
 ]
 
@@ -2864,12 +2900,9 @@ dependencies = [
  "anyhow",
  "axum",
  "config",
- "futures-util",
- "http",
+ "log",
+ "reqwest",
  "rmcp",
- "schemars 0.8.22",
- "serde",
- "serde_json",
 ]
 
 [[package]]

@@ -11,20 +11,18 @@ repository.workspace = true
 anyhow = { workspace = true, features = ["backtrace"] }
 axum.workspace = true
 config.workspace = true
-futures-util.workspace = true
-http.workspace = true
+log = { workspace = true, features = ["kv"] }
+reqwest.workspace = true
 rmcp = { workspace = true, features = [
-    "transport-sse-server",
-    "transport-streamable-http-server",
     "client",
     "reqwest",
+    "transport-sse-client",
     "transport-streamable-http-client",
+    "transport-streamable-http-server",
     "auth",
     "transport-io",
+    "client-side-sse",
 ] }
-schemars.workspace = true
-serde.workspace = true
-serde_json.workspace = true
 
 [lints]
 workspace = true

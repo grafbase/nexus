@@ -1,22 +1,23 @@
 use std::sync::Arc;
 
+use config::McpConfig;
 use rmcp::{
     RoleServer, ServerHandler,
     model::{
-        CallToolRequestParam, CallToolResult, ErrorCode, ErrorData, Implementation, ListToolsResult,
-        PaginatedRequestParam, ProtocolVersion, ServerCapabilities, ServerInfo,
+        CallToolRequestParam, CallToolResult, ErrorData, Implementation, ListToolsResult, PaginatedRequestParam,
+        ProtocolVersion, ServerCapabilities, ServerInfo,
     },
     service::RequestContext,
 };
 
-use crate::tool::{RmcpTool, adder::Adder};
+use crate::downstream::Downstream;
 
 #[derive(Clone)]
 pub(crate) struct McpServer(Arc<McpServerInner>);
 
 pub(crate) struct McpServerInner {
     info: ServerInfo,
-    tools: Vec<Box<dyn RmcpTool>>,
+    downstream: Downstream,
 }
 
 impl std::ops::Deref for McpServer {
@@ -27,16 +28,20 @@ impl std::ops::Deref for McpServer {
 }
 
 impl McpServer {
-    pub(crate) fn new() -> anyhow::Result<Self> {
-        Ok(Self(Arc::new(McpServerInner {
+    pub(crate) async fn new(config: &McpConfig) -> anyhow::Result<Self> {
+        let downstream = Downstream::new(config).await?;
+
+        let inner = McpServerInner {
             info: ServerInfo {
                 protocol_version: ProtocolVersion::V_2024_11_05,
                 capabilities: ServerCapabilities::builder().enable_tools().build(),
                 server_info: Implementation::from_build_env(),
                 instructions: None,
             },
-            tools: vec![Box::new(Adder)],
-        })))
+            downstream,
+        };
+
+        Ok(Self(Arc::new(inner)))
     }
 }
 
@@ -47,28 +52,18 @@ impl ServerHandler for McpServer {
 
     async fn list_tools(
         &self,
-        _: Option<PaginatedRequestParam>,
+        _: Option<PaginatedRequestParam>, // TODO: do we need to care about pagination?
         _: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        Ok(ListToolsResult {
-            next_cursor: None,
-            tools: self.tools.iter().map(|tool| tool.to_tool()).collect(),
-        })
+        let tools = self.downstream.list_tools().cloned().collect();
+        Ok(ListToolsResult::with_all_items(tools))
     }
 
     async fn call_tool(
         &self,
-        CallToolRequestParam { name, arguments }: CallToolRequestParam,
-        context: RequestContext<RoleServer>,
+        params: CallToolRequestParam,
+        _: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        if let Some(tool) = self.tools.iter().find(|tool| tool.name() == name) {
-            return tool.call(arguments, context).await;
-        }
-
-        Err(ErrorData::new(
-            ErrorCode::INVALID_PARAMS,
-            format!("Unknown tool '{name}'"),
-            None,
-        ))
+        self.downstream.call_tool(params).await
     }
 }
