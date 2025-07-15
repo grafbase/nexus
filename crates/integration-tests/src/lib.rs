@@ -3,6 +3,11 @@ use std::sync::Once;
 use std::time::Duration;
 
 use config::Config;
+use rmcp::{
+    model::CallToolRequestParam,
+    service::{RunningService, ServiceExt},
+    transport::{StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig},
+};
 use server::ServeConfig;
 use tokio::net::TcpListener;
 use tokio::time::timeout;
@@ -58,6 +63,70 @@ impl TestClient {
             .send()
             .await
             .unwrap()
+    }
+}
+
+/// MCP client for testing MCP protocol functionality
+pub struct McpTestClient {
+    service: RunningService<rmcp::RoleClient, ()>,
+}
+
+impl McpTestClient {
+    /// Create a new MCP test client that connects to the given MCP endpoint URL
+    pub async fn new(mcp_url: String) -> Self {
+        let transport = if mcp_url.starts_with("https") {
+            // For HTTPS, create a client that accepts self-signed certificates
+            let client = reqwest::Client::builder()
+                .danger_accept_invalid_certs(true)
+                .build()
+                .unwrap();
+            let config = StreamableHttpClientTransportConfig::with_uri(mcp_url.clone());
+            StreamableHttpClientTransport::with_client(client, config)
+        } else {
+            StreamableHttpClientTransport::from_uri(mcp_url)
+        };
+        let service = ().serve(transport).await.unwrap();
+
+        Self { service }
+    }
+
+    /// Get server information
+    pub fn get_server_info(&self) -> &rmcp::model::InitializeResult {
+        self.service.peer_info().unwrap()
+    }
+
+    /// List available tools
+    pub async fn list_tools(&self) -> rmcp::model::ListToolsResult {
+        self.service.list_tools(Default::default()).await.unwrap()
+    }
+
+    /// Call a tool with the given name and arguments
+    pub async fn call_tool(&self, name: &str, arguments: serde_json::Value) -> rmcp::model::CallToolResult {
+        let arguments = arguments.as_object().cloned();
+        self.service
+            .call_tool(CallToolRequestParam {
+                name: name.to_string().into(),
+                arguments,
+            })
+            .await
+            .unwrap()
+    }
+
+    /// Call a tool and expect it to fail
+    pub async fn call_tool_expect_error(&self, name: &str, arguments: serde_json::Value) -> rmcp::ServiceError {
+        let arguments = arguments.as_object().cloned();
+        self.service
+            .call_tool(CallToolRequestParam {
+                name: name.to_string().into(),
+                arguments,
+            })
+            .await
+            .unwrap_err()
+    }
+
+    /// Disconnect the client
+    pub async fn disconnect(self) {
+        self.service.cancel().await.unwrap();
     }
 }
 
@@ -140,5 +209,18 @@ impl TestServer {
             address,
             _handle: handle,
         }
+    }
+
+    /// Create an MCP client that connects to this server's MCP endpoint
+    pub async fn mcp_client(&self, path: &str) -> McpTestClient {
+        let protocol = if self.client.base_url.starts_with("https") {
+            "https"
+        } else {
+            "http"
+        };
+
+        let mcp_url = format!("{protocol}://{}{}", self.address, path);
+
+        McpTestClient::new(mcp_url).await
     }
 }

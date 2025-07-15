@@ -12,8 +12,10 @@ config.workspace = true
 indoc.workspace = true
 insta.workspace = true
 reqwest = { workspace = true, features = ["json"] }
+rmcp = { workspace = true, features = ["client", "reqwest", "transport-streamable-http-client"] }
 rustls.workspace = true
 serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 server.workspace = true
 tokio = { workspace = true, features = ["full"] }
 toml.workspace = true

@@ -1,25 +1,33 @@
+//! Nexus server library.
+//!
+//! Provides a reusable server function to serve Nexus either for the binary, or for the integration tests.
+
+#![deny(missing_docs)]
+
 mod health;
 
 use std::net::SocketAddr;
 
 use anyhow::anyhow;
-use axum::{Router, response::Html, routing::get};
+use axum::{Router, routing::get};
 use axum_server::tls_rustls::RustlsConfig;
 use config::Config;
 use tokio::net::TcpListener;
 
+/// Configuration for serving Nexus.
 pub struct ServeConfig {
+    /// The socket address (IP and port) the server will bind to
     pub listen_address: SocketAddr,
+    /// The deserialized Nexus TOML configuration.
     pub config: Config,
 }
 
+/// Starts and runs the Nexus server with the provided configuration.
 pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyhow::Result<()> {
-    // Create the router with the MCP endpoint
     let mut app = Router::new();
 
-    // Add the MCP endpoint if enabled
     if config.mcp.enabled {
-        app = app.route(&config.mcp.path, get(hello_world));
+        app = app.merge(mcp::router(&config.mcp)?);
     }
 
     if config.server.health.enabled {
@@ -34,17 +42,16 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
         }
     }
 
-    // Create TCP listener
     let listener = TcpListener::bind(listen_address)
         .await
-        .map_err(|e| anyhow!("Failed to bind to {}: {}", listen_address, e))?;
+        .map_err(|e| anyhow!("Failed to bind to {listen_address}: {e}"))?;
 
     match &config.server.tls {
         Some(tls_config) => {
             // Setup TLS
             let rustls_config = RustlsConfig::from_pem_file(&tls_config.certificate, &tls_config.key)
                 .await
-                .map_err(|e| anyhow!("Failed to load TLS certificate and key: {}", e))?;
+                .map_err(|e| anyhow!("Failed to load TLS certificate and key: {e}"))?;
 
             if config.mcp.enabled {
                 log::info!("MCP endpoint available at: https://{listen_address}{}", config.mcp.path);
@@ -72,8 +79,4 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
     }
 
     Ok(())
-}
-
-async fn hello_world() -> Html<&'static str> {
-    Html("<h1>Hello, World!</h1>")
 }

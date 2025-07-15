@@ -8,12 +8,13 @@ keywords.workspace = true
 repository.workspace = true
 
 [dependencies]
-anyhow.workspace = true
+anyhow = { workspace = true, features = ["backtrace"] }
 axum = { workspace = true, features = ["macros", "json", "http2"] }
 axum-server.workspace = true
 config.workspace = true
 http.workspace = true
 log = { workspace = true, features = ["kv"] }
+mcp = { version = "0.1.0", path = "../mcp" }
 serde.workspace = true
 tokio = { workspace = true, features = ["signal"] }
 

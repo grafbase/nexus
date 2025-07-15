@@ -1,3 +1,7 @@
+//! Nexus configuration structures to map the nexus.toml configuration.
+
+#![deny(missing_docs)]
+
 mod loader;
 mod mcp;
 
@@ -7,37 +11,48 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use mcp::McpConfig;
+pub use mcp::McpConfig;
 use serde::Deserialize;
 
+/// Main configuration structure for the Nexus application.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    /// HTTP server configuration settings.
     #[serde(default)]
     pub server: ServerConfig,
+    /// Model Context Protocol configuration settings.
     #[serde(default)]
     pub mcp: McpConfig,
 }
 
 impl Config {
+    /// Load configuration from a file path.
     pub fn load<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
         loader::load(path)
     }
 }
 
+/// HTTP server configuration settings.
 #[derive(Default, Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ServerConfig {
+    /// The socket address the server should listen on.
     pub listen_address: Option<SocketAddr>,
+    /// TLS configuration for secure connections.
     pub tls: Option<TlsConfig>,
+    /// Health endpoint configuration.
     #[serde(default)]
     pub health: HealthConfig,
 }
 
+/// TLS configuration for secure connections.
 #[derive(Default, Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TlsConfig {
+    /// Path to the TLS certificate PEM file.
     pub certificate: PathBuf,
+    /// Path to the TLS private key PEM file.
     pub key: PathBuf,
 }
 
@@ -45,8 +60,11 @@ pub struct TlsConfig {
 #[derive(Clone, Debug, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct HealthConfig {
+    /// Whether the health endpoint is enabled.
     pub enabled: bool,
+    /// The socket address the health endpoint should listen on.
     pub listen: Option<SocketAddr>,
+    /// The path for the health endpoint.
     pub path: Cow<'static, str>,
 }
 
@@ -74,7 +92,6 @@ mod tests {
 
             [mcp]
             enabled = false
-            protocol = "sse"
             path = "/mcp-path"
         "#};
 
@@ -95,7 +112,6 @@ mod tests {
             },
             mcp: McpConfig {
                 enabled: false,
-                protocol: Sse,
                 path: "/mcp-path",
             },
         }
@@ -119,7 +135,6 @@ mod tests {
             },
             mcp: McpConfig {
                 enabled: true,
-                protocol: StreamableHttp,
                 path: "/mcp",
             },
         }

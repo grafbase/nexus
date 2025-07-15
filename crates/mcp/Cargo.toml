@@ -1,0 +1,30 @@
+[package]
+name = "mcp"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow = { workspace = true, features = ["backtrace"] }
+axum.workspace = true
+config.workspace = true
+futures-util.workspace = true
+http.workspace = true
+rmcp = { workspace = true, features = [
+    "transport-sse-server",
+    "transport-streamable-http-server",
+    "client",
+    "reqwest",
+    "transport-streamable-http-client",
+    "auth",
+    "transport-io",
+] }
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
