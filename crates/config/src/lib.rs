@@ -11,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub use mcp::McpConfig;
+pub use mcp::{HttpProtocol, McpConfig, McpServer};
 use serde::Deserialize;
 
 /// Main configuration structure for the Nexus application.
@@ -113,6 +113,7 @@ mod tests {
             mcp: McpConfig {
                 enabled: false,
                 path: "/mcp-path",
+                servers: {},
             },
         }
         "#);
@@ -136,6 +137,223 @@ mod tests {
             mcp: McpConfig {
                 enabled: true,
                 path: "/mcp",
+                servers: {},
+            },
+        }
+        "#);
+    }
+
+    #[test]
+    fn mcp_stdio_server() {
+        let config = indoc! {r#"
+            [mcp.servers.local_code_interpreter]
+            cmd = ["/usr/bin/mcp/code_interpreter_server", "--json-output"]
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+
+        insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
+        {
+            "local_code_interpreter": Stdio {
+                cmd: [
+                    "/usr/bin/mcp/code_interpreter_server",
+                    "--json-output",
+                ],
+            },
+        }
+        "#);
+    }
+
+    #[test]
+    fn mcp_http_server_default_protocol() {
+        let config = indoc! {r#"
+            [mcp.servers.public_knowledge_base]
+            uri = "http://mcp-kb.internal:9000"
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+
+        insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
+        {
+            "public_knowledge_base": Http {
+                uri: Url {
+                    scheme: "http",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: Some(
+                        Domain(
+                            "mcp-kb.internal",
+                        ),
+                    ),
+                    port: Some(
+                        9000,
+                    ),
+                    path: "/",
+                    query: None,
+                    fragment: None,
+                },
+                protocol: StreamingHttp,
+            },
+        }
+        "#);
+    }
+
+    #[test]
+    fn mcp_http_server_streaming_protocol() {
+        let config = indoc! {r#"
+            [mcp.servers.streaming_kb]
+            uri = "http://streaming-kb.internal:9000"
+            protocol = "streaming-http"
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+
+        insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
+        {
+            "streaming_kb": Http {
+                uri: Url {
+                    scheme: "http",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: Some(
+                        Domain(
+                            "streaming-kb.internal",
+                        ),
+                    ),
+                    port: Some(
+                        9000,
+                    ),
+                    path: "/",
+                    query: None,
+                    fragment: None,
+                },
+                protocol: StreamingHttp,
+            },
+        }
+        "#);
+    }
+
+    #[test]
+    fn mcp_http_server_sse_protocol() {
+        let config = indoc! {r#"
+            [mcp.servers.sse_kb]
+            uri = "http://sse-kb.internal:9000"
+            protocol = "sse"
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+
+        insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
+        {
+            "sse_kb": Http {
+                uri: Url {
+                    scheme: "http",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: Some(
+                        Domain(
+                            "sse-kb.internal",
+                        ),
+                    ),
+                    port: Some(
+                        9000,
+                    ),
+                    path: "/",
+                    query: None,
+                    fragment: None,
+                },
+                protocol: Sse,
+            },
+        }
+        "#);
+    }
+
+    #[test]
+    fn mcp_mixed_servers() {
+        let config = indoc! {r#"
+            [mcp]
+            enabled = true
+            path = "/custom-mcp"
+
+            [mcp.servers.local_code_interpreter]
+            cmd = ["/usr/bin/mcp/code_interpreter_server", "--json-output"]
+
+            [mcp.servers.public_knowledge_base]
+            uri = "http://mcp-kb.internal:9000"
+
+            [mcp.servers.streaming_api]
+            uri = "http://streaming-api.internal:8080"
+            protocol = "streaming-http"
+
+            [mcp.servers.another_stdio]
+            cmd = ["python", "-m", "mcp_server", "--port", "3000"]
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+
+        insta::assert_debug_snapshot!(&config.mcp, @r#"
+        McpConfig {
+            enabled: true,
+            path: "/custom-mcp",
+            servers: {
+                "another_stdio": Stdio {
+                    cmd: [
+                        "python",
+                        "-m",
+                        "mcp_server",
+                        "--port",
+                        "3000",
+                    ],
+                },
+                "local_code_interpreter": Stdio {
+                    cmd: [
+                        "/usr/bin/mcp/code_interpreter_server",
+                        "--json-output",
+                    ],
+                },
+                "public_knowledge_base": Http {
+                    uri: Url {
+                        scheme: "http",
+                        cannot_be_a_base: false,
+                        username: "",
+                        password: None,
+                        host: Some(
+                            Domain(
+                                "mcp-kb.internal",
+                            ),
+                        ),
+                        port: Some(
+                            9000,
+                        ),
+                        path: "/",
+                        query: None,
+                        fragment: None,
+                    },
+                    protocol: StreamingHttp,
+                },
+                "streaming_api": Http {
+                    uri: Url {
+                        scheme: "http",
+                        cannot_be_a_base: false,
+                        username: "",
+                        password: None,
+                        host: Some(
+                            Domain(
+                                "streaming-api.internal",
+                            ),
+                        ),
+                        port: Some(
+                            8080,
+                        ),
+                        path: "/",
+                        query: None,
+                        fragment: None,
+                    },
+                    protocol: StreamingHttp,
+                },
             },
         }
         "#);
