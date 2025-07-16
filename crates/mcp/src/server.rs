@@ -33,7 +33,7 @@ impl McpServer {
 
         let inner = McpServerInner {
             info: ServerInfo {
-                protocol_version: ProtocolVersion::V_2024_11_05,
+                protocol_version: ProtocolVersion::V_2025_03_26,
                 capabilities: ServerCapabilities::builder().enable_tools().build(),
                 server_info: Implementation::from_build_env(),
                 instructions: None,

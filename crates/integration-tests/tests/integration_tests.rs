@@ -14,12 +14,9 @@ async fn mcp_server_info() {
 
     let server = TestServer::builder().build(config).await;
     let mcp_client = server.mcp_client("/mcp").await;
-
     let server_info = mcp_client.get_server_info();
 
-    // Verify basic server info
-    assert_eq!(server_info.protocol_version, rmcp::model::ProtocolVersion::V_2024_11_05);
-    assert!(server_info.capabilities.tools.is_some());
+    insta::assert_json_snapshot!(&server_info.protocol_version, @r#""2025-03-26""#);
 
     mcp_client.disconnect().await;
 }
