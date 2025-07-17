@@ -20,7 +20,7 @@ pub struct McpConfig {
 
 /// Configuration for an individual MCP server.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(tag = "protocol", rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(tag = "protocol", rename_all = "snake_case", deny_unknown_fields)]
 pub enum McpServer {
     /// A server that runs as a subprocess with command and arguments.
     Stdio {
@@ -46,7 +46,7 @@ impl Default for McpConfig {
 
 /// A server accessible via streamable HTTP.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct StreamableHttpConfig {
     /// URL of the HTTP server.
     pub url: Url,
@@ -57,7 +57,7 @@ pub struct StreamableHttpConfig {
 
 /// A server accessible via Server-Sent Events.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct SseConfig {
     /// SSE endpoint for receiving server-sent events.
     pub sse_endpoint: Url,
@@ -73,7 +73,7 @@ pub struct SseConfig {
 
 /// TLS configuration for HTTP-based MCP servers.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(default, rename_all = "snake_case", deny_unknown_fields)]
 pub struct TlsClientConfig {
     /// Whether to verify TLS certificates.
     #[serde(default = "default_verify_tls")]

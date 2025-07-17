@@ -170,12 +170,12 @@ mod tests {
         let config = indoc! {r#"
             [mcp.servers.sse_server]
             protocol = "sse"
-            sse-endpoint = "http://example.com/sse"
-            message-endpoint = "http://example.com/message"
+            sse_endpoint = "http://example.com/sse"
+            message_endpoint = "http://example.com/message"
 
             [mcp.servers.sse_server.tls]
-            verify-certs = false
-            accept-invalid-hostnames = true
+            verify_certs = false
+            accept_invalid_hostnames = true
         "#};
 
         let config: Config = toml::from_str(config).unwrap();
@@ -239,8 +239,8 @@ mod tests {
             url = "https://api.example.com"
 
             [mcp.servers.http_server.tls]
-            verify-certs = true
-            root-ca-cert-path = "/path/to/ca.pem"
+            verify_certs = true
+            root_ca_cert_path = "/path/to/ca.pem"
         "#};
 
         let config: Config = toml::from_str(config).unwrap();
@@ -294,7 +294,7 @@ mod tests {
 
             [mcp.servers.sse_api]
             protocol = "sse"
-            sse-endpoint = "http://sse-api.internal:8080/events"
+            sse_endpoint = "http://sse-api.internal:8080/events"
 
             [mcp.servers.streaming_api]
             protocol = "streamable-http"

@@ -299,7 +299,7 @@ impl TestServerBuilder {
                 indoc::formatdoc! {r#"
                     [mcp.servers.{}]
                     protocol = "sse"
-                    sse-endpoint = "http://{listen_addr}/sse"
+                    sse_endpoint = "http://{listen_addr}/sse"
                 "#, service.name()}
             }
             ServiceType::StreamableHttp => {
