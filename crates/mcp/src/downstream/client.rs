@@ -65,7 +65,7 @@ async fn streamable_http_service(config: &StreamableHttpConfig) -> anyhow::Resul
     log::debug!("creating a streamable-http downstream service");
 
     let client = create_client(config.tls.as_ref())?;
-    let config = StreamableHttpClientTransportConfig::with_uri(config.uri.to_string());
+    let config = StreamableHttpClientTransportConfig::with_uri(config.url.to_string());
     let transport = StreamableHttpClientTransport::with_client(client, config);
 
     Ok(().serve(transport).await?)

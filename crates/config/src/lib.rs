@@ -236,7 +236,7 @@ mod tests {
         let config = indoc! {r#"
             [mcp.servers.http_server]
             protocol = "streamable-http"
-            uri = "https://api.example.com"
+            url = "https://api.example.com"
 
             [mcp.servers.http_server.tls]
             verify-certs = true
@@ -249,7 +249,7 @@ mod tests {
         {
             "http_server": StreamableHttp(
                 StreamableHttpConfig {
-                    uri: Url {
+                    url: Url {
                         scheme: "https",
                         cannot_be_a_base: false,
                         username: "",
@@ -298,7 +298,7 @@ mod tests {
 
             [mcp.servers.streaming_api]
             protocol = "streamable-http"
-            uri = "http://streaming-api.internal:8080"
+            url = "http://streaming-api.internal:8080"
 
             [mcp.servers.another_stdio]
             protocol = "stdio"
@@ -352,7 +352,7 @@ mod tests {
                 ),
                 "streaming_api": StreamableHttp(
                     StreamableHttpConfig {
-                        uri: Url {
+                        url: Url {
                             scheme: "http",
                             cannot_be_a_base: false,
                             username: "",

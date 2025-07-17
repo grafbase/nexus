@@ -306,7 +306,7 @@ impl TestServerBuilder {
                 indoc::formatdoc! {r#"
                     [mcp.servers.{}]
                     protocol = "streamable-http"
-                    uri = "http://{listen_addr}/mcp"
+                    url = "http://{listen_addr}/mcp"
                 "#, service.name()}
             }
         };

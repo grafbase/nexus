@@ -48,8 +48,8 @@ impl Default for McpConfig {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct StreamableHttpConfig {
-    /// URI of the HTTP server.
-    pub uri: Url,
+    /// URL of the HTTP server.
+    pub url: Url,
     /// TLS configuration options.
     #[serde(default)]
     pub tls: Option<TlsClientConfig>,

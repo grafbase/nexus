@@ -1,7 +1,7 @@
-mod server;
+mod client;
 
+use client::DownstreamClient;
 use rmcp::model::{CallToolRequestParam, CallToolResult, ErrorData, Tool};
-use server::DownstreamClient;
 use std::borrow::Cow;
 
 /// Represents an MCP server, providing access to multiple downstream servers.
