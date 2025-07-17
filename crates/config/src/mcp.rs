@@ -60,12 +60,12 @@ pub struct StreamableHttpConfig {
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct SseConfig {
     /// SSE endpoint for receiving server-sent events.
-    pub sse_endpoint: Url,
+    pub url: Url,
     /// Optional message endpoint for sending messages back to the server.
     /// If not provided, the client will try to derive it from the SSE endpoint
     /// or wait for the server to send a message endpoint event.
     #[serde(default)]
-    pub message_endpoint: Option<Url>,
+    pub message_url: Option<Url>,
     /// TLS configuration options.
     #[serde(default)]
     pub tls: Option<TlsClientConfig>,

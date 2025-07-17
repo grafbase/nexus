@@ -76,15 +76,15 @@ async fn sse_service(config: &SseConfig) -> anyhow::Result<RunningService<RoleCl
     log::debug!("creating an SSE downstream service");
 
     let client_config = SseClientConfig {
-        sse_endpoint: config.sse_endpoint.to_string().into(),
+        sse_endpoint: config.url.to_string().into(),
         retry_policy: Arc::new(FixedInterval::default()),
-        use_message_endpoint: config.message_endpoint.as_ref().map(|u| u.to_string()),
+        use_message_endpoint: config.message_url.as_ref().map(|u| u.to_string()),
     };
 
     log::debug!(
-        "SSE client config: sse_endpoint={}, message_endpoint={:?}",
-        config.sse_endpoint,
-        config.message_endpoint
+        "SSE client config: sse_url={}, message_url={:?}",
+        config.url,
+        config.message_url
     );
 
     let client = create_client(config.tls.as_ref())?;

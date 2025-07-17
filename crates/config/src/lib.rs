@@ -170,8 +170,8 @@ mod tests {
         let config = indoc! {r#"
             [mcp.servers.sse_server]
             protocol = "sse"
-            sse_endpoint = "http://example.com/sse"
-            message_endpoint = "http://example.com/message"
+            url = "http://example.com/sse"
+            message_url = "http://example.com/message"
 
             [mcp.servers.sse_server.tls]
             verify_certs = false
@@ -184,7 +184,7 @@ mod tests {
         {
             "sse_server": Sse(
                 SseConfig {
-                    sse_endpoint: Url {
+                    url: Url {
                         scheme: "http",
                         cannot_be_a_base: false,
                         username: "",
@@ -199,7 +199,7 @@ mod tests {
                         query: None,
                         fragment: None,
                     },
-                    message_endpoint: Some(
+                    message_url: Some(
                         Url {
                             scheme: "http",
                             cannot_be_a_base: false,
@@ -294,7 +294,7 @@ mod tests {
 
             [mcp.servers.sse_api]
             protocol = "sse"
-            sse_endpoint = "http://sse-api.internal:8080/events"
+            url = "http://sse-api.internal:8080/events"
 
             [mcp.servers.streaming_api]
             protocol = "streamable-http"
@@ -329,7 +329,7 @@ mod tests {
                 },
                 "sse_api": Sse(
                     SseConfig {
-                        sse_endpoint: Url {
+                        url: Url {
                             scheme: "http",
                             cannot_be_a_base: false,
                             username: "",
@@ -346,7 +346,7 @@ mod tests {
                             query: None,
                             fragment: None,
                         },
-                        message_endpoint: None,
+                        message_url: None,
                         tls: None,
                     },
                 ),
