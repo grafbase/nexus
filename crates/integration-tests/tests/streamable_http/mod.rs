@@ -1,6 +1,6 @@
 use crate::tools::{AdderTool, FailingTool};
 use indoc::indoc;
-use integration_tests::{TestServer, TestService};
+use integration_tests::{TestServer, TestService, get_test_cert_paths};
 use serde_json::json;
 
 #[tokio::test]
@@ -481,6 +481,73 @@ async fn tools_with_tls() {
         {
           "type": "text",
           "text": "7 + 2 = 9"
+        }
+      ],
+      "isError": false
+    }
+    "#);
+
+    mcp_client.disconnect().await;
+}
+
+#[tokio::test]
+async fn tls_downstream_service() {
+    let config = indoc! {r#"
+        [mcp]
+        enabled = true
+    "#};
+
+    let (cert_path, key_path) = get_test_cert_paths();
+    let mut test_service = TestService::streamable_http("tls_http_service".to_string()).with_tls(cert_path, key_path);
+    test_service.add_tool(AdderTool).await;
+
+    let mut builder = TestServer::builder();
+    builder.spawn_service(test_service).await;
+    let server = builder.build(config).await;
+
+    let mcp_client = server.mcp_client("/mcp").await;
+
+    // Verify the tool is listed correctly
+    let tools_result = mcp_client.list_tools().await;
+    insta::assert_json_snapshot!(&tools_result, @r#"
+    {
+      "tools": [
+        {
+          "name": "tls_http_service__adder",
+          "description": "Adds two numbers together",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "number",
+                "description": "First number to add"
+              },
+              "b": {
+                "type": "number",
+                "description": "Second number to add"
+              }
+            },
+            "required": [
+              "a",
+              "b"
+            ]
+          }
+        }
+      ]
+    }
+    "#);
+
+    // Test calling the tool
+    let result = mcp_client
+        .call_tool("tls_http_service__adder", json!({ "a": 10, "b": 20 }))
+        .await;
+
+    insta::assert_json_snapshot!(result, @r#"
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "10 + 20 = 30"
         }
       ],
       "isError": false

@@ -1,5 +1,5 @@
 use indoc::indoc;
-use integration_tests::{TestServer, TestService};
+use integration_tests::{TestServer, TestService, get_test_cert_paths};
 use serde_json::json;
 
 use crate::tools::{AdderTool, FailingTool};
@@ -209,6 +209,73 @@ async fn mixed_sse_and_streaming_services() {
         .await;
 
     insta::assert_snapshot!(fail_error.to_string(), @"Mcp error: -32603: Mcp error: -32000: This tool always fails({\"reason\":\"intentional_failure\"})");
+
+    mcp_client.disconnect().await;
+}
+
+#[tokio::test]
+async fn tls_downstream_service() {
+    let config = indoc! {r#"
+        [mcp]
+        enabled = true
+    "#};
+
+    let (cert_path, key_path) = get_test_cert_paths();
+    let mut test_service = TestService::sse("tls_sse_service".to_string()).with_tls(cert_path, key_path);
+    test_service.add_tool(AdderTool).await;
+
+    let mut builder = TestServer::builder();
+    builder.spawn_service(test_service).await;
+    let server = builder.build(config).await;
+
+    let mcp_client = server.mcp_client("/mcp").await;
+
+    // Verify the tool is listed correctly
+    let tools_result = mcp_client.list_tools().await;
+    insta::assert_json_snapshot!(&tools_result, @r#"
+    {
+      "tools": [
+        {
+          "name": "tls_sse_service__adder",
+          "description": "Adds two numbers together",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "number",
+                "description": "First number to add"
+              },
+              "b": {
+                "type": "number",
+                "description": "Second number to add"
+              }
+            },
+            "required": [
+              "a",
+              "b"
+            ]
+          }
+        }
+      ]
+    }
+    "#);
+
+    // Test calling the tool
+    let result = mcp_client
+        .call_tool("tls_sse_service__adder", json!({ "a": 5, "b": 7 }))
+        .await;
+
+    insta::assert_json_snapshot!(result, @r#"
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "5 + 7 = 12"
+        }
+      ],
+      "isError": false
+    }
+    "#);
 
     mcp_client.disconnect().await;
 }

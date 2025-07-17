@@ -11,7 +11,7 @@ use rmcp::{
         },
     },
 };
-use std::{collections::BTreeMap, net::SocketAddr, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 use tokio::{net::TcpListener, sync::Mutex};
 use tokio_util::sync::CancellationToken;
 
@@ -47,6 +47,13 @@ pub struct TestService {
     r#type: ServiceType,
     autodetect: bool,
     tools: Arc<Mutex<BTreeMap<String, Box<dyn TestTool>>>>,
+    tls_config: Option<TlsConfig>,
+}
+
+#[derive(Clone)]
+pub struct TlsConfig {
+    pub cert_path: PathBuf,
+    pub key_path: PathBuf,
 }
 
 impl TestService {
@@ -72,6 +79,7 @@ impl TestService {
             r#type,
             autodetect,
             tools: Arc::new(Mutex::new(BTreeMap::new())),
+            tls_config: None,
         }
     }
 
@@ -94,6 +102,21 @@ impl TestService {
         &self.name
     }
 
+    pub fn with_tls(mut self, cert_path: PathBuf, key_path: PathBuf) -> Self {
+        self.tls_config = Some(TlsConfig { cert_path, key_path });
+        self
+    }
+
+    pub(super) fn is_tls(&self) -> bool {
+        self.tls_config.is_some()
+    }
+
+    pub fn get_tls_cert_paths(&self) -> Option<(PathBuf, PathBuf)> {
+        self.tls_config
+            .as_ref()
+            .map(|config| (config.cert_path.clone(), config.key_path.clone()))
+    }
+
     pub async fn spawn(&self) -> (SocketAddr, Option<CancellationToken>) {
         let service = self.clone();
 
@@ -103,7 +126,7 @@ impl TestService {
                 (addr, None)
             }
             ServiceType::Sse => {
-                let (addr, ct) = spawn_sse(self.clone()).await;
+                let (addr, ct) = spawn_sse(service).await;
                 (addr, Some(ct))
             }
         }
@@ -127,6 +150,7 @@ async fn spawn_sse(service: TestService) -> (SocketAddr, CancellationToken) {
     };
 
     let (sse_server, router) = SseServer::new(sse_config);
+    let tls_config = service.tls_config.clone();
 
     let service_ct = sse_server.with_service(move || {
         log::debug!("with_service closure called - creating service handler");
@@ -137,6 +161,7 @@ async fn spawn_sse(service: TestService) -> (SocketAddr, CancellationToken) {
     let combined_ct = CancellationToken::new();
     let combined_ct_clone = combined_ct.clone();
     let ct_clone = ct.clone();
+
     tokio::spawn(async move {
         tokio::select! {
             _ = combined_ct_clone.cancelled() => {
@@ -146,11 +171,32 @@ async fn spawn_sse(service: TestService) -> (SocketAddr, CancellationToken) {
         }
     });
 
-    tokio::spawn(async move {
-        if let Err(e) = axum::serve(listener, router).await {
-            eprintln!("SSE server failed: {e}");
+    // Serve with TLS or regular depending on configuration
+    match tls_config {
+        Some(tls_config) => {
+            use axum_server::tls_rustls::RustlsConfig;
+
+            let rustls_config = RustlsConfig::from_pem_file(&tls_config.cert_path, &tls_config.key_path)
+                .await
+                .expect("Failed to load TLS certificates");
+
+            let std_listener = listener.into_std().unwrap();
+
+            tokio::spawn(async move {
+                axum_server::from_tcp_rustls(std_listener, rustls_config)
+                    .serve(router.into_make_service())
+                    .await
+                    .expect("TLS SSE server failed");
+            });
         }
-    });
+        None => {
+            tokio::spawn(async move {
+                if let Err(e) = axum::serve(listener, router).await {
+                    eprintln!("SSE server failed: {e}");
+                }
+            });
+        }
+    }
 
     // Give the SSE server time to fully initialize
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -159,6 +205,9 @@ async fn spawn_sse(service: TestService) -> (SocketAddr, CancellationToken) {
 }
 
 async fn spawn_streamable_http(service: TestService) -> SocketAddr {
+    // Check if TLS is configured before moving service
+    let tls_config = service.tls_config.clone();
+
     let mcp_service = StreamableHttpService::new(
         move || Ok(service.clone()),
         Arc::new(NeverSessionManager::default()),
@@ -173,9 +222,29 @@ async fn spawn_streamable_http(service: TestService) -> SocketAddr {
     let listener = TcpListener::bind(addr).await.unwrap();
     let address = listener.local_addr().unwrap();
 
-    tokio::spawn(async move {
-        axum::serve(listener, app).await.unwrap();
-    });
+    match tls_config {
+        Some(tls_config) => {
+            use axum_server::tls_rustls::RustlsConfig;
+
+            let rustls_config = RustlsConfig::from_pem_file(&tls_config.cert_path, &tls_config.key_path)
+                .await
+                .expect("Failed to load TLS certificates");
+
+            let std_listener = listener.into_std().unwrap();
+
+            tokio::spawn(async move {
+                axum_server::from_tcp_rustls(std_listener, rustls_config)
+                    .serve(app.into_make_service())
+                    .await
+                    .unwrap();
+            });
+        }
+        None => {
+            tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+        }
+    }
 
     address
 }

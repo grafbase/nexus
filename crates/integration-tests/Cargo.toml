@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 axum = { workspace = true }
+axum-server = { workspace = true }
 config.workspace = true
 ctor.workspace = true
 indoc.workspace = true

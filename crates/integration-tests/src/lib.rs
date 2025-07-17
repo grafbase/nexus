@@ -1,8 +1,8 @@
 mod downstream;
 
-use std::net::SocketAddr;
 use std::sync::Once;
 use std::time::Duration;
+use std::{net::SocketAddr, path::PathBuf};
 
 use config::Config;
 use rmcp::{
@@ -15,6 +15,13 @@ use tokio::net::TcpListener;
 
 pub use downstream::{ServiceType, TestService, TestTool};
 use tokio_util::sync::CancellationToken;
+
+pub fn get_test_cert_paths() -> (PathBuf, PathBuf) {
+    let cert_path = PathBuf::from("test-certs/cert.pem");
+    let key_path = PathBuf::from("test-certs/key.pem");
+
+    (cert_path, key_path)
+}
 
 static INIT: Once = Once::new();
 static LOGGER_INIT: Once = Once::new();
@@ -294,28 +301,45 @@ impl TestServerBuilder {
             self.cancellation_tokens.push(ct);
         }
 
-        let config = match service.r#type() {
+        let protocol = if service.is_tls() { "https" } else { "http" };
+
+        let mut config = match service.r#type() {
             _ if service.autodetect() => {
                 indoc::formatdoc! {r#"
                     [mcp.servers.{}]
-                    url = "http://{listen_addr}/mcp"
+                    url = "{protocol}://{listen_addr}/mcp"
                 "#, service.name()}
             }
             ServiceType::Sse => {
                 indoc::formatdoc! {r#"
                     [mcp.servers.{}]
                     protocol = "sse"
-                    url = "http://{listen_addr}/mcp"
+                    url = "{protocol}://{listen_addr}/mcp"
                 "#, service.name()}
             }
             ServiceType::StreamableHttp => {
                 indoc::formatdoc! {r#"
                     [mcp.servers.{}]
                     protocol = "streamable-http"
-                    url = "http://{listen_addr}/mcp"
+                    url = "{protocol}://{listen_addr}/mcp"
                 "#, service.name()}
             }
         };
+
+        // Add TLS configuration if the service has TLS enabled
+        if let Some((cert_path, key_path)) = service.get_tls_cert_paths() {
+            let tls_config = indoc::formatdoc! {r#"
+
+                [mcp.servers.{}.tls]
+                verify_certs = false
+                accept_invalid_hostnames = true
+                root_ca_cert_path = "{cert_path}"
+                client_cert_path = "{cert_path}"
+                client_key_path = "{key_path}"
+            "#, service.name(), cert_path = cert_path.display(), key_path = key_path.display()};
+
+            config.push_str(&tls_config);
+        }
 
         self.config.push_str(&format!("\n{config}"));
     }

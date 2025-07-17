@@ -2571,6 +2571,7 @@ name = "integration-tests"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "axum-server",
  "config",
  "ctor",
  "indoc",
