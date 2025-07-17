@@ -10,6 +10,7 @@ use rmcp::{
     service::{RunningService, ServiceExt},
     transport::{StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig},
 };
+use serde_json::json;
 use server::ServeConfig;
 use tokio::net::TcpListener;
 
@@ -137,8 +138,38 @@ impl McpTestClient {
         self.service.list_tools(Default::default()).await.unwrap()
     }
 
+    pub async fn search(&self, keywords: &[&str]) -> Vec<serde_json::Value> {
+        self.call_tool("search", json!({ "keywords": keywords }))
+            .await
+            .content
+            .into_iter()
+            .filter_map(|content| match content.raw.as_text() {
+                Some(content) => serde_json::from_str(&content.text).ok(),
+                None => todo!(),
+            })
+            .collect()
+    }
+
+    pub async fn execute(&self, tool: &str, arguments: serde_json::Value) -> rmcp::model::CallToolResult {
+        let arguments = json!({
+            "name": tool,
+            "arguments": arguments,
+        });
+
+        self.call_tool("execute", arguments).await
+    }
+
+    pub async fn execute_expect_error(&self, tool: &str, arguments: serde_json::Value) -> rmcp::ServiceError {
+        let arguments = json!({
+            "name": tool,
+            "arguments": arguments,
+        });
+
+        self.call_tool_expect_error("execute", arguments).await
+    }
+
     /// Call a tool with the given name and arguments
-    pub async fn call_tool(&self, name: &str, arguments: serde_json::Value) -> rmcp::model::CallToolResult {
+    async fn call_tool(&self, name: &str, arguments: serde_json::Value) -> rmcp::model::CallToolResult {
         let arguments = arguments.as_object().cloned();
         self.service
             .call_tool(CallToolRequestParam {
@@ -150,7 +181,7 @@ impl McpTestClient {
     }
 
     /// Call a tool and expect it to fail
-    pub async fn call_tool_expect_error(&self, name: &str, arguments: serde_json::Value) -> rmcp::ServiceError {
+    async fn call_tool_expect_error(&self, name: &str, arguments: serde_json::Value) -> rmcp::ServiceError {
         let arguments = arguments.as_object().cloned();
         self.service
             .call_tool(CallToolRequestParam {

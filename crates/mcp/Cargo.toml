@@ -11,6 +11,11 @@ repository.workspace = true
 anyhow = { workspace = true, features = ["backtrace"] }
 axum.workspace = true
 config.workspace = true
+convert_case.workspace = true
+futures-util.workspace = true
+http.workspace = true
+indoc.workspace = true
+itertools.workspace = true
 log = { workspace = true, features = ["kv"] }
 reqwest.workspace = true
 rmcp = { workspace = true, features = [
@@ -23,6 +28,9 @@ rmcp = { workspace = true, features = [
     "transport-io",
     "client-side-sse",
 ] }
+schemars.workspace = true
+serde = { workspace = true, features = ["derive"] }
+tantivy.workspace = true
 
 [lints]
 workspace = true

@@ -27,24 +27,52 @@ async fn list_single_tool() {
     {
       "tools": [
         {
-          "name": "sse_math_service__adder",
-          "description": "Adds two numbers together",
+          "name": "search",
+          "description": "Search for relevant tools. A list of matching tools with their\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\nname of the tool you want to execute, and defining the input\nparameters.\n",
           "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "SearchParameters",
             "type": "object",
             "properties": {
-              "a": {
-                "type": "number",
-                "description": "First number to add"
-              },
-              "b": {
-                "type": "number",
-                "description": "Second number to add"
+              "keywords": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             },
             "required": [
-              "a",
-              "b"
+              "keywords"
             ]
+          },
+          "annotations": {
+            "readOnlyHint": true
+          }
+        },
+        {
+          "name": "execute",
+          "description": "Executes a tool with the given parameters. Before using, you must call the\nsearch function to retrieve the tools you need for your task. If you do not\nknow how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name\nmust be a string, and the parameters must be a map of strings to JSON values.\n",
+          "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "ExecuteParameters",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "name",
+              "arguments"
+            ]
+          },
+          "annotations": {
+            "destructiveHint": true,
+            "openWorldHint": true
           }
         }
       ]
@@ -72,7 +100,7 @@ async fn call_tool_success() {
 
     // Call the adder tool with test values
     let result = mcp_client
-        .call_tool("sse_math_service__adder", json!({ "a": 10, "b": 15 }))
+        .execute("sse_math_service__adder", json!({ "a": 10, "b": 15 }))
         .await;
 
     insta::assert_json_snapshot!(result, @r#"
@@ -108,7 +136,7 @@ async fn autodetected_call_tool_success() {
 
     // Call the adder tool with test values
     let result = mcp_client
-        .call_tool("sse_math_service__adder", json!({ "a": 10, "b": 15 }))
+        .execute("sse_math_service__adder", json!({ "a": 10, "b": 15 }))
         .await;
 
     insta::assert_json_snapshot!(result, @r#"
@@ -155,32 +183,52 @@ async fn mixed_sse_and_streaming_services() {
     {
       "tools": [
         {
-          "name": "http_service__adder",
-          "description": "Adds two numbers together",
+          "name": "search",
+          "description": "Search for relevant tools. A list of matching tools with their\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\nname of the tool you want to execute, and defining the input\nparameters.\n",
           "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "SearchParameters",
             "type": "object",
             "properties": {
-              "a": {
-                "type": "number",
-                "description": "First number to add"
-              },
-              "b": {
-                "type": "number",
-                "description": "Second number to add"
+              "keywords": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             },
             "required": [
-              "a",
-              "b"
+              "keywords"
             ]
+          },
+          "annotations": {
+            "readOnlyHint": true
           }
         },
         {
-          "name": "sse_service__failing_tool",
-          "description": "A tool that always fails for testing error handling",
+          "name": "execute",
+          "description": "Executes a tool with the given parameters. Before using, you must call the\nsearch function to retrieve the tools you need for your task. If you do not\nknow how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name\nmust be a string, and the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "ExecuteParameters",
             "type": "object",
-            "properties": {}
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "name",
+              "arguments"
+            ]
+          },
+          "annotations": {
+            "destructiveHint": true,
+            "openWorldHint": true
           }
         }
       ]
@@ -189,7 +237,7 @@ async fn mixed_sse_and_streaming_services() {
 
     // Test calling tools from both services
     let add_result = mcp_client
-        .call_tool("http_service__adder", json!({ "a": 3, "b": 4 }))
+        .execute("http_service__adder", json!({ "a": 3, "b": 4 }))
         .await;
 
     insta::assert_json_snapshot!(&add_result, @r#"
@@ -205,10 +253,10 @@ async fn mixed_sse_and_streaming_services() {
     "#);
 
     let fail_error = mcp_client
-        .call_tool_expect_error("sse_service__failing_tool", json!({}))
+        .execute_expect_error("sse_service__failing_tool", json!({}))
         .await;
 
-    insta::assert_snapshot!(fail_error.to_string(), @"Mcp error: -32603: Mcp error: -32000: This tool always fails({\"reason\":\"intentional_failure\"})");
+    insta::assert_snapshot!(fail_error.to_string(), @r#"Mcp error: -32000: This tool always fails({"reason":"intentional_failure"})"#);
 
     mcp_client.disconnect().await;
 }
@@ -236,24 +284,52 @@ async fn tls_downstream_service() {
     {
       "tools": [
         {
-          "name": "tls_sse_service__adder",
-          "description": "Adds two numbers together",
+          "name": "search",
+          "description": "Search for relevant tools. A list of matching tools with their\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\nname of the tool you want to execute, and defining the input\nparameters.\n",
           "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "SearchParameters",
             "type": "object",
             "properties": {
-              "a": {
-                "type": "number",
-                "description": "First number to add"
-              },
-              "b": {
-                "type": "number",
-                "description": "Second number to add"
+              "keywords": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
               }
             },
             "required": [
-              "a",
-              "b"
+              "keywords"
             ]
+          },
+          "annotations": {
+            "readOnlyHint": true
+          }
+        },
+        {
+          "name": "execute",
+          "description": "Executes a tool with the given parameters. Before using, you must call the\nsearch function to retrieve the tools you need for your task. If you do not\nknow how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name\nmust be a string, and the parameters must be a map of strings to JSON values.\n",
+          "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "ExecuteParameters",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "name",
+              "arguments"
+            ]
+          },
+          "annotations": {
+            "destructiveHint": true,
+            "openWorldHint": true
           }
         }
       ]
@@ -262,7 +338,7 @@ async fn tls_downstream_service() {
 
     // Test calling the tool
     let result = mcp_client
-        .call_tool("tls_sse_service__adder", json!({ "a": 5, "b": 7 }))
+        .execute("tls_sse_service__adder", json!({ "a": 5, "b": 7 }))
         .await;
 
     insta::assert_json_snapshot!(result, @r#"

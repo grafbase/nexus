@@ -1,11 +1,13 @@
 mod client;
+mod ids;
+
+pub use ids::ToolId;
 
 use client::DownstreamClient;
 use rmcp::model::{CallToolRequestParam, CallToolResult, ErrorData, Tool};
 use std::borrow::Cow;
 
 /// Represents an MCP server, providing access to multiple downstream servers.
-#[derive(Default)]
 pub struct Downstream {
     /// List of downstream servers managed by this instance.
     ///
@@ -40,15 +42,17 @@ impl Downstream {
             servers.push(server);
         }
 
-        servers.sort_by(|a, b| a.name().cmp(b.name()));
-        tools.sort_by(|a, b| a.name.cmp(&b.name));
+        servers.sort_unstable_by(|a, b| a.name().cmp(b.name()));
+        tools.sort_unstable_by(|a, b| a.name.cmp(&b.name));
 
         Ok(Self { servers, tools })
     }
 
-    /// Returns an iterator over all available tools from all downstream servers.
+    /// Returns an iterator over all available tools from downstream servers.
     ///
-    /// Tool names are prefixed with their server name followed by "__".
+    /// Each tool name is prefixed with its server name followed by "__" to ensure
+    /// uniqueness across multiple servers. The iterator yields tools in sorted order
+    /// by their prefixed names.
     pub fn list_tools(&self) -> impl ExactSizeIterator<Item = &Tool> {
         self.tools.iter()
     }
@@ -58,7 +62,7 @@ impl Downstream {
     /// The tool name should be in the format "server_name__tool_name".
     /// This method will parse the server name, find the appropriate server,
     /// and forward the call with the original tool name.
-    pub async fn call_tool(&self, mut params: CallToolRequestParam) -> Result<CallToolResult, ErrorData> {
+    pub async fn execute(&self, mut params: CallToolRequestParam) -> Result<CallToolResult, ErrorData> {
         let error_fn = || ErrorData::invalid_params(format!("Unknown tool: {}", params.name), None);
 
         let (server_name, tool_name) = params.name.split_once("__").ok_or_else(error_fn)?;
@@ -69,7 +73,10 @@ impl Downstream {
 
         match server.call_tool(params).await {
             Ok(result) => Ok(result),
-            Err(error) => Err(ErrorData::internal_error(error.to_string(), None)),
+            Err(error) => match error {
+                rmcp::ServiceError::McpError(error_data) => Err(error_data),
+                _ => Err(ErrorData::internal_error(error.to_string(), None)),
+            },
         }
     }
 

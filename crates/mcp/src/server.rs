@@ -1,14 +1,18 @@
-use std::sync::Arc;
+mod index;
+mod tool;
 
 use config::McpConfig;
+use index::ToolIndex;
 use rmcp::{
     RoleServer, ServerHandler,
     model::{
-        CallToolRequestParam, CallToolResult, ErrorData, Implementation, ListToolsResult, PaginatedRequestParam,
-        ProtocolVersion, ServerCapabilities, ServerInfo,
+        CallToolRequestParam, CallToolResult, ErrorCode, ErrorData, Implementation, ListToolsResult,
+        PaginatedRequestParam, ProtocolVersion, ServerCapabilities, ServerInfo,
     },
     service::RequestContext,
 };
+use std::{ops::Deref, sync::Arc};
+use tool::{ExecuteTool, RmcpTool, SearchTool};
 
 use crate::downstream::Downstream;
 
@@ -17,11 +21,12 @@ pub(crate) struct McpServer(Arc<McpServerInner>);
 
 pub(crate) struct McpServerInner {
     info: ServerInfo,
-    downstream: Downstream,
+    tools: Vec<Box<dyn RmcpTool>>,
 }
 
-impl std::ops::Deref for McpServer {
+impl Deref for McpServer {
     type Target = McpServerInner;
+
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -30,6 +35,16 @@ impl std::ops::Deref for McpServer {
 impl McpServer {
     pub(crate) async fn new(config: &McpConfig) -> anyhow::Result<Self> {
         let downstream = Downstream::new(config).await?;
+        let mut index = ToolIndex::new()?;
+
+        for (id, tool) in downstream.list_tools().enumerate() {
+            index.add_tool(tool, id.into())?;
+        }
+
+        index.commit()?;
+
+        let index = Arc::new(index);
+        let downstream = Arc::new(downstream);
 
         let inner = McpServerInner {
             info: ServerInfo {
@@ -38,7 +53,10 @@ impl McpServer {
                 server_info: Implementation::from_build_env(),
                 instructions: None,
             },
-            downstream,
+            tools: vec![
+                Box::new(SearchTool::new(downstream.clone(), index.clone())),
+                Box::new(ExecuteTool::new(downstream, index)),
+            ],
         };
 
         Ok(Self(Arc::new(inner)))
@@ -55,15 +73,25 @@ impl ServerHandler for McpServer {
         _: Option<PaginatedRequestParam>, // TODO: do we need to care about pagination?
         _: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        let tools = self.downstream.list_tools().cloned().collect();
-        Ok(ListToolsResult::with_all_items(tools))
+        Ok(ListToolsResult {
+            next_cursor: None,
+            tools: self.tools.iter().map(|tool| tool.to_tool()).collect(),
+        })
     }
 
     async fn call_tool(
         &self,
-        params: CallToolRequestParam,
-        _: RequestContext<RoleServer>,
+        CallToolRequestParam { name, arguments }: CallToolRequestParam,
+        ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.downstream.call_tool(params).await
+        if let Some(tool) = self.tools.iter().find(|tool| tool.name() == name) {
+            return tool.call(ctx, arguments).await;
+        }
+
+        Err(ErrorData::new(
+            ErrorCode::INVALID_PARAMS,
+            format!("Unknown tool '{name}'"),
+            None,
+        ))
     }
 }

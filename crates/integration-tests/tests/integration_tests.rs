@@ -209,7 +209,57 @@ async fn no_tools_by_default() {
     // Should have no tools when no services are configured
     insta::assert_json_snapshot!(&tools_result, @r#"
     {
-      "tools": []
+      "tools": [
+        {
+          "name": "search",
+          "description": "Search for relevant tools. A list of matching tools with their\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\nname of the tool you want to execute, and defining the input\nparameters.\n",
+          "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "SearchParameters",
+            "type": "object",
+            "properties": {
+              "keywords": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "keywords"
+            ]
+          },
+          "annotations": {
+            "readOnlyHint": true
+          }
+        },
+        {
+          "name": "execute",
+          "description": "Executes a tool with the given parameters. Before using, you must call the\nsearch function to retrieve the tools you need for your task. If you do not\nknow how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name\nmust be a string, and the parameters must be a map of strings to JSON values.\n",
+          "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "ExecuteParameters",
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "arguments": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "name",
+              "arguments"
+            ]
+          },
+          "annotations": {
+            "destructiveHint": true,
+            "openWorldHint": true
+          }
+        }
+      ]
     }
     "#);
 
