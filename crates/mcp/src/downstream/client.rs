@@ -1,6 +1,6 @@
 use std::{io::Read, sync::Arc};
 
-use config::{McpServer, SseConfig, StreamableHttpConfig, TlsClientConfig};
+use config::{HttpConfig, McpServer, TlsClientConfig};
 use reqwest::{Certificate, Identity};
 use rmcp::{
     RoleClient, ServiceError, ServiceExt,
@@ -31,8 +31,7 @@ impl DownstreamClient {
     pub async fn new(name: &str, config: &McpServer) -> anyhow::Result<Self> {
         let service = match config {
             McpServer::Stdio { .. } => todo!(),
-            McpServer::StreamableHttp(config) => streamable_http_service(config).await?,
-            McpServer::Sse(config) => sse_service(config).await?,
+            McpServer::Http(config) => http_service(config).await?,
         };
 
         Ok(Self {
@@ -60,8 +59,34 @@ impl DownstreamClient {
     }
 }
 
+/// Creates a running service for HTTP-based MCP communication.
+///
+/// This function handles protocol detection and fallback between streamable-http and SSE protocols.
+/// If the configuration explicitly specifies a protocol, it will use that protocol directly.
+/// Otherwise, it will attempt streamable-http first and fall back to SSE if that fails.
+async fn http_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>> {
+    if config.uses_streamable_http() {
+        log::debug!("config explicitly wants streamable-http");
+        return streamable_http_service(config).await;
+    }
+
+    if config.uses_sse() {
+        log::debug!("config explicitly wants SSE");
+        return sse_service(config).await;
+    }
+
+    log::debug!("detecting protocol, starting with streamable-http");
+    match streamable_http_service(config).await {
+        Ok(service) => Ok(service),
+        Err(_) => {
+            log::warn!("streamable-http failed, trying SSE");
+            sse_service(config).await
+        }
+    }
+}
+
 /// Creates a running service for streamable-http protocol.
-async fn streamable_http_service(config: &StreamableHttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>> {
+async fn streamable_http_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>> {
     log::debug!("creating a streamable-http downstream service");
 
     let client = create_client(config.tls.as_ref())?;
@@ -72,7 +97,7 @@ async fn streamable_http_service(config: &StreamableHttpConfig) -> anyhow::Resul
 }
 
 /// Creates a running service for SSE (Server-Sent Events) protocol.
-async fn sse_service(config: &SseConfig) -> anyhow::Result<RunningService<RoleClient, ()>> {
+async fn sse_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>> {
     log::debug!("creating an SSE downstream service");
 
     let client_config = SseClientConfig {

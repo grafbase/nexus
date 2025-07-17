@@ -45,28 +45,42 @@ impl fmt::Display for ServiceType {
 pub struct TestService {
     name: String,
     r#type: ServiceType,
+    autodetect: bool,
     tools: Arc<Mutex<BTreeMap<String, Box<dyn TestTool>>>>,
 }
 
 impl TestService {
     pub fn sse(name: String) -> Self {
-        Self::new(name, ServiceType::Sse)
+        Self::new(name, ServiceType::Sse, false)
+    }
+
+    pub fn sse_autodetect(name: String) -> Self {
+        Self::new(name, ServiceType::Sse, true)
     }
 
     pub fn streamable_http(name: String) -> Self {
-        Self::new(name, ServiceType::StreamableHttp)
+        Self::new(name, ServiceType::StreamableHttp, false)
     }
 
-    fn new(name: String, r#type: ServiceType) -> Self {
+    pub fn streamable_http_autodetect(name: String) -> Self {
+        Self::new(name, ServiceType::StreamableHttp, true)
+    }
+
+    fn new(name: String, r#type: ServiceType, autodetect: bool) -> Self {
         Self {
             name,
             r#type,
+            autodetect,
             tools: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
 
     pub fn r#type(&self) -> ServiceType {
         self.r#type
+    }
+
+    pub fn autodetect(&self) -> bool {
+        self.autodetect
     }
 
     pub async fn add_tool(&mut self, tool: impl TestTool) {
@@ -106,8 +120,8 @@ async fn spawn_sse(service: TestService) -> (SocketAddr, CancellationToken) {
     let sse_config = SseServerConfig {
         // Use dummy bind address like grafbase - the actual binding happens with axum::serve
         bind: SocketAddr::from(([127, 0, 0, 1], 8080)),
-        sse_path: "/sse".to_string(),
-        post_path: "/sse".to_string(),
+        sse_path: "/mcp".to_string(),
+        post_path: "/mcp".to_string(),
         ct: ct.clone(),
         sse_keep_alive: Some(Duration::from_secs(5)),
     };

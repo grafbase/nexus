@@ -20,18 +20,15 @@ pub struct McpConfig {
 
 /// Configuration for an individual MCP server.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "snake_case", tag = "protocol", deny_unknown_fields)]
+#[serde(rename_all = "snake_case", untagged, deny_unknown_fields)]
 pub enum McpServer {
     /// A server that runs as a subprocess with command and arguments.
     Stdio {
         /// Command and arguments to run the server.
         cmd: Vec<String>,
     },
-    /// A server accessible via Server-Sent Events.
-    Sse(SseConfig),
-    /// A server accessible via streamable HTTP.
-    #[serde(rename = "streamable-http")]
-    StreamableHttp(StreamableHttpConfig),
+    /// A server accessible via HTTP.
+    Http(Box<HttpConfig>),
 }
 
 impl Default for McpConfig {
@@ -44,31 +41,58 @@ impl Default for McpConfig {
     }
 }
 
-/// A server accessible via streamable HTTP.
+/// Protocol type for HTTP-based MCP servers.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
+#[serde(rename_all = "kebab-case")]
+pub enum HttpProtocol {
+    /// Server-Sent Events protocol.
+    Sse,
+    /// Streamable HTTP protocol.
+    StreamableHttp,
+}
+
+/// A server accessible via HTTP.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct StreamableHttpConfig {
+pub struct HttpConfig {
+    /// Protocol of the HTTP server.
+    #[serde(default)]
+    pub protocol: Option<HttpProtocol>,
     /// URL of the HTTP server.
     pub url: Url,
     /// TLS configuration options.
     #[serde(default)]
     pub tls: Option<TlsClientConfig>,
-}
-
-/// A server accessible via Server-Sent Events.
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SseConfig {
-    /// SSE endpoint for receiving server-sent events.
-    pub url: Url,
     /// Optional message endpoint for sending messages back to the server.
     /// If not provided, the client will try to derive it from the SSE endpoint
     /// or wait for the server to send a message endpoint event.
     #[serde(default)]
     pub message_url: Option<Url>,
-    /// TLS configuration options.
-    #[serde(default)]
-    pub tls: Option<TlsClientConfig>,
+}
+
+impl HttpConfig {
+    /// Returns `true` if the configuration explicitly defines Server-Sent
+    /// Events protocol.
+    ///
+    /// This method returns `true` in two cases:
+    /// - The protocol is explicitly set to [`HttpProtocol::Sse`]
+    /// - The protocol is not specified (`None`) but a `message_url` is provided,
+    ///   which indicates SSE usage
+    pub fn uses_sse(&self) -> bool {
+        self.protocol == Some(HttpProtocol::Sse) || (self.protocol.is_none() && self.message_url.is_some())
+    }
+
+    /// Returns true, if the configuration explicitly defines Streamable
+    /// HTTP protocol.
+    pub fn uses_streamable_http(&self) -> bool {
+        self.protocol == Some(HttpProtocol::StreamableHttp)
+    }
+
+    /// Returns true, if the configuration does not define a protocol
+    /// and we need to detect it automatically.
+    pub fn uses_protocol_detection(&self) -> bool {
+        self.protocol.is_none()
+    }
 }
 
 /// TLS configuration for HTTP-based MCP servers.

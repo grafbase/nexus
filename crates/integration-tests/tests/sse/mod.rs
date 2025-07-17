@@ -91,6 +91,42 @@ async fn call_tool_success() {
 }
 
 #[tokio::test]
+async fn autodetected_call_tool_success() {
+    let config = indoc! {r#"
+        [mcp]
+        enabled = true
+    "#};
+
+    let mut test_service = TestService::sse_autodetect("sse_math_service".to_string());
+    test_service.add_tool(AdderTool).await;
+
+    let mut builder = TestServer::builder();
+    builder.spawn_service(test_service).await;
+    let server = builder.build(config).await;
+
+    let mcp_client = server.mcp_client("/mcp").await;
+
+    // Call the adder tool with test values
+    let result = mcp_client
+        .call_tool("sse_math_service__adder", json!({ "a": 10, "b": 15 }))
+        .await;
+
+    insta::assert_json_snapshot!(result, @r#"
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "10 + 15 = 25"
+        }
+      ],
+      "isError": false
+    }
+    "#);
+
+    mcp_client.disconnect().await;
+}
+
+#[tokio::test]
 async fn mixed_sse_and_streaming_services() {
     let config = indoc! {r#"
         [mcp]

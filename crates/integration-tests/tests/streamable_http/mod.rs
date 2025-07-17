@@ -90,6 +90,42 @@ async fn call_tool_success() {
 }
 
 #[tokio::test]
+async fn call_tool_success_autodetect() {
+    let config = indoc! {r#"
+        [mcp]
+        enabled = true
+    "#};
+
+    let mut test_service = TestService::streamable_http_autodetect("math_service".to_string());
+    test_service.add_tool(AdderTool).await;
+
+    let mut builder = TestServer::builder();
+    builder.spawn_service(test_service).await;
+    let server = builder.build(config).await;
+
+    let mcp_client = server.mcp_client("/mcp").await;
+
+    // Call the adder tool with test values
+    let result = mcp_client
+        .call_tool("math_service__adder", json!({ "a": 5, "b": 3 }))
+        .await;
+
+    insta::assert_json_snapshot!(result, @r#"
+    {
+      "content": [
+        {
+          "type": "text",
+          "text": "5 + 3 = 8"
+        }
+      ],
+      "isError": false
+    }
+    "#);
+
+    mcp_client.disconnect().await;
+}
+
+#[tokio::test]
 async fn call_tool_with_decimals() {
     let config = indoc! {r#"
         [mcp]

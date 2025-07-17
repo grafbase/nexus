@@ -295,11 +295,17 @@ impl TestServerBuilder {
         }
 
         let config = match service.r#type() {
+            _ if service.autodetect() => {
+                indoc::formatdoc! {r#"
+                    [mcp.servers.{}]
+                    url = "http://{listen_addr}/mcp"
+                "#, service.name()}
+            }
             ServiceType::Sse => {
                 indoc::formatdoc! {r#"
                     [mcp.servers.{}]
                     protocol = "sse"
-                    url = "http://{listen_addr}/sse"
+                    url = "http://{listen_addr}/mcp"
                 "#, service.name()}
             }
             ServiceType::StreamableHttp => {

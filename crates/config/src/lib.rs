@@ -11,7 +11,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub use mcp::{McpConfig, McpServer, SseConfig, StreamableHttpConfig, TlsClientConfig};
+pub use mcp::{HttpConfig, HttpProtocol, McpConfig, McpServer, TlsClientConfig};
 use serde::Deserialize;
 
 /// Main configuration structure for the Nexus application.
@@ -147,7 +147,6 @@ mod tests {
     fn mcp_stdio_server() {
         let config = indoc! {r#"
             [mcp.servers.local_code_interpreter]
-            protocol = "stdio"
             cmd = ["/usr/bin/mcp/code_interpreter_server", "--json-output"]
         "#};
 
@@ -182,8 +181,11 @@ mod tests {
 
         insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
         {
-            "sse_server": Sse(
-                SseConfig {
+            "sse_server": Http(
+                HttpConfig {
+                    protocol: Some(
+                        Sse,
+                    ),
                     url: Url {
                         scheme: "http",
                         cannot_be_a_base: false,
@@ -199,6 +201,15 @@ mod tests {
                         query: None,
                         fragment: None,
                     },
+                    tls: Some(
+                        TlsClientConfig {
+                            verify_certs: false,
+                            accept_invalid_hostnames: true,
+                            root_ca_cert_path: None,
+                            client_cert_path: None,
+                            client_key_path: None,
+                        },
+                    ),
                     message_url: Some(
                         Url {
                             scheme: "http",
@@ -214,15 +225,6 @@ mod tests {
                             path: "/message",
                             query: None,
                             fragment: None,
-                        },
-                    ),
-                    tls: Some(
-                        TlsClientConfig {
-                            verify_certs: false,
-                            accept_invalid_hostnames: true,
-                            root_ca_cert_path: None,
-                            client_cert_path: None,
-                            client_key_path: None,
                         },
                     ),
                 },
@@ -247,8 +249,11 @@ mod tests {
 
         insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
         {
-            "http_server": StreamableHttp(
-                StreamableHttpConfig {
+            "http_server": Http(
+                HttpConfig {
+                    protocol: Some(
+                        StreamableHttp,
+                    ),
                     url: Url {
                         scheme: "https",
                         cannot_be_a_base: false,
@@ -275,6 +280,7 @@ mod tests {
                             client_key_path: None,
                         },
                     ),
+                    message_url: None,
                 },
             ),
         }
@@ -289,19 +295,21 @@ mod tests {
             path = "/custom-mcp"
 
             [mcp.servers.local_code_interpreter]
-            protocol = "stdio"
             cmd = ["/usr/bin/mcp/code_interpreter_server", "--json-output"]
 
             [mcp.servers.sse_api]
             protocol = "sse"
             url = "http://sse-api.internal:8080/events"
 
+            [mcp.servers.sse_api2]
+            url = "http://sse-api.internal:8081/events"
+            message_url = "http://sse-api.internal:8081/messages"
+
             [mcp.servers.streaming_api]
             protocol = "streamable-http"
             url = "http://streaming-api.internal:8080"
 
             [mcp.servers.another_stdio]
-            protocol = "stdio"
             cmd = ["python", "-m", "mcp_server", "--port", "3000"]
         "#};
 
@@ -327,8 +335,11 @@ mod tests {
                         "--json-output",
                     ],
                 },
-                "sse_api": Sse(
-                    SseConfig {
+                "sse_api": Http(
+                    HttpConfig {
+                        protocol: Some(
+                            Sse,
+                        ),
                         url: Url {
                             scheme: "http",
                             cannot_be_a_base: false,
@@ -346,12 +357,57 @@ mod tests {
                             query: None,
                             fragment: None,
                         },
-                        message_url: None,
                         tls: None,
+                        message_url: None,
                     },
                 ),
-                "streaming_api": StreamableHttp(
-                    StreamableHttpConfig {
+                "sse_api2": Http(
+                    HttpConfig {
+                        protocol: None,
+                        url: Url {
+                            scheme: "http",
+                            cannot_be_a_base: false,
+                            username: "",
+                            password: None,
+                            host: Some(
+                                Domain(
+                                    "sse-api.internal",
+                                ),
+                            ),
+                            port: Some(
+                                8081,
+                            ),
+                            path: "/events",
+                            query: None,
+                            fragment: None,
+                        },
+                        tls: None,
+                        message_url: Some(
+                            Url {
+                                scheme: "http",
+                                cannot_be_a_base: false,
+                                username: "",
+                                password: None,
+                                host: Some(
+                                    Domain(
+                                        "sse-api.internal",
+                                    ),
+                                ),
+                                port: Some(
+                                    8081,
+                                ),
+                                path: "/messages",
+                                query: None,
+                                fragment: None,
+                            },
+                        ),
+                    },
+                ),
+                "streaming_api": Http(
+                    HttpConfig {
+                        protocol: Some(
+                            StreamableHttp,
+                        ),
                         url: Url {
                             scheme: "http",
                             cannot_be_a_base: false,
@@ -370,6 +426,7 @@ mod tests {
                             fragment: None,
                         },
                         tls: None,
+                        message_url: None,
                     },
                 ),
             },
