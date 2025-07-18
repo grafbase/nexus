@@ -197,6 +197,8 @@ jobs:
     # This job is responsible for reacting to build success or failure. It must
     # happen after the builds, hence the `needs`. But it must not be skipped
     # when the builds are cancelled or fail (hence the `if: ${{ always() }}`).
+    # Only needed on PRs as a branch protection anchor.
+    if: github.event_name == 'pull_request'
     needs: [check-rust-format, check-toml-format, tests]
     runs-on: depot-ubuntu-24.04-small
     steps:
