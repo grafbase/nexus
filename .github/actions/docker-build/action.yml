@@ -1,0 +1,77 @@
+name: "Build and Push Docker Image"
+description: "Builds and pushes Docker image to registries with configurable tagging"
+
+inputs:
+  commit_sha:
+    description: "Commit SHA for tagging"
+    required: true
+  dockerhub_username:
+    description: "DockerHub username for login"
+    required: false
+  dockerhub_token:
+    description: "DockerHub token for login"
+    required: false
+  github_token:
+    description: "GitHub token for GHCR login"
+    required: true
+  depot_project:
+    description: "Depot project ID"
+    required: true
+  depot_token:
+    description: "Depot token"
+    required: true
+  add_latest_tag:
+    description: "Whether to add latest tag"
+    required: false
+    default: "false"
+  pr_number:
+    description: "PR number for PR builds"
+    required: false
+
+runs:
+  using: "composite"
+  steps:
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.github_token }}
+
+    - name: Login to Docker Hub
+      if: inputs.dockerhub_username != ''
+      uses: docker/login-action@v3
+      with:
+        username: ${{ inputs.dockerhub_username }}
+        password: ${{ inputs.dockerhub_token }}
+
+    - name: Generate tags
+      id: meta
+      shell: bash
+      run: |
+        TAGS="ghcr.io/grafbase/nexus:${{ inputs.commit_sha }}"
+
+        if [ "${{ inputs.pr_number }}" != "" ]; then
+          # Add PR-specific tag
+          TAGS="$TAGS,ghcr.io/grafbase/nexus:pr-${{ inputs.pr_number }}"
+        fi
+
+        if [ "${{ inputs.add_latest_tag }}" = "true" ]; then
+          # Add latest tag
+          TAGS="$TAGS,ghcr.io/grafbase/nexus:latest"
+        fi
+
+        echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
+    - name: Build and push
+      uses: depot/build-push-action@636daae76684e38c301daa0c5eca1c095b24e780 # v1
+      with:
+        project: ${{ inputs.depot_project }}
+        token: ${{ inputs.depot_token }}
+        push: true
+        platforms: linux/amd64,linux/arm64
+        tags: ${{ steps.meta.outputs.tags }}
+        file: ./Dockerfile
+      env:
+        DEPOT_PROJECT: ${{ inputs.depot_project }}
+        DEPOT_TOKEN: ${{ inputs.depot_token }}

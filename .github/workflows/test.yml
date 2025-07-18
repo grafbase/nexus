@@ -147,6 +147,52 @@ jobs:
         run: |
           cargo nextest run --target ${{ matrix.platform.target }} --no-tests=warn --profile ci
 
+  docker-dev:
+    if: github.ref != 'refs/heads/main'
+    needs: [check-rust-format, check-toml-format]
+    runs-on: depot-ubuntu-24.04-8
+    permissions:
+      packages: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Get sources
+        uses: actions/checkout@v4
+
+      - name: Build and push Docker image
+        uses: ./.github/actions/docker-build
+        with:
+          commit_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+          dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub_token: ${{ secrets.DOCKERHUB_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          depot_project: ${{ env.DEPOT_PROJECT }}
+          depot_token: ${{ secrets.DEPOT_TOKEN }}
+          pr_number: ${{ github.event.pull_request.number }}
+
+  docker-main:
+    if: github.ref == 'refs/heads/main'
+    needs: [check-rust-format, check-toml-format, tests]
+    runs-on: depot-ubuntu-24.04-8
+    permissions:
+      packages: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Get sources
+        uses: actions/checkout@v4
+
+      - name: Build and push Docker image
+        uses: ./.github/actions/docker-build
+        with:
+          commit_sha: ${{ github.event.pull_request.head.sha || github.sha }}
+          dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub_token: ${{ secrets.DOCKERHUB_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          depot_project: ${{ env.DEPOT_PROJECT }}
+          depot_token: ${{ secrets.DEPOT_TOKEN }}
+          add_latest_tag: "true"
+
   after-build-rust:
     # This job is responsible for reacting to build success or failure. It must
     # happen after the builds, hence the `needs`. But it must not be skipped

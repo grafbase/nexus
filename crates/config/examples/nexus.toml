@@ -1,0 +1,20 @@
+# Minimal Nexus configuration for Docker
+# This configuration starts a basic Nexus service with MCP support
+
+[server]
+# Bind to all interfaces on port 3000 for container networking
+listen_address = "0.0.0.0:3000"
+
+[server.health]
+# Enable health endpoint for container health checks
+enabled = true
+path = "/health"
+
+[mcp]
+# Enable Model Context Protocol support
+enabled = true
+# MCP endpoint will be available at /mcp
+path = "/mcp"
+
+# No MCP servers are configured by default
+# Users can add their own servers by extending this configuration
