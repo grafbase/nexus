@@ -120,7 +120,7 @@ jobs:
           sudo ln -s /bin/g++ /usr/local/bin/aarch64-linux-musl-g++
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@8520ed0913d842fe1061358cb4d010ef346b0ea9 # v2.56.16
+        uses: taiki-e/install-action@8962e8bc906ae87d59502ce7ce2f63b7eb8df69e # v2.56.18
         with:
           tool: nextest
 
