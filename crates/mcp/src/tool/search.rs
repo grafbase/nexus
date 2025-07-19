@@ -6,7 +6,7 @@ use rmcp::model::{CallToolResult, Content, ToolAnnotations};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::{downstream::Downstream, server::index::ToolIndex};
+use crate::{downstream::Downstream, index::ToolIndex};
 
 use super::Tool;
 

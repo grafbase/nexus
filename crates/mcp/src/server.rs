@@ -1,8 +1,6 @@
-mod index;
-mod tool;
-
+use crate::index::ToolIndex;
+use crate::tool::{ExecuteTool, RmcpTool, SearchTool};
 use config::McpConfig;
-use index::ToolIndex;
 use rmcp::{
     RoleServer, ServerHandler,
     model::{
@@ -12,7 +10,6 @@ use rmcp::{
     service::RequestContext,
 };
 use std::{ops::Deref, sync::Arc};
-use tool::{ExecuteTool, RmcpTool, SearchTool};
 
 use crate::downstream::Downstream;
 

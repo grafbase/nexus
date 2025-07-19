@@ -8,7 +8,7 @@ use rmcp::{
 };
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 
-use crate::{downstream::Downstream, server::index::ToolIndex};
+use crate::{downstream::Downstream, index::ToolIndex};
 
 use super::Tool;
 
