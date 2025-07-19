@@ -167,7 +167,7 @@ async fn call_nonexistent_tool() {
     let mcp_client = server.mcp_client("/mcp").await;
     let error = mcp_client.execute_expect_error("nonexistent_tool", json!({})).await;
 
-    insta::assert_snapshot!(error.to_string(), @"Mcp error: -32602: Unknown tool: nonexistent_tool");
+    insta::assert_snapshot!(error.to_string(), @"Mcp error: -32601: tools/call");
 
     mcp_client.disconnect().await;
 }
@@ -192,7 +192,7 @@ async fn call_tool_wrong_server_prefix() {
         .execute_expect_error("mtah_service__adder", json!({ "a": 1, "b": 2 }))
         .await;
 
-    insta::assert_snapshot!(error.to_string(), @"Mcp error: -32602: Unknown tool: mtah_service__adder. Did you mean: math_service__adder");
+    insta::assert_snapshot!(error.to_string(), @"Mcp error: -32601: tools/call. Did you mean: math_service__adder");
 
     mcp_client.disconnect().await;
 }
@@ -221,7 +221,7 @@ async fn call_tool_invalid_arguments() {
     });
 
     let error = mcp_client.execute_expect_error("execute", arguments).await;
-    insta::assert_snapshot!(error.to_string(), @"Mcp error: -32602: Unknown tool: execute");
+    insta::assert_snapshot!(error.to_string(), @"Mcp error: -32601: tools/call");
 
     mcp_client.disconnect().await;
 }

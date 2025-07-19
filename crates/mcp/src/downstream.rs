@@ -4,7 +4,7 @@ mod ids;
 pub use ids::ToolId;
 
 use client::DownstreamClient;
-use rmcp::model::{CallToolRequestParam, CallToolResult, ErrorData, Tool};
+use rmcp::model::{CallToolRequestMethod, CallToolRequestParam, CallToolResult, ErrorData, Tool};
 use std::borrow::Cow;
 
 /// Represents an MCP server, providing access to multiple downstream servers.
@@ -63,12 +63,12 @@ impl Downstream {
     /// This method will parse the server name, find the appropriate server,
     /// and forward the call with the original tool name.
     pub async fn execute(&self, mut params: CallToolRequestParam) -> Result<CallToolResult, ErrorData> {
-        let error_fn = || ErrorData::invalid_params(format!("Unknown tool: {}", params.name), None);
+        let error_fn = || ErrorData::method_not_found::<CallToolRequestMethod>();
 
         let (server_name, tool_name) = params.name.split_once("__").ok_or_else(error_fn)?;
         let server = self.find_server(server_name).ok_or_else(error_fn)?;
-
         self.find_tool(&params.name).ok_or_else(error_fn)?;
+
         params.name = Cow::Owned(tool_name.to_string());
 
         match server.call_tool(params).await {

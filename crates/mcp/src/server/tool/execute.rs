@@ -83,7 +83,7 @@ impl Tool for ExecuteTool {
         match self.downstream.execute(param).await {
             Ok(result) => Ok(result),
             Err(mut error_data) => {
-                if error_data.code == ErrorCode::INVALID_PARAMS && error_data.message.contains("Unknown tool") {
+                if error_data.code == ErrorCode::METHOD_NOT_FOUND {
                     let did_you_mean = self.index.search([name.as_str()])?;
 
                     if !did_you_mean.is_empty() {
