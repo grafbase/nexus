@@ -4,6 +4,7 @@
 
 #![deny(missing_docs)]
 
+mod cors;
 mod health;
 
 use std::net::SocketAddr;
@@ -13,6 +14,7 @@ use axum::{Router, routing::get};
 use axum_server::tls_rustls::RustlsConfig;
 use config::Config;
 use tokio::net::TcpListener;
+use tower_http::cors::CorsLayer;
 
 /// Configuration for serving Nexus.
 pub struct ServeConfig {
@@ -26,10 +28,20 @@ pub struct ServeConfig {
 pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyhow::Result<()> {
     let mut app = Router::new();
 
+    // Create CORS layer first, like Grafbase does
+    let cors = if let Some(cors_config) = &config.server.cors {
+        cors::generate(cors_config)
+    } else {
+        CorsLayer::permissive()
+    };
+
+    // Apply CORS to MCP router before merging
     if config.mcp.enabled {
-        app = app.merge(mcp::router(&config.mcp).await?);
+        let mcp_router = mcp::router(&config.mcp).await?.layer(cors.clone());
+        app = app.merge(mcp_router);
     }
 
+    // Apply CORS to health endpoint
     if config.server.health.enabled {
         if let Some(listen) = config.server.health.listen {
             tokio::spawn(health::bind_health_endpoint(
@@ -38,7 +50,10 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
                 config.server.health,
             ));
         } else {
-            app = app.route(&config.server.health.path, get(health::health));
+            let health_router = Router::new()
+                .route(&config.server.health.path, get(health::health))
+                .layer(cors.clone());
+            app = app.merge(health_router);
         }
     }
 
@@ -48,7 +63,6 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
 
     match &config.server.tls {
         Some(tls_config) => {
-            // Setup TLS
             let rustls_config = RustlsConfig::from_pem_file(&tls_config.certificate, &tls_config.key)
                 .await
                 .map_err(|e| anyhow!("Failed to load TLS certificate and key: {e}"))?;
@@ -57,10 +71,8 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
                 log::info!("MCP endpoint available at: https://{listen_address}{}", config.mcp.path);
             }
 
-            // Convert tokio listener to std listener for axum-server
             let std_listener = listener.into_std()?;
 
-            // Start the HTTPS server
             axum_server::from_tcp_rustls(std_listener, rustls_config)
                 .serve(app.into_make_service())
                 .await
@@ -71,7 +83,6 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
                 log::info!("MCP endpoint available at: http://{listen_address}{}", config.mcp.path);
             }
 
-            // Start the HTTP server
             axum::serve(listener, app)
                 .await
                 .map_err(|e| anyhow!("Failed to start HTTP server: {}", e))?;

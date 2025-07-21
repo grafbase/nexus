@@ -900,6 +900,9 @@ name = "config"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ascii",
+ "duration-str",
+ "http",
  "indoc",
  "insta",
  "serde",
@@ -1408,6 +1411,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
+name = "duration-str"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9add086174f60bcbcfde7175e71dcfd99da24dfd12f611d0faf74f4f26e15a06"
+dependencies = [
+ "chrono",
+ "rust_decimal",
+ "serde",
+ "thiserror 2.0.12",
+ "time 0.3.41",
+ "winnow",
+]
+
+[[package]]
 name = "dyn-clone"
 version = "1.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1590,6 +1607,15 @@ name = "fallible-iterator"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2acce4a10f12dc2fb14a218589d4f1f62ef011b2d0cc4b3cb1bba8e94da14649"
+
+[[package]]
+name = "fast-glob"
+version = "0.4.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39ea3f6bbcf4dbe2076b372186fc7aeecd5f6f84754582e56ee7db262b15a6f0"
+dependencies = [
+ "arrayvec 0.7.6",
+]
 
 [[package]]
 name = "fastant"
@@ -4213,6 +4239,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust_decimal"
+version = "1.37.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b203a6425500a03e0919c42d3c47caca51e79f1132046626d2c8871c5092035d"
+dependencies = [
+ "arrayvec 0.7.6",
+ "num-traits",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4635,11 +4671,14 @@ dependencies = [
  "axum",
  "axum-server",
  "config",
+ "fast-glob",
  "http",
  "log",
  "mcp",
  "serde",
  "tokio",
+ "tower-http",
+ "url",
 ]
 
 [[package]]

@@ -25,7 +25,9 @@ impl ExecuteTool {
 
 #[derive(serde::Deserialize, serde::Serialize)]
 pub struct ExecuteParameters {
+    /// The name of the tool to execute. You find this by calling search first.
     pub name: String,
+    /// The arguments to pass to the tool. You find these by calling search first.
     pub arguments: Option<Map<String, Value>>,
 }
 
@@ -34,14 +36,19 @@ impl JsonSchema for ExecuteParameters {
         "ExecuteParameters".into()
     }
 
-    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+    fn json_schema(_: &mut SchemaGenerator) -> Schema {
         schemars::json_schema!({
             "type": "object",
             "properties": {
-                "name": generator.subschema_for::<String>(),
-                // This is for Cursor, who does not like optional arguments, but will
-                // happily send us an empty object.
-                "arguments": generator.subschema_for::<Map<String, Value>>()
+                "name": {
+                    "type": "string",
+                    "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'."
+                },
+                "arguments": {
+                    "type": "object",
+                    "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
+                    "additionalProperties": true
+                }
             },
             "required": ["name", "arguments"]
         })

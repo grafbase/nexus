@@ -101,6 +101,16 @@ impl TestClient {
     pub async fn try_get(&self, path: &str) -> reqwest::Result<reqwest::Response> {
         self.client.get(format!("{}{}", self.base_url, path)).send().await
     }
+
+    /// Send a custom HTTP request for CORS testing
+    pub fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
+        self.client.request(method, format!("{}{}", self.base_url, path))
+    }
+
+    /// Get the base URL of this test client
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
 }
 
 /// MCP client for testing MCP protocol functionality

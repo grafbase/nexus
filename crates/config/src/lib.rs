@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+mod cors;
 mod loader;
 mod mcp;
 
@@ -11,6 +12,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub use cors::*;
 pub use mcp::{HttpConfig, HttpProtocol, McpConfig, McpServer, TlsClientConfig};
 use serde::Deserialize;
 
@@ -44,6 +46,8 @@ pub struct ServerConfig {
     /// Health endpoint configuration.
     #[serde(default)]
     pub health: HealthConfig,
+    /// CORS configuration
+    pub cors: Option<CorsConfig>,
 }
 
 /// TLS configuration for secure connections.
@@ -80,9 +84,15 @@ impl Default for HealthConfig {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use ascii::AsciiString;
     use indoc::indoc;
 
-    use crate::Config;
+    use crate::{
+        Config,
+        cors::{AnyOrAsciiStringArray, AnyOrHttpMethodArray, AnyOrUrlArray, HttpMethod},
+    };
 
     #[test]
     fn all_values() {
@@ -109,6 +119,7 @@ mod tests {
                     listen: None,
                     path: "/health",
                 },
+                cors: None,
             },
             mcp: McpConfig {
                 enabled: false,
@@ -133,6 +144,7 @@ mod tests {
                     listen: None,
                     path: "/health",
                 },
+                cors: None,
             },
             mcp: McpConfig {
                 enabled: true,
@@ -432,5 +444,298 @@ mod tests {
             },
         }
         "#);
+    }
+
+    #[test]
+    fn cors_allow_credentials() {
+        let input = indoc! {r#"
+            [server.cors]
+            allow_credentials = true
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+
+        assert!(cors.allow_credentials);
+    }
+
+    #[test]
+    fn cors_allow_credentials_default() {
+        let input = indoc! {r#"
+            [server.cors]
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+
+        assert!(!cors.allow_credentials);
+    }
+
+    #[test]
+    fn cors_max_age() {
+        let input = indoc! {r#"
+           [server.cors]
+           max_age = "60s"
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+
+        assert_eq!(Some(Duration::from_secs(60)), cors.max_age);
+    }
+
+    #[test]
+    fn cors_allow_origins_default() {
+        let input = indoc! {r#"
+            [server.cors]
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+
+        assert_eq!(None, cors.allow_origins)
+    }
+
+    #[test]
+    fn cors_allow_origins_any() {
+        let input = indoc! {r#"
+            [server.cors]
+            allow_origins = "any"
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+
+        assert_eq!(Some(AnyOrUrlArray::Any), cors.allow_origins)
+    }
+
+    #[test]
+    fn cors_allow_origins_explicit() {
+        let input = indoc! {r#"
+            [server.cors]
+            allow_origins = ["https://app.grafbase.com"]
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+        let expected = AnyOrUrlArray::Explicit(vec!["https://app.grafbase.com".parse().unwrap()]);
+
+        assert_eq!(Some(expected), cors.allow_origins)
+    }
+
+    #[test]
+    fn cors_allow_origins_invalid_url() {
+        let input = indoc! {r#"
+            [server.cors]
+            allow_origins = ["foo"]
+        "#};
+
+        let error = toml::from_str::<Config>(input).unwrap_err();
+
+        insta::assert_snapshot!(&error.to_string(), @r#"
+        TOML parse error at line 2, column 18
+          |
+        2 | allow_origins = ["foo"]
+          |                  ^^^^^
+        relative URL without a base: "foo"
+        "#);
+    }
+
+    #[test]
+    fn cors_allow_methods_default() {
+        let input = indoc! {r#"
+            [server.cors]
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+
+        assert_eq!(None, cors.allow_methods)
+    }
+
+    #[test]
+    fn cors_allow_methods_any() {
+        let input = indoc! {r#"
+            [server.cors]
+            allow_methods = "any"
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+
+        assert_eq!(Some(AnyOrHttpMethodArray::Any), cors.allow_methods)
+    }
+
+    #[test]
+    fn cors_allow_methods_explicit() {
+        let input = indoc! {r#"
+            [server.cors]
+            allow_methods = ["POST"]
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+        let expected = AnyOrHttpMethodArray::Explicit(vec![HttpMethod::Post]);
+
+        assert_eq!(Some(expected), cors.allow_methods)
+    }
+
+    #[test]
+    fn cors_allow_methods_invalid_method() {
+        let input = indoc! {r#"
+            [server.cors]
+            allow_methods = ["MEOW"]
+        "#};
+
+        let error = toml::from_str::<Config>(input).unwrap_err();
+
+        insta::assert_snapshot!(&error.to_string(), @r#"
+        TOML parse error at line 2, column 18
+          |
+        2 | allow_methods = ["MEOW"]
+          |                  ^^^^^^
+        unknown variant `MEOW`, expected one of `GET`, `POST`, `PUT`, `DELETE`, `HEAD`, `OPTIONS`, `CONNECT`, `PATCH`, `TRACE`
+        "#);
+    }
+
+    #[test]
+    fn cors_allow_headers_default() {
+        let input = indoc! {r#"
+            [server.cors]
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+
+        assert_eq!(None, cors.allow_headers)
+    }
+
+    #[test]
+    fn cors_allow_headers_any() {
+        let input = indoc! {r#"
+            [server.cors]
+            allow_headers = "any"
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+
+        assert_eq!(Some(AnyOrAsciiStringArray::Any), cors.allow_headers)
+    }
+
+    #[test]
+    fn cors_allow_headers_explicit() {
+        let input = indoc! {r#"
+            [server.cors]
+            allow_headers = ["Content-Type"]
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+
+        let expected = AnyOrAsciiStringArray::Explicit(vec![AsciiString::from_ascii(b"Content-Type").unwrap()]);
+
+        assert_eq!(Some(expected), cors.allow_headers)
+    }
+
+    #[test]
+    fn cors_allow_headers_invalid() {
+        let input = indoc! {r#"
+            [server.cors]
+            allow_headers = ["😂😂😂"]
+        "#};
+
+        let error = toml::from_str::<Config>(input).unwrap_err();
+
+        insta::assert_snapshot!(&error.to_string(), @r#"
+        TOML parse error at line 2, column 18
+          |
+        2 | allow_headers = ["😂😂😂"]
+          |                  ^^^^^^^^^^^^^^
+        invalid value: string "😂😂😂", expected an ascii string
+        "#);
+    }
+
+    #[test]
+    fn cors_expose_headers_default() {
+        let input = indoc! {r#"
+            [server.cors]
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+
+        assert_eq!(None, cors.expose_headers);
+    }
+
+    #[test]
+    fn cors_expose_headers_any() {
+        let input = indoc! {r#"
+            [server.cors]
+            expose_headers = "any"
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+
+        assert_eq!(Some(AnyOrAsciiStringArray::Any), cors.expose_headers);
+    }
+
+    #[test]
+    fn cors_expose_headers_explicit() {
+        let input = indoc! {r#"
+            [server.cors]
+            expose_headers = ["Content-Type"]
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+
+        let expected = AnyOrAsciiStringArray::Explicit(vec![AsciiString::from_ascii(b"Content-Type").unwrap()]);
+
+        assert_eq!(Some(expected), cors.expose_headers);
+    }
+
+    #[test]
+    fn cors_expose_headers_invalid() {
+        let input = indoc! {r#"
+            [server.cors]
+            expose_headers = ["😂😂😂"]
+        "#};
+
+        let error = toml::from_str::<Config>(input).unwrap_err();
+
+        insta::assert_snapshot!(&error.to_string(), @r#"
+        TOML parse error at line 2, column 19
+          |
+        2 | expose_headers = ["😂😂😂"]
+          |                   ^^^^^^^^^^^^^^
+        invalid value: string "😂😂😂", expected an ascii string
+        "#);
+    }
+
+    #[test]
+    fn cors_allow_private_network_default() {
+        let input = indoc! {r#"
+            [server.cors]
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+
+        assert!(!cors.allow_private_network);
+    }
+
+    #[test]
+    fn cors_allow_private_network_explicit() {
+        let input = indoc! {r#"
+            [server.cors]
+            allow_private_network = true
+        "#};
+
+        let config: Config = toml::from_str(input).unwrap();
+        let cors = config.server.cors.unwrap();
+
+        assert!(cors.allow_private_network);
     }
 }

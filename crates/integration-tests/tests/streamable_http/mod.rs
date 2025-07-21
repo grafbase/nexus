@@ -33,6 +33,7 @@ async fn list_tools() {
             "type": "object",
             "properties": {
               "keywords": {
+                "description": "A list of keywords to search with.",
                 "type": "array",
                 "items": {
                   "type": "string"
@@ -53,12 +54,15 @@ async fn list_tools() {
           "inputSchema": {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": "ExecuteParameters",
+            "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
               "name": {
+                "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
               },
               "arguments": {
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
                 "type": "object",
                 "additionalProperties": true
               }
@@ -284,6 +288,7 @@ async fn multiple_services_multiple_tools() {
             "type": "object",
             "properties": {
               "keywords": {
+                "description": "A list of keywords to search with.",
                 "type": "array",
                 "items": {
                   "type": "string"
@@ -304,12 +309,15 @@ async fn multiple_services_multiple_tools() {
           "inputSchema": {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": "ExecuteParameters",
+            "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
               "name": {
+                "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
               },
               "arguments": {
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
                 "type": "object",
                 "additionalProperties": true
               }
@@ -384,6 +392,7 @@ async fn test_custom_mcp_path_with_tools() {
             "type": "object",
             "properties": {
               "keywords": {
+                "description": "A list of keywords to search with.",
                 "type": "array",
                 "items": {
                   "type": "string"
@@ -404,12 +413,15 @@ async fn test_custom_mcp_path_with_tools() {
           "inputSchema": {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": "ExecuteParameters",
+            "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
               "name": {
+                "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
               },
               "arguments": {
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
                 "type": "object",
                 "additionalProperties": true
               }
@@ -481,6 +493,7 @@ async fn tools_with_tls() {
             "type": "object",
             "properties": {
               "keywords": {
+                "description": "A list of keywords to search with.",
                 "type": "array",
                 "items": {
                   "type": "string"
@@ -501,12 +514,15 @@ async fn tools_with_tls() {
           "inputSchema": {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": "ExecuteParameters",
+            "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
               "name": {
+                "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
               },
               "arguments": {
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
                 "type": "object",
                 "additionalProperties": true
               }
@@ -574,6 +590,7 @@ async fn tls_downstream_service() {
             "type": "object",
             "properties": {
               "keywords": {
+                "description": "A list of keywords to search with.",
                 "type": "array",
                 "items": {
                   "type": "string"
@@ -594,12 +611,15 @@ async fn tls_downstream_service() {
           "inputSchema": {
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": "ExecuteParameters",
+            "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
               "name": {
+                "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
               },
               "arguments": {
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
                 "type": "object",
                 "additionalProperties": true
               }

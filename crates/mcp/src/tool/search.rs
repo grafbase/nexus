@@ -12,6 +12,7 @@ use super::Tool;
 
 #[derive(Deserialize, JsonSchema)]
 pub struct SearchParameters {
+    /// A list of keywords to search with.
     keywords: Vec<String>,
 }
 
