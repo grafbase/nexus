@@ -119,11 +119,11 @@ pub type AnyOrHttpMethodArray = AnyOrArray<HttpMethod>;
 pub type AnyOrAsciiStringArray = AnyOrArray<AsciiString>;
 
 /// Represents a configuration option that can either allow "any" value
-/// (e.g., signified by a wildcard string `*` or "any") or a specific
+/// (e.g., signified by a wildcard string `*`) or a specific
 /// explicit list of values.
 #[derive(Clone, Debug, PartialEq)]
 pub enum AnyOrArray<T> {
-    /// Indicates that any value is allowed (e.g., `*` or "any").
+    /// Indicates that any value is allowed (e.g., `*`).
     Any,
     /// A specific, explicit list of allowed values.
     Explicit(Vec<T>),
@@ -153,7 +153,7 @@ where
             where
                 E: serde::de::Error,
             {
-                if value == "*" || value == "any" {
+                if value == "*" {
                     Ok(AnyOrArray::Any)
                 } else {
                     value

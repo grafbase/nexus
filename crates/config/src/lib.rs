@@ -530,7 +530,7 @@ mod tests {
     fn cors_allow_origins_any() {
         let input = indoc! {r#"
             [server.cors]
-            allow_origins = "any"
+            allow_origins = "*"
         "#};
 
         let config: Config = toml::from_str(input).unwrap();
@@ -587,7 +587,7 @@ mod tests {
     fn cors_allow_methods_any() {
         let input = indoc! {r#"
             [server.cors]
-            allow_methods = "any"
+            allow_methods = "*"
         "#};
 
         let config: Config = toml::from_str(input).unwrap();
@@ -644,7 +644,7 @@ mod tests {
     fn cors_allow_headers_any() {
         let input = indoc! {r#"
             [server.cors]
-            allow_headers = "any"
+            allow_headers = "*"
         "#};
 
         let config: Config = toml::from_str(input).unwrap();
@@ -702,7 +702,7 @@ mod tests {
     fn cors_expose_headers_any() {
         let input = indoc! {r#"
             [server.cors]
-            expose_headers = "any"
+            expose_headers = "*"
         "#};
 
         let config: Config = toml::from_str(input).unwrap();
