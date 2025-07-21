@@ -38,6 +38,7 @@ impl JsonSchema for ExecuteParameters {
 
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
         schemars::json_schema!({
+            "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
                 "name": {

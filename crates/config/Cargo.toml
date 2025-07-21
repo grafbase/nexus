@@ -10,7 +10,7 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 ascii = { workspace = true, features = ["serde"] }
-duration-str = "0.17.0"
+duration-str.workspace = true
 http.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde-dynamic-string.workspace = true

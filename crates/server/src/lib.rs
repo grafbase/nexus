@@ -5,6 +5,7 @@
 #![deny(missing_docs)]
 
 mod cors;
+mod csrf;
 mod health;
 
 use std::net::SocketAddr;
@@ -55,6 +56,10 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
                 .layer(cors.clone());
             app = app.merge(health_router);
         }
+    }
+
+    if config.server.csrf.enabled {
+        app = csrf::inject_layer(app, &config.server.csrf);
     }
 
     let listener = TcpListener::bind(listen_address)

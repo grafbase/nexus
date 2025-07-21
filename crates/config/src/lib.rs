@@ -48,6 +48,28 @@ pub struct ServerConfig {
     pub health: HealthConfig,
     /// CORS configuration
     pub cors: Option<CorsConfig>,
+    /// CSRF configuration
+    #[serde(default)]
+    pub csrf: CsrfConfig,
+}
+
+/// CSRF (Cross-Site Request Forgery) protection configuration.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CsrfConfig {
+    /// Whether CSRF protection is enabled.
+    pub enabled: bool,
+    /// The name of the header to use for CSRF tokens.
+    pub header_name: String,
+}
+
+impl Default for CsrfConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            header_name: "X-Nexus-CSRF-Protection".into(),
+        }
+    }
 }
 
 /// TLS configuration for secure connections.
@@ -120,6 +142,10 @@ mod tests {
                     path: "/health",
                 },
                 cors: None,
+                csrf: CsrfConfig {
+                    enabled: false,
+                    header_name: "X-Nexus-CSRF-Protection",
+                },
             },
             mcp: McpConfig {
                 enabled: false,
@@ -145,6 +171,10 @@ mod tests {
                     path: "/health",
                 },
                 cors: None,
+                csrf: CsrfConfig {
+                    enabled: false,
+                    header_name: "X-Nexus-CSRF-Protection",
+                },
             },
             mcp: McpConfig {
                 enabled: true,

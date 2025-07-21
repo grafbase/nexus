@@ -18,6 +18,7 @@ clap = "4.5.41"
 config = { path = "crates/config" }
 convert_case = "0.8.0"
 ctor = "0.4.2"
+duration-str = "0.17"
 fast-glob = "0.4.5"
 fastrace = "0.7.14"
 futures-util = "0.3.31"
