@@ -8,22 +8,6 @@ use indoc::indoc;
 use integration_tests::TestServer;
 
 #[tokio::test]
-async fn mcp_server_info() {
-    let config = indoc! {r#"
-        [mcp]
-        enabled = true
-    "#};
-
-    let server = TestServer::builder().build(config).await;
-    let mcp_client = server.mcp_client("/mcp").await;
-    let server_info = mcp_client.get_server_info();
-
-    insta::assert_json_snapshot!(&server_info.protocol_version, @r#""2025-03-26""#);
-
-    mcp_client.disconnect().await;
-}
-
-#[tokio::test]
 async fn health_endpoint_enabled() {
     let config = indoc! {r#"
         [server]
@@ -268,6 +252,78 @@ async fn no_tools_by_default() {
       ]
     }
     "#);
+
+    mcp_client.disconnect().await;
+}
+
+#[tokio::test]
+async fn server_info_with_downstream_servers() {
+    use integration_tests::TestService;
+    use tools::{AdderTool, CalculatorTool, FileSystemTool, TextProcessorTool};
+
+    let config = indoc! {r#"
+        [mcp]
+        enabled = true
+    "#};
+
+    // Create multiple downstream servers with different tools
+    let mut math_server = TestService::sse("math_server".to_string());
+    math_server.add_tool(AdderTool).await;
+    math_server.add_tool(CalculatorTool).await;
+
+    let mut text_server = TestService::streamable_http("text_server".to_string());
+    text_server.add_tool(TextProcessorTool).await;
+
+    let mut fs_server = TestService::sse_autodetect("filesystem_server".to_string());
+    fs_server.add_tool(FileSystemTool).await;
+
+    // Build nexus server with multiple downstream servers
+    let mut builder = TestServer::builder();
+    builder.spawn_service(math_server).await;
+    builder.spawn_service(text_server).await;
+    builder.spawn_service(fs_server).await;
+    let server = builder.build(config).await;
+
+    let mcp_client = server.mcp_client("/mcp").await;
+
+    // Test server info - this should show the aggregated nexus server information
+    // including all downstream servers and their tools in the instructions
+    let server_info = mcp_client.get_server_info();
+
+    // Assert protocol version
+    insta::assert_json_snapshot!(&server_info.protocol_version, @r#""2025-03-26""#);
+
+    // Assert nexus server name shows all downstream servers
+    insta::assert_snapshot!(&server_info.server_info.name, @"Tool Aggregator (filesystem_server, math_server, text_server)");
+
+    // Assert instructions with proper formatting for readability
+    insta::assert_snapshot!(&server_info.instructions.as_ref().unwrap(), @r###"
+    This is an MCP server aggregator providing access to many tools through two main functions:
+    `search` and `execute`.
+
+    **Instructions:**
+    1.  **Search for tools:** To find out what tools are available, use the `search` tool. Provide a
+        clear description of your goal as the query. The search will return a list of relevant tools,
+        including their exact names and required parameters.
+    2.  **Execute a tool:** Once you have found a suitable tool using `search`, call the `execute` tool.
+        You must provide the `name` of the tool and its `parameters` exactly as specified in the search results.
+
+    Always use the `search` tool first to discover available tools. Do not guess tool names.
+
+    **Available Servers and Tools:**
+
+    **filesystem_server:**
+    - `filesystem_server__filesystem`: Manages files and directories with operations like listing, creating, and deleting
+
+    **math_server:**
+    - `math_server__adder`: Adds two numbers together
+    - `math_server__calculator`: Performs basic mathematical calculations including addition, subtraction, multiplication and division
+
+    **text_server:**
+    - `text_server__text_processor`: Processes text with various string manipulation operations like case conversion and reversal
+
+    **Note:** When executing tools, use the full name format `server__tool` as shown above.
+    "###);
 
     mcp_client.disconnect().await;
 }

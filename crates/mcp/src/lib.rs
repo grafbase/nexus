@@ -11,9 +11,14 @@ use std::{sync::Arc, time::Duration};
 
 use axum::{Router, http::StatusCode, routing};
 use config::McpConfig;
-use rmcp::transport::{
-    StreamableHttpServerConfig, StreamableHttpService, streamable_http_server::session::never::NeverSessionManager,
+use rmcp::{
+    model::ProtocolVersion,
+    transport::{
+        StreamableHttpServerConfig, StreamableHttpService, streamable_http_server::session::never::NeverSessionManager,
+    },
 };
+
+pub(crate) const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V_2025_03_26;
 
 /// Creates an axum router for MCP.
 pub async fn router(config: &McpConfig) -> anyhow::Result<Router> {
