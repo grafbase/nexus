@@ -16,5 +16,9 @@ enabled = true
 # MCP endpoint will be available at /mcp
 path = "/mcp"
 
+[mcp.servers.github]
+url = "https://api.githubcopilot.com/mcp/"
+auth.token = "{{ env.GITHUB_TOKEN }}"
+
 # No MCP servers are configured by default
 # Users can add their own servers by extending this configuration

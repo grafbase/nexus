@@ -2,6 +2,7 @@ mod cors;
 mod csrf;
 mod sse;
 mod streamable_http;
+mod token_auth;
 mod tools;
 
 use indoc::indoc;

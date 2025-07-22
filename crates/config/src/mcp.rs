@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use secrecy::SecretString;
 use serde::Deserialize;
 use url::Url;
 
@@ -68,6 +69,9 @@ pub struct HttpConfig {
     /// or wait for the server to send a message endpoint event.
     #[serde(default)]
     pub message_url: Option<Url>,
+    /// Optional authentication configuration.
+    #[serde(default)]
+    pub auth: Option<ClientAuthConfig>,
 }
 
 impl HttpConfig {
@@ -122,6 +126,17 @@ impl Default for TlsClientConfig {
             client_key_path: None,
         }
     }
+}
+
+/// Authentication configuration for HTTP-based MCP servers.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case", untagged, deny_unknown_fields)]
+pub enum ClientAuthConfig {
+    /// Token-based authentication.
+    Token {
+        /// Authentication token to send with requests.
+        token: SecretString,
+    },
 }
 
 fn default_enabled() -> bool {

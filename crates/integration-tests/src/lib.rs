@@ -382,6 +382,17 @@ impl TestServerBuilder {
             config.push_str(&tls_config);
         }
 
+        // Add authentication configuration if the service has auth token
+        if let Some(token) = service.get_auth_token() {
+            let auth_config = indoc::formatdoc! {r#"
+
+                [mcp.servers.{}.auth]
+                token = "{token}"
+            "#, service.name()};
+
+            config.push_str(&auth_config);
+        }
+
         self.config.push_str(&format!("\n{config}"));
     }
 

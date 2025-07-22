@@ -1,4 +1,10 @@
-use axum::Router;
+use axum::{
+    Router,
+    extract::Request,
+    http::{HeaderMap, StatusCode},
+    middleware::{self, Next},
+    response::Response,
+};
 use core::fmt;
 use rmcp::{
     handler::server::ServerHandler,
@@ -48,6 +54,9 @@ pub struct TestService {
     autodetect: bool,
     tools: Arc<Mutex<BTreeMap<String, Box<dyn TestTool>>>>,
     tls_config: Option<TlsConfig>,
+    auth_token: Option<String>,
+    require_auth: bool,
+    expected_token: Option<String>,
 }
 
 #[derive(Clone)]
@@ -80,6 +89,9 @@ impl TestService {
             autodetect,
             tools: Arc::new(Mutex::new(BTreeMap::new())),
             tls_config: None,
+            auth_token: None,
+            require_auth: false,
+            expected_token: None,
         }
     }
 
@@ -109,6 +121,29 @@ impl TestService {
 
     pub(super) fn is_tls(&self) -> bool {
         self.tls_config.is_some()
+    }
+
+    pub fn with_auth_token(mut self, token: String) -> Self {
+        self.auth_token = Some(token);
+        self
+    }
+
+    pub fn get_auth_token(&self) -> Option<&String> {
+        self.auth_token.as_ref()
+    }
+
+    pub fn with_required_auth_token(mut self, expected_token: String) -> Self {
+        self.require_auth = true;
+        self.expected_token = Some(expected_token);
+        self
+    }
+
+    pub fn requires_auth(&self) -> bool {
+        self.require_auth
+    }
+
+    pub fn get_expected_token(&self) -> Option<&String> {
+        self.expected_token.as_ref()
     }
 
     pub fn get_tls_cert_paths(&self) -> Option<(PathBuf, PathBuf)> {
@@ -149,8 +184,19 @@ async fn spawn_sse(service: TestService) -> (SocketAddr, CancellationToken) {
         sse_keep_alive: Some(Duration::from_secs(5)),
     };
 
-    let (sse_server, router) = SseServer::new(sse_config);
+    let (sse_server, mut router) = SseServer::new(sse_config);
     let tls_config = service.tls_config.clone();
+
+    // Add authentication middleware if required
+    if service.requires_auth() {
+        let expected_token = service.get_expected_token().cloned();
+        router = router.layer(middleware::from_fn(
+            move |headers: HeaderMap, request: Request, next: Next| {
+                let expected_token = expected_token.clone();
+                async move { auth_middleware(headers, request, next, expected_token).await }
+            },
+        ));
+    }
 
     let service_ct = sse_server.with_service(move || {
         log::debug!("with_service closure called - creating service handler");
@@ -207,6 +253,8 @@ async fn spawn_sse(service: TestService) -> (SocketAddr, CancellationToken) {
 async fn spawn_streamable_http(service: TestService) -> SocketAddr {
     // Check if TLS is configured before moving service
     let tls_config = service.tls_config.clone();
+    let requires_auth = service.requires_auth();
+    let expected_token = service.get_expected_token().cloned();
 
     let mcp_service = StreamableHttpService::new(
         move || Ok(service.clone()),
@@ -217,7 +265,18 @@ async fn spawn_streamable_http(service: TestService) -> SocketAddr {
         },
     );
 
-    let app = Router::new().route_service("/mcp", mcp_service);
+    let mut app = Router::new().route_service("/mcp", mcp_service);
+
+    // Add authentication middleware if required
+    if requires_auth {
+        app = app.layer(middleware::from_fn(
+            move |headers: HeaderMap, request: Request, next: Next| {
+                let expected_token = expected_token.clone();
+                async move { auth_middleware(headers, request, next, expected_token).await }
+            },
+        ));
+    }
+
     let addr = SocketAddr::from(([127, 0, 0, 1], 0));
     let listener = TcpListener::bind(addr).await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -283,5 +342,38 @@ impl ServerHandler for TestService {
         })?;
 
         tool.call(params).await
+    }
+}
+
+/// Middleware that validates Bearer token authentication
+async fn auth_middleware(
+    headers: HeaderMap,
+    request: Request,
+    next: Next,
+    expected_token: Option<String>,
+) -> Result<Response, StatusCode> {
+    let auth_header = headers.get("authorization").and_then(|h| h.to_str().ok());
+
+    match (auth_header, expected_token) {
+        (Some(auth), Some(expected)) if auth == format!("Bearer {expected}") => {
+            // Valid token, proceed
+            Ok(next.run(request).await)
+        }
+        (Some(auth), Some(_)) if auth.starts_with("Bearer ") => {
+            // Invalid token
+            Err(StatusCode::UNAUTHORIZED)
+        }
+        (Some(_), Some(_)) => {
+            // Invalid auth format
+            Err(StatusCode::BAD_REQUEST)
+        }
+        (None, Some(_)) => {
+            // No auth header when auth is required
+            Err(StatusCode::UNAUTHORIZED)
+        }
+        (_, None) => {
+            // Auth not required, proceed
+            Ok(next.run(request).await)
+        }
     }
 }

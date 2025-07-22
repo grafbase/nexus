@@ -1,7 +1,10 @@
 use std::{io::Read, sync::Arc};
 
-use config::{HttpConfig, McpServer, TlsClientConfig};
-use reqwest::{Certificate, Identity};
+use config::{ClientAuthConfig, HttpConfig, McpServer, TlsClientConfig};
+use reqwest::{
+    Certificate, Identity,
+    header::{AUTHORIZATION, HeaderMap, HeaderValue},
+};
 use rmcp::{
     RoleClient, ServiceError, ServiceExt,
     model::{CallToolRequestParam, CallToolResult, Tool},
@@ -11,6 +14,7 @@ use rmcp::{
         sse_client::SseClientConfig, streamable_http_client::StreamableHttpClientTransportConfig,
     },
 };
+use secrecy::ExposeSecret;
 
 /// An MCP server which acts as proxy for a downstream MCP server, no matter the protocol.
 #[derive(Clone)]
@@ -89,7 +93,7 @@ async fn http_service(config: &HttpConfig) -> anyhow::Result<RunningService<Role
 async fn streamable_http_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>> {
     log::debug!("creating a streamable-http downstream service");
 
-    let client = create_client(config.tls.as_ref())?;
+    let client = create_client(config.tls.as_ref(), config.auth.as_ref())?;
     let config = StreamableHttpClientTransportConfig::with_uri(config.url.to_string());
     let transport = StreamableHttpClientTransport::with_client(client, config);
 
@@ -112,7 +116,7 @@ async fn sse_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleC
         config.message_url
     );
 
-    let client = create_client(config.tls.as_ref())?;
+    let client = create_client(config.tls.as_ref(), config.auth.as_ref())?;
     log::debug!("Created HTTP client for SSE transport");
 
     let transport = SseClientTransport::start_with_client(client, client_config).await?;
@@ -125,7 +129,7 @@ async fn sse_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleC
 }
 
 /// Creates a configured reqwest HTTP client with optional TLS settings.
-fn create_client(tls: Option<&TlsClientConfig>) -> anyhow::Result<reqwest::Client> {
+fn create_client(tls: Option<&TlsClientConfig>, auth: Option<&ClientAuthConfig>) -> anyhow::Result<reqwest::Client> {
     let mut builder = reqwest::Client::builder();
 
     if let Some(tls) = tls {
@@ -165,6 +169,15 @@ fn create_client(tls: Option<&TlsClientConfig>) -> anyhow::Result<reqwest::Clien
             let identity = Identity::from_pem(&combined_pem)?;
             builder = builder.identity(identity);
         }
+    }
+
+    if let Some(ClientAuthConfig::Token { token }) = auth {
+        let mut headers = HeaderMap::new();
+
+        let auth_value = HeaderValue::from_str(&format!("Bearer {}", token.expose_secret()))?;
+        headers.insert(AUTHORIZATION, auth_value);
+
+        builder = builder.default_headers(headers);
     }
 
     Ok(builder.build()?)
