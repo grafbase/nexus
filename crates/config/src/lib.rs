@@ -13,7 +13,10 @@ use std::{
 };
 
 pub use cors::*;
-pub use mcp::{HttpConfig, HttpProtocol, McpConfig, McpServer, TlsClientConfig};
+pub use mcp::{
+    ClientAuthConfig, ClientOauthConfig, ClientTokenConfig, HttpConfig, HttpProtocol, McpConfig, McpServer,
+    TlsClientConfig,
+};
 use serde::Deserialize;
 
 /// Main configuration structure for the Nexus application.
@@ -767,5 +770,55 @@ mod tests {
         let cors = config.server.cors.unwrap();
 
         assert!(cors.allow_private_network);
+    }
+
+    #[test]
+    fn mcp_server_with_token_auth() {
+        let config = indoc! {r#"
+             [mcp.servers.github_api]
+             protocol = "streamable-http"
+             url = "https://api.githubcopilot.com/mcp/"
+
+             [mcp.servers.github_api.auth]
+             token = "Something"
+         "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+
+        insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
+         {
+             "github_api": Http(
+                 HttpConfig {
+                     protocol: Some(
+                         StreamableHttp,
+                     ),
+                     url: Url {
+                         scheme: "https",
+                         cannot_be_a_base: false,
+                         username: "",
+                         password: None,
+                         host: Some(
+                             Domain(
+                                 "api.githubcopilot.com",
+                             ),
+                         ),
+                         port: None,
+                         path: "/mcp/",
+                         query: None,
+                         fragment: None,
+                     },
+                     tls: None,
+                     message_url: None,
+                     auth: Some(
+                        Token(
+                            ClientTokenConfig {
+                                token: SecretBox<str>([REDACTED]),
+                            },
+                        ),
+                     ),
+                 },
+             ),
+         }
+         "#);
     }
 }

@@ -1,16 +1,24 @@
 use std::{io::Read, sync::Arc};
 
-use config::{HttpConfig, McpServer, TlsClientConfig};
-use reqwest::{Certificate, Identity};
+use config::{ClientAuthConfig, HttpConfig, McpServer};
+
+use reqwest::{
+    Certificate, Identity,
+    header::{AUTHORIZATION, HeaderMap, HeaderValue},
+};
 use rmcp::{
     RoleClient, ServiceError, ServiceExt,
     model::{CallToolRequestParam, CallToolResult, Tool},
     service::RunningService,
     transport::{
-        SseClientTransport, StreamableHttpClientTransport, common::client_side_sse::FixedInterval,
-        sse_client::SseClientConfig, streamable_http_client::StreamableHttpClientTransportConfig,
+        SseClientTransport, StreamableHttpClientTransport,
+        auth::{AuthClient, AuthorizationManager, OAuthClientConfig},
+        common::client_side_sse::FixedInterval,
+        sse_client::{SseClient, SseClientConfig},
+        streamable_http_client::{StreamableHttpClient, StreamableHttpClientTransportConfig},
     },
 };
+use secrecy::ExposeSecret;
 
 /// An MCP server which acts as proxy for a downstream MCP server, no matter the protocol.
 #[derive(Clone)]
@@ -29,9 +37,11 @@ struct Inner {
 impl DownstreamClient {
     /// Creates a new DownstreamServer with the given name and configuration.
     pub async fn new(name: &str, config: &McpServer) -> anyhow::Result<Self> {
+        log::debug!("creating a downstream server connection for {name}");
+
         let service = match config {
             McpServer::Stdio { .. } => todo!(),
-            McpServer::Http(config) => http_service(config).await?,
+            McpServer::Http(config) => create_http_client(config).await?,
         };
 
         Ok(Self {
@@ -59,76 +69,10 @@ impl DownstreamClient {
     }
 }
 
-/// Creates a running service for HTTP-based MCP communication.
-///
-/// This function handles protocol detection and fallback between streamable-http and SSE protocols.
-/// If the configuration explicitly specifies a protocol, it will use that protocol directly.
-/// Otherwise, it will attempt streamable-http first and fall back to SSE if that fails.
-async fn http_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>> {
-    if config.uses_streamable_http() {
-        log::debug!("config explicitly wants streamable-http");
-        return streamable_http_service(config).await;
-    }
-
-    if config.uses_sse() {
-        log::debug!("config explicitly wants SSE");
-        return sse_service(config).await;
-    }
-
-    log::debug!("detecting protocol, starting with streamable-http");
-    match streamable_http_service(config).await {
-        Ok(service) => Ok(service),
-        Err(_) => {
-            log::warn!("streamable-http failed, trying SSE");
-            sse_service(config).await
-        }
-    }
-}
-
-/// Creates a running service for streamable-http protocol.
-async fn streamable_http_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>> {
-    log::debug!("creating a streamable-http downstream service");
-
-    let client = create_client(config.tls.as_ref())?;
-    let config = StreamableHttpClientTransportConfig::with_uri(config.url.to_string());
-    let transport = StreamableHttpClientTransport::with_client(client, config);
-
-    Ok(().serve(transport).await?)
-}
-
-/// Creates a running service for SSE (Server-Sent Events) protocol.
-async fn sse_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>> {
-    log::debug!("creating an SSE downstream service");
-
-    let client_config = SseClientConfig {
-        sse_endpoint: config.url.to_string().into(),
-        retry_policy: Arc::new(FixedInterval::default()),
-        use_message_endpoint: config.message_url.as_ref().map(|u| u.to_string()),
-    };
-
-    log::debug!(
-        "SSE client config: sse_url={}, message_url={:?}",
-        config.url,
-        config.message_url
-    );
-
-    let client = create_client(config.tls.as_ref())?;
-    log::debug!("Created HTTP client for SSE transport");
-
-    let transport = SseClientTransport::start_with_client(client, client_config).await?;
-    log::debug!("SSE transport started successfully");
-
-    let service = ().serve(transport).await?;
-    log::debug!("SSE service created and ready");
-
-    Ok(service)
-}
-
-/// Creates a configured reqwest HTTP client with optional TLS settings.
-fn create_client(tls: Option<&TlsClientConfig>) -> anyhow::Result<reqwest::Client> {
+async fn create_http_client(config: &HttpConfig) -> Result<RunningService<RoleClient, ()>, anyhow::Error> {
     let mut builder = reqwest::Client::builder();
 
-    if let Some(tls) = tls {
+    if let Some(ref tls) = config.tls {
         builder = builder
             .danger_accept_invalid_certs(!tls.verify_certs)
             .danger_accept_invalid_hostnames(tls.accept_invalid_hostnames);
@@ -167,5 +111,111 @@ fn create_client(tls: Option<&TlsClientConfig>) -> anyhow::Result<reqwest::Clien
         }
     }
 
-    Ok(builder.build()?)
+    let client = match config.auth {
+        Some(ClientAuthConfig::Token(ref token_config)) => {
+            log::debug!("using token-based authentication");
+            let auth_header = format!("Bearer {}", token_config.token.expose_secret());
+            let auth_value = HeaderValue::from_str(&auth_header)?;
+
+            let mut headers = HeaderMap::new();
+            headers.insert(AUTHORIZATION, auth_value);
+
+            let client = builder.default_headers(headers).build()?;
+            create_service(client, config).await?
+        }
+        Some(ClientAuthConfig::Oauth(ref oauth_config)) => {
+            log::debug!("using OAuth2 authentication");
+            let base_client = builder.build()?;
+
+            let mut url = reqwest::Url::parse(&oauth_config.token_url)?;
+            url.set_path("");
+            url.set_query(None);
+
+            let mut manager = AuthorizationManager::new(url.as_str()).await?;
+
+            manager.configure_client(OAuthClientConfig {
+                client_id: oauth_config.client_id.clone(),
+                client_secret: Some(oauth_config.client_secret.expose_secret().to_string()),
+                scopes: oauth_config.scopes.clone(),
+                // Special standardized OAuth2 redirect URI that stands for "out-of-band".
+                // E.g. we do not expect a redirection. This is server to server.
+                redirect_uri: "urn:ietf:wg:oauth:2.0:oob".to_string(),
+            })?;
+
+            let auth_client = AuthClient::new(base_client, manager);
+            create_service(auth_client, config).await?
+        }
+        None => {
+            log::debug!("using no authentication");
+            create_service(builder.build()?, config).await?
+        }
+    };
+
+    Ok(client)
+}
+
+async fn create_service<C>(client: C, config: &HttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>>
+where
+    C: StreamableHttpClient + SseClient + Clone + Send + Sync + 'static,
+{
+    if config.uses_streamable_http() {
+        log::debug!("config explicitly wants streamable-http");
+        return streamable_http_service(client, config).await;
+    }
+
+    if config.uses_sse() {
+        log::debug!("config explicitly wants SSE");
+        return sse_service(client, config).await;
+    }
+
+    log::debug!("detecting protocol, starting with streamable-http");
+    match streamable_http_service(client.clone(), config).await {
+        Ok(service) => Ok(service),
+        Err(_) => {
+            log::warn!("streamable-http failed, trying SSE");
+            sse_service(client, config).await
+        }
+    }
+}
+
+/// Creates a running service for streamable-http protocol.
+async fn streamable_http_service<C>(client: C, config: &HttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>>
+where
+    C: StreamableHttpClient + Send + Sync + 'static,
+{
+    log::debug!("creating a streamable-http downstream service");
+
+    let transport_config = StreamableHttpClientTransportConfig::with_uri(config.url.to_string());
+    let transport = StreamableHttpClientTransport::with_client(client, transport_config);
+
+    Ok(().serve(transport).await?)
+}
+
+/// Creates a running service for SSE (Server-Sent Events) protocol.
+async fn sse_service<C>(client: C, config: &HttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>>
+where
+    C: SseClient + Send + Sync + 'static,
+{
+    log::debug!("creating an SSE downstream service");
+
+    let client_config = SseClientConfig {
+        sse_endpoint: config.url.to_string().into(),
+        retry_policy: Arc::new(FixedInterval::default()),
+        use_message_endpoint: config.message_url.as_ref().map(|u| u.to_string()),
+    };
+
+    log::debug!(
+        "SSE client config: sse_url={}, message_url={:?}",
+        config.url,
+        config.message_url
+    );
+    log::debug!("Created HTTP client for SSE transport");
+
+    let transport = SseClientTransport::start_with_client(client, client_config).await?;
+    log::debug!("SSE transport started successfully");
+
+    let service = ().serve(transport).await?;
+    log::debug!("SSE service created and ready");
+
+    Ok(service)
 }

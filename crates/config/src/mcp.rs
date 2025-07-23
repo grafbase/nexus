@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
+use secrecy::SecretString;
 use serde::Deserialize;
 use url::Url;
 
@@ -68,6 +69,8 @@ pub struct HttpConfig {
     /// or wait for the server to send a message endpoint event.
     #[serde(default)]
     pub message_url: Option<Url>,
+    /// Authentication configuration for the HTTP server.
+    pub auth: Option<ClientAuthConfig>,
 }
 
 impl HttpConfig {
@@ -124,6 +127,47 @@ impl Default for TlsClientConfig {
     }
 }
 
+/// Authentication configuration for HTTP-based MCP servers.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case", untagged, deny_unknown_fields)]
+pub enum ClientAuthConfig {
+    /// Token-based authentication.
+    Token(ClientTokenConfig),
+    /// OAuth-based authentication.(ClientOauthConfig),
+    Oauth(ClientOauthConfig),
+}
+
+/// Token-based authentication configuration for HTTP-based MCP servers.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClientTokenConfig {
+    /// Authentication token to send with requests.
+    pub token: SecretString,
+}
+
+/// OAuth-based authentication configuration for HTTP-based MCP servers.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClientOauthConfig {
+    /// Token endpoint URL for OAuth2 Client Credentials Grant.
+    pub token_url: String,
+    /// Client ID for OAuth authentication.
+    pub client_id: String,
+    /// Client secret for OAuth authentication.
+    pub client_secret: SecretString,
+    /// Scopes for OAuth authentication.
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    /// How long before token expiry to refresh the token (in seconds).
+    /// Default is 30 seconds.
+    #[serde(default = "default_refresh_buffer")]
+    pub refresh_buffer_seconds: u64,
+    /// Whether to enable automatic token refresh.
+    /// Default is true.
+    #[serde(default = "default_true")]
+    pub enable_auto_refresh: bool,
+}
+
 fn default_enabled() -> bool {
     true
 }
@@ -133,5 +177,13 @@ fn default_path() -> String {
 }
 
 fn default_verify_tls() -> bool {
+    true
+}
+
+fn default_refresh_buffer() -> u64 {
+    30
+}
+
+fn default_true() -> bool {
     true
 }

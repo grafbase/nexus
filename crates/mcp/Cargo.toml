@@ -17,6 +17,7 @@ http.workspace = true
 indoc.workspace = true
 itertools.workspace = true
 log = { workspace = true, features = ["kv"] }
+oauth2.workspace = true
 reqwest.workspace = true
 rmcp = { workspace = true, features = [
     "client",
@@ -29,8 +30,10 @@ rmcp = { workspace = true, features = [
     "client-side-sse",
 ] }
 schemars.workspace = true
+secrecy = "0.10.3"
 serde = { workspace = true, features = ["derive"] }
 tantivy.workspace = true
+tokio = { workspace = true, features = ["sync"] }
 
 [lints]
 workspace = true
