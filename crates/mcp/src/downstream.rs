@@ -4,6 +4,7 @@ mod ids;
 pub use ids::ToolId;
 
 use client::DownstreamClient;
+use futures_util::stream::{FuturesUnordered, StreamExt};
 use rmcp::model::{CallToolRequestMethod, CallToolRequestParam, CallToolResult, ErrorData, Tool};
 use std::borrow::Cow;
 
@@ -24,18 +25,32 @@ impl Downstream {
     ///
     /// This method initializes all configured downstream servers and aggregates
     /// their tools, prefixing each tool name with the server name followed by "__".
+    /// Server initialization and tool listing happens concurrently for better performance.
     pub async fn new(config: &config::McpConfig) -> anyhow::Result<Self> {
+        // Create futures for initializing each server concurrently
+        let mut server_futures = FuturesUnordered::new();
+
+        for (name, server_config) in &config.servers {
+            let name = name.clone();
+            let server_config = server_config.clone();
+
+            server_futures.push(async move {
+                let server = DownstreamClient::new(&name, &server_config).await?;
+                let tools = server.list_tools().await?;
+                Ok::<_, anyhow::Error>((server, tools))
+            });
+        }
+
+        // Collect results as they complete
         let mut servers = Vec::new();
         let mut tools = Vec::new();
 
-        for (name, config) in &config.servers {
-            log::debug!("creating downstream server {name}");
-            let server = DownstreamClient::new(name, config).await?;
+        while let Some(result) = server_futures.next().await {
+            let (server, server_tools) = result?;
 
-            for mut tool in server.list_tools().await? {
+            for mut tool in server_tools {
                 log::debug!("creating tool {}", tool.name);
                 tool.name = Cow::Owned(format!("{}__{}", server.name(), tool.name));
-
                 tools.push(tool);
             }
 
