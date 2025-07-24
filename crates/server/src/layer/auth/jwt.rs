@@ -1,6 +1,8 @@
 use std::str::FromStr;
 
+use super::AuthResult;
 use super::claims::CustomClaims;
+use super::error::AuthError;
 use super::jwks::{Alg, Jwks, JwksCache};
 use config::OauthConfig;
 use http::{header::AUTHORIZATION, request::Parts};
@@ -23,21 +25,42 @@ impl JwtAuth {
         self.config.protected_resource.resource_documentation()
     }
 
-    pub async fn authenticate(&self, parts: &Parts) -> anyhow::Result<()> {
-        let token_str = parts
+    pub async fn authenticate(&self, parts: &Parts) -> AuthResult<()> {
+        let token_header = parts
             .headers
             .get(AUTHORIZATION)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.strip_prefix("Bearer "))
-            .ok_or_else(|| anyhow::Error::msg("Failed to parse authorization header"))?;
+            .ok_or(AuthError::InvalidToken("missing token"))?;
 
-        let token = UntrustedToken::new(token_str)?;
-        let jwks = self.jwks_cache.get().await?;
+        let token_str = token_header
+            .to_str()
+            .map_err(|_| AuthError::InvalidToken("invalid token"))?;
 
-        self.validate_token(&jwks, token)
-            .ok_or_else(|| anyhow::Error::msg("Failed to decode token"))?;
+        // RFC 7235: authentication scheme is case-insensitive
+        // Check if it starts with "bearer" (case-insensitive) followed by space
+        if token_str.len() >= 7
+            && token_str[..6].eq_ignore_ascii_case("bearer")
+            && token_str.chars().nth(6) == Some(' ')
+        {
+            let token_str = &token_str[7..]; // Skip "Bearer " (case-insensitive)
 
-        Ok(())
+            if token_str.is_empty() {
+                return Err(AuthError::InvalidToken("missing token"));
+            }
+
+            // Continue with token validation
+            let token = UntrustedToken::new(token_str).map_err(|_| AuthError::InvalidToken("invalid token"))?;
+            let jwks = self.jwks_cache.get().await?;
+
+            self.validate_token(&jwks, token).ok_or(AuthError::Unauthorized)?;
+
+            Ok(())
+        } else if token_str.eq_ignore_ascii_case("bearer") {
+            // Handle case where header is exactly "Bearer" with no space/token
+            Err(AuthError::InvalidToken("missing token"))
+        } else {
+            // Not a valid Bearer format
+            Err(AuthError::InvalidToken("token must be prefixed with Bearer"))
+        }
     }
 
     fn validate_token(

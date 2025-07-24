@@ -1,4 +1,5 @@
 mod claims;
+mod error;
 mod jwks;
 mod jwt;
 
@@ -12,10 +13,41 @@ use std::{
 
 use axum::body::Body;
 use config::OauthConfig;
+use error::AuthError;
 use http::{Request, Response, StatusCode};
 use jwt::JwtAuth;
+use serde::Serialize;
 
 use tower::Layer;
+
+type AuthResult<T> = Result<T, AuthError>;
+
+#[derive(Serialize)]
+struct ErrorResponse {
+    error: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error_description: Option<String>,
+}
+
+impl ErrorResponse {
+    fn new(error: impl Into<String>) -> Self {
+        Self {
+            error: error.into(),
+            error_description: None,
+        }
+    }
+
+    fn with_description(error: impl Into<String>, description: impl Into<String>) -> Self {
+        Self {
+            error: error.into(),
+            error_description: Some(description.into()),
+        }
+    }
+
+    fn to_json(&self) -> String {
+        serde_json::to_string(self).unwrap_or_else(|_| r#"{"error":"internal_error"}"#.to_string())
+    }
+}
 
 #[derive(Clone)]
 pub struct AuthLayer(Arc<AuthLayerInner>);
@@ -73,20 +105,34 @@ where
         let (parts, body) = req.into_parts();
 
         Box::pin(async move {
-            if layer.jwt.authenticate(&parts).await.is_ok() {
-                return next.call(Request::from_parts(parts, body)).await;
+            match layer.jwt.authenticate(&parts).await {
+                Ok(()) => next.call(Request::from_parts(parts, body)).await,
+                Err(auth_error) => {
+                    let metadata_endpoint = layer.jwt.metadata_endpoint();
+                    let header_value = format!("Bearer resource_metadata=\"{metadata_endpoint}\"");
+
+                    let (status_code, error_response) = match auth_error {
+                        AuthError::Unauthorized => (StatusCode::UNAUTHORIZED, ErrorResponse::new("unauthorized")),
+                        AuthError::Internal => (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            ErrorResponse::with_description("internal_server_error", "An internal error occurred"),
+                        ),
+                        AuthError::InvalidToken(msg) => (
+                            StatusCode::UNAUTHORIZED,
+                            ErrorResponse::with_description("invalid_token", msg),
+                        ),
+                    };
+
+                    let response = Response::builder()
+                        .status(status_code)
+                        .header("WWW-Authenticate", &header_value)
+                        .header("Content-Type", "application/json")
+                        .body(Body::from(error_response.to_json()))
+                        .unwrap();
+
+                    Ok(response)
+                }
             }
-
-            let metadata_endpoint = layer.jwt.metadata_endpoint();
-            let header_value = format!("Bearer resource_metadata=\"{metadata_endpoint}\"");
-
-            let response = Response::builder()
-                .status(StatusCode::UNAUTHORIZED)
-                .header("WWW-Authenticate", &header_value)
-                .body(Body::empty())
-                .unwrap();
-
-            Ok(response)
         })
     }
 }

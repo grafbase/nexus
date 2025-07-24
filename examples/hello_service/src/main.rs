@@ -4,7 +4,7 @@ use rmcp::{
     model::*,
     service::{RequestContext, RoleServer},
     transport::streamable_http_server::{
-        session::never::NeverSessionManager, StreamableHttpServerConfig, StreamableHttpService,
+        StreamableHttpServerConfig, StreamableHttpService, session::never::NeverSessionManager,
     },
 };
 use std::{net::SocketAddr, sync::Arc, time::Duration};
@@ -116,15 +116,15 @@ mod tests {
     use super::HelloService;
     use axum::Router;
     use rmcp::{
+        RoleClient,
         model::CallToolRequestParam,
         service::{RunningService, ServiceExt},
         transport::{
-            streamable_http_server::{
-                session::never::NeverSessionManager, StreamableHttpServerConfig, StreamableHttpService,
-            },
             StreamableHttpClientTransport,
+            streamable_http_server::{
+                StreamableHttpServerConfig, StreamableHttpService, session::never::NeverSessionManager,
+            },
         },
-        RoleClient,
     };
     use serde_json::json;
     use std::{sync::Arc, time::Duration};

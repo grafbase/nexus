@@ -14,7 +14,24 @@
                 "enum": [true]
               }
             },
-            "required": ["workspace"]
+            "required": ["workspace"],
+            "additionalProperties": false
+          },
+          {
+            "properties": {
+              "workspace": {
+                "type": "boolean",
+                "enum": [true]
+              },
+              "features": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["workspace", "features"],
+            "additionalProperties": false
           },
           {
             "properties": {
@@ -26,7 +43,7 @@
           },
           {
             "properties": {
-              "path": {
+              "git": {
                 "type": "string"
               }
             },

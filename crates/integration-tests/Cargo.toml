@@ -10,8 +10,11 @@ repository.workspace = true
 [dependencies]
 axum = { workspace = true }
 axum-server = { workspace = true }
+base64.workspace = true
+chrono = { workspace = true, features = ["serde"] }
 config.workspace = true
 ctor.workspace = true
+futures-util.workspace = true
 indoc.workspace = true
 insta.workspace = true
 log.workspace = true

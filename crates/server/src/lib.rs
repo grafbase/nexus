@@ -39,13 +39,31 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
         CorsLayer::permissive()
     };
 
+    // Create a router for protected routes (that require OAuth)
+    let mut protected_router = Router::new();
+
     // Apply CORS to MCP router before merging
     if config.mcp.enabled {
         let mcp_router = mcp::router(&config.mcp).await?.layer(cors.clone());
-        app = app.merge(mcp_router);
+        protected_router = protected_router.merge(mcp_router);
     }
 
-    // Apply CORS to health endpoint
+    // Apply OAuth authentication to protected routes
+    if let Some(ref oauth_config) = config.server.oauth {
+        protected_router = protected_router.layer(AuthLayer::new(oauth_config.clone()));
+
+        // Add OAuth metadata endpoint (this should be public, not protected)
+        let oauth_config_clone = oauth_config.clone();
+        app = app.route(
+            "/.well-known/oauth-protected-resource",
+            get(move || well_known::oauth_metadata(oauth_config_clone.clone())),
+        );
+    }
+
+    // Merge protected routes into main app
+    app = app.merge(protected_router);
+
+    // Add health endpoint (unprotected)
     if config.server.health.enabled {
         if let Some(listen) = config.server.health.listen {
             tokio::spawn(health::bind_health_endpoint(
@@ -61,19 +79,9 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
         }
     }
 
+    // Apply CSRF protection to the entire app if enabled
     if config.server.csrf.enabled {
         app = csrf::inject_layer(app, &config.server.csrf);
-    }
-
-    if let Some(ref config) = config.server.oauth {
-        app = app.layer(AuthLayer::new(config.clone()));
-
-        let config = config.clone();
-
-        app = app.route(
-            "/.well-known/oauth-protected-resource",
-            get(move || well_known::oauth_metadata(config.clone())),
-        );
     }
 
     let listener = TcpListener::bind(listen_address)
