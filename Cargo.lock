@@ -2859,6 +2859,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "jwt-compact"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25cb2458ca54de48ef237ac0d68d4e80e512ae81d6aeb9775f4c835da0d193d3"
+dependencies = [
+ "anyhow",
+ "base64ct",
+ "chrono",
+ "ciborium",
+ "ed25519-compact",
+ "hmac 0.12.1",
+ "p256",
+ "rand_core 0.6.4",
+ "rsa",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "smallvec",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
 name = "kv-log-macro"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4685,10 +4708,15 @@ dependencies = [
  "config",
  "fast-glob",
  "http",
+ "http-body",
+ "jwt-compact",
  "log",
  "mcp",
+ "reqwest",
  "serde",
+ "serde_json",
  "tokio",
+ "tower 0.5.2",
  "tower-http",
  "url",
 ]

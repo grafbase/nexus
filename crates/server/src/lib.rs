@@ -7,6 +7,8 @@
 mod cors;
 mod csrf;
 mod health;
+mod layer;
+mod well_known;
 
 use std::net::SocketAddr;
 
@@ -14,6 +16,7 @@ use anyhow::anyhow;
 use axum::{Router, routing::get};
 use axum_server::tls_rustls::RustlsConfig;
 use config::Config;
+use layer::auth::AuthLayer;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
@@ -60,6 +63,17 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
 
     if config.server.csrf.enabled {
         app = csrf::inject_layer(app, &config.server.csrf);
+    }
+
+    if let Some(ref config) = config.server.oauth {
+        app = app.layer(AuthLayer::new(config.clone()));
+
+        let config = config.clone();
+
+        app = app.route(
+            "/.well-known/oauth-protected-resource",
+            get(move || well_known::oauth_metadata(config.clone())),
+        );
     }
 
     let listener = TcpListener::bind(listen_address)

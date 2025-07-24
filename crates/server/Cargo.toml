@@ -14,10 +14,15 @@ axum-server.workspace = true
 config.workspace = true
 fast-glob.workspace = true
 http.workspace = true
+http-body.workspace = true
+jwt-compact = { workspace = true, features = ["clock", "rsa", "ed25519-compact", "p256"] }
 log = { workspace = true, features = ["kv"] }
-mcp = { version = "0.1.0", path = "../mcp" }
+mcp.workspace = true
+reqwest = { workspace = true, features = ["rustls-tls"] }
 serde.workspace = true
+serde_json.workspace = true
 tokio = { workspace = true, features = ["signal"] }
+tower.workspace = true
 tower-http = { workspace = true, features = ["cors"] }
 url.workspace = true
 
