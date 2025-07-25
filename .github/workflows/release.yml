@@ -1,0 +1,297 @@
+name: Nexus Release
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  # Allow login to via OIDC
+  id-token: write
+  # Allow creating GitHub releases
+  contents: write
+  # Allow packages write for Docker
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  DEPOT_PROJECT: lc6t0h7bhh
+  RUSTC_WRAPPER: sccache
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Extract version from git tag for releases
+  prepare:
+    runs-on: depot-ubuntu-24.04-small
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_release: ${{ steps.version.outputs.is_release }}
+    steps:
+      - name: Extract version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION="${{ github.ref_name }}"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "version=dev" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Run existing test workflow for quality gate
+  test:
+    uses: ./.github/workflows/test.yml
+
+  # Build release binaries for all platforms
+  build-binaries:
+    needs: [prepare]
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - {
+              "target": "x86_64-unknown-linux-musl",
+              "runner": "depot-ubuntu-24.04-8",
+              "name": "linux-x86_64",
+            }
+          - {
+              "target": "aarch64-unknown-linux-musl",
+              "runner": "depot-ubuntu-24.04-arm-8",
+              "name": "linux-aarch64",
+            }
+          - {
+              "target": "x86_64-apple-darwin",
+              "runner": "depot-macos-latest",
+              "name": "macos-x86_64",
+            }
+          - {
+              "target": "aarch64-apple-darwin",
+              "runner": "depot-macos-latest",
+              "name": "macos-aarch64",
+            }
+          - {
+              "target": "x86_64-pc-windows-msvc",
+              "runner": "depot-windows-2022-16",
+              "name": "windows-x86_64",
+            }
+          - {
+              "target": "aarch64-pc-windows-msvc",
+              "runner": "depot-windows-2022-16",
+              "name": "windows-aarch64",
+            }
+    runs-on: ${{ matrix.platform.runner }}
+    steps:
+      - name: Get sources
+        uses: actions/checkout@v4
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+
+      - name: Install Rust
+        uses: ./.github/actions/install-rust
+        with:
+          target: ${{ matrix.platform.target }}
+
+      - name: Cache musl-tools
+        if: ${{ contains(matrix.platform.target, 'linux') }}
+        id: cache-musl
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/bin/musl-g++
+            /usr/local/bin/aarch64-linux-musl-g++
+          key: ${{ runner.os }}-musl-tools-v1
+
+      - name: Install musl-tools
+        if: ${{ contains(matrix.platform.target, 'linux') && steps.cache-musl.outputs.cache-hit != 'true' }}
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install musl musl-tools
+          sudo ln -s /bin/g++ /usr/local/bin/musl-g++
+          sudo ln -s /bin/g++ /usr/local/bin/aarch64-linux-musl-g++
+
+      - if: runner.os == 'Windows'
+        uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1
+
+      - name: Build release binary
+        shell: bash
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: |
+          echo "Building nexus for target: ${{ matrix.platform.target }}"
+          cargo build --release --bin nexus --target ${{ matrix.platform.target }} --locked
+
+          # Verify the binary was created
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            if [[ ! -f "target/${{ matrix.platform.target }}/release/nexus.exe" ]]; then
+              echo "Error: Binary not found at target/${{ matrix.platform.target }}/release/nexus.exe"
+              exit 1
+            fi
+          else
+            if [[ ! -f "target/${{ matrix.platform.target }}/release/nexus" ]]; then
+              echo "Error: Binary not found at target/${{ matrix.platform.target }}/release/nexus"
+              exit 1
+            fi
+          fi
+          echo "Binary build completed successfully"
+
+      - name: Prepare binary for upload
+        shell: bash
+        run: |
+          mkdir -p release
+
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            BINARY_NAME="nexus-${{ needs.prepare.outputs.version }}-${{ matrix.platform.name }}.exe"
+            cp "target/${{ matrix.platform.target }}/release/nexus.exe" "release/$BINARY_NAME"
+
+            # Verify Windows binary
+            if [[ ! -f "release/$BINARY_NAME" ]]; then
+              echo "Error: Failed to copy Windows binary"
+              exit 1
+            fi
+            echo "Windows binary prepared: $BINARY_NAME"
+          else
+            BINARY_NAME="nexus-${{ needs.prepare.outputs.version }}-${{ matrix.platform.name }}"
+            cp "target/${{ matrix.platform.target }}/release/nexus" "release/$BINARY_NAME"
+            chmod +x "release/$BINARY_NAME"
+
+            # Verify Unix binary
+            if [[ ! -f "release/$BINARY_NAME" ]] || [[ ! -x "release/$BINARY_NAME" ]]; then
+              echo "Error: Failed to copy or set executable permission for Unix binary"
+              exit 1
+            fi
+            echo "Unix binary prepared: $BINARY_NAME"
+          fi
+
+          # Show file info
+          ls -la release/
+
+      - name: Upload binary artifact
+        if: needs.prepare.outputs.is_release == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-${{ needs.prepare.outputs.version }}-${{ matrix.platform.name }}
+          path: release/nexus-${{ needs.prepare.outputs.version }}-${{ matrix.platform.name }}*
+
+  # Build Docker image for releases
+  docker-release:
+    needs: [prepare, test, build-binaries]
+    runs-on: depot-ubuntu-24.04-8
+    permissions:
+      packages: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Get sources
+        uses: actions/checkout@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to Docker Hub
+        if: secrets.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push versioned Docker image
+        uses: depot/build-push-action@2583627a84956d07561420dcc1d0eb1f2af3fac0 # v1
+        with:
+          project: ${{ env.DEPOT_PROJECT }}
+          token: ${{ secrets.DEPOT_TOKEN }}
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: |
+            ghcr.io/grafbase/nexus:${{ needs.prepare.outputs.version }}
+          file: ./Dockerfile
+
+  # Create GitHub release
+  github-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [prepare, test, build-binaries, docker-release]
+    runs-on: depot-ubuntu-24.04-small
+    steps:
+      - name: Get sources
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          mkdir -p release-files
+
+          # Copy all artifacts
+          if [[ -d "release-artifacts" ]]; then
+            find release-artifacts -type f -exec cp {} release-files/ \;
+          else
+            echo "Warning: No release-artifacts directory found"
+          fi
+
+          echo "Release files:"
+          ls -la release-files/
+
+          # Verify we have at least some binaries
+          BINARY_COUNT=$(find release-files -name "nexus-*" | wc -l)
+          if [[ $BINARY_COUNT -eq 0 ]]; then
+            echo "Error: No nexus binaries found in release artifacts"
+            exit 1
+          fi
+          echo "Found $BINARY_COUNT binary artifacts"
+
+          # Generate checksums for all release files
+          cd release-files
+          if [[ -n "$(ls nexus-* 2>/dev/null)" ]]; then
+            for file in nexus-*; do
+              if [[ -f "$file" ]]; then
+                sha256sum "$file" >> checksums.txt
+              fi
+            done
+            echo "Generated checksums:"
+            cat checksums.txt
+          else
+            echo "Warning: No nexus binaries found for checksum generation"
+          fi
+
+      - name: Check for changelog
+        id: changelog
+        shell: bash
+        run: |
+          if [[ -f "changelog/${{ needs.prepare.outputs.version }}.md" ]]; then
+            echo "changelog_exists=true" >> $GITHUB_OUTPUT
+            echo "changelog_path=changelog/${{ needs.prepare.outputs.version }}.md" >> $GITHUB_OUTPUT
+          else
+            echo "changelog_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.version }}
+          name: Nexus ${{ needs.prepare.outputs.version }}
+          draft: false
+          prerelease: ${{ contains(github.ref, 'beta') || contains(github.ref, 'alpha') || contains(github.ref, 'rc') }}
+          files: release-files/*
+          body_path: ${{ steps.changelog.outputs.changelog_exists == 'true' && steps.changelog.outputs.changelog_path || '' }}
+          body: |
+            ## Nexus ${{ needs.prepare.outputs.version }}
+
+            Download the appropriate binary for your platform from the assets below.
+
+            **Docker:** `docker pull ghcr.io/grafbase/nexus:${{ needs.prepare.outputs.version }}`
+
+            See the commit history for detailed changes in this release.
