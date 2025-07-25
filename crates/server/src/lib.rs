@@ -4,19 +4,19 @@
 
 #![deny(missing_docs)]
 
+mod auth;
 mod cors;
 mod csrf;
 mod health;
-mod layer;
 mod well_known;
 
 use std::net::SocketAddr;
 
 use anyhow::anyhow;
+use auth::AuthLayer;
 use axum::{Router, routing::get};
 use axum_server::tls_rustls::RustlsConfig;
 use config::Config;
-use layer::auth::AuthLayer;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
