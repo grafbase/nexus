@@ -9,6 +9,8 @@ use http::{header::AUTHORIZATION, request::Parts};
 use jwt_compact::{Algorithm, AlgorithmExt, TimeOptions, UntrustedToken, jwk::JsonWebKey};
 use url::Url;
 
+const BEARER_TOKEN_LENGTH: usize = 6;
+
 pub struct JwtAuth {
     config: OauthConfig,
     jwks_cache: JwksCache,
@@ -37,11 +39,11 @@ impl JwtAuth {
 
         // RFC 7235: authentication scheme is case-insensitive
         // Check if it starts with "bearer" (case-insensitive) followed by space
-        if token_str.len() >= 7
-            && token_str[..6].eq_ignore_ascii_case("bearer")
-            && token_str.chars().nth(6) == Some(' ')
+        if token_str.len() > BEARER_TOKEN_LENGTH
+            && token_str[..BEARER_TOKEN_LENGTH].eq_ignore_ascii_case("bearer")
+            && token_str.chars().nth(BEARER_TOKEN_LENGTH) == Some(' ')
         {
-            let token_str = &token_str[7..]; // Skip "Bearer " (case-insensitive)
+            let token_str = &token_str[BEARER_TOKEN_LENGTH + 1..]; // Skip "Bearer " (case-insensitive)
 
             if token_str.is_empty() {
                 return Err(AuthError::InvalidToken("missing token"));

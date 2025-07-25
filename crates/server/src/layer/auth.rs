@@ -14,7 +14,7 @@ use std::{
 use axum::body::Body;
 use config::OauthConfig;
 use error::AuthError;
-use http::{Request, Response, StatusCode};
+use http::{HeaderValue, Request, Response, StatusCode};
 use jwt::JwtAuth;
 use serde::Serialize;
 
@@ -111,6 +111,15 @@ where
                     let metadata_endpoint = layer.jwt.metadata_endpoint();
                     let header_value = format!("Bearer resource_metadata=\"{metadata_endpoint}\"");
 
+                    // Use HeaderValue for proper validation and to prevent header injection
+                    let www_authenticate_value = match HeaderValue::from_str(&header_value) {
+                        Ok(value) => value,
+                        Err(_) => {
+                            // If header value is invalid, use a safe fallback
+                            HeaderValue::from_static("Bearer")
+                        }
+                    };
+
                     let (status_code, error_response) = match auth_error {
                         AuthError::Unauthorized => (StatusCode::UNAUTHORIZED, ErrorResponse::new("unauthorized")),
                         AuthError::Internal => (
@@ -125,7 +134,7 @@ where
 
                     let response = Response::builder()
                         .status(status_code)
-                        .header("WWW-Authenticate", &header_value)
+                        .header("WWW-Authenticate", www_authenticate_value)
                         .header("Content-Type", "application/json")
                         .body(Body::from(error_response.to_json()))
                         .unwrap();

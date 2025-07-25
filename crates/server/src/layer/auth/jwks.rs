@@ -72,10 +72,16 @@ impl JwksCache {
             .get(self.url.clone())
             .send()
             .await
-            .map_err(|_| AuthError::Internal)?
+            .map_err(|e| {
+                log::debug!("failed to fetch JWKS: {e}");
+                AuthError::Internal
+            })?
             .json()
             .await
-            .map_err(|_| AuthError::Internal)?;
+            .map_err(|e| {
+                log::debug!("failed to fetch JWKS: {e}");
+                AuthError::Internal
+            })?;
 
         {
             let mut cache = self.jwks.write().await;
