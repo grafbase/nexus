@@ -10,6 +10,18 @@ listen_address = "0.0.0.0:3000"
 enabled = true
 path = "/health"
 
+# OAuth2 configuration (optional)
+# Uncomment and configure to enable JWT authentication
+# [server.oauth]
+# url = "https://your-oauth-provider.com/.well-known/jwks.json"
+# poll_interval = "5m"
+# expected_issuer = "https://your-oauth-provider.com"
+# expected_audience = "your-service-audience"
+#
+# [server.oauth.protected_resource]
+# resource = "https://your-nexus-instance.com"
+# authorization_servers = ["https://your-oauth-provider.com"]
+
 [mcp]
 # Enable Model Context Protocol support
 enabled = true
