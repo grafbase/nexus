@@ -36,6 +36,7 @@ server.workspace = true
 tokio = { workspace = true, features = ["full"] }
 tokio-util.workspace = true
 toml.workspace = true
+uuid = { workspace = true, features = ["v4"] }
 
 [lints]
 workspace = true

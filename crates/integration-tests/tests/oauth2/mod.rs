@@ -1,6 +1,8 @@
+mod audience_validation;
 mod authorization;
 mod edge_cases;
 mod error_handling;
+mod issuer_validation;
 mod jwks_caching;
 mod mcp;
 mod metadata;
@@ -11,6 +13,7 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use indoc::indoc;
 use integration_tests::TestServer;
+use uuid::Uuid;
 
 /// Extension trait to add authorization helper methods to reqwest::RequestBuilder
 pub trait RequestBuilderExt {
@@ -59,7 +62,7 @@ pub fn create_test_jwt_unsigned(scopes: Option<&str>) -> String {
 
     let claims = TestJwtClaims {
         iss: "http://127.0.0.1:4444".to_string(),
-        aud: "http://127.0.0.1:8080".to_string(),
+        aud: "test-audience".to_string(),
         sub: "test-user".to_string(),
         exp: now + 3600, // Valid for 1 hour
         iat: now,
@@ -85,7 +88,7 @@ pub fn create_test_jwt_unsigned_with_scope_array(scopes: Option<Vec<&str>>) -> S
 
     let claims = TestJwtClaims {
         iss: "http://127.0.0.1:4444".to_string(),
-        aud: "http://127.0.0.1:8080".to_string(),
+        aud: "test-audience".to_string(),
         sub: "test-user".to_string(),
         exp: now + 3600, // Valid for 1 hour
         iat: now,
@@ -114,12 +117,36 @@ pub fn create_test_jwt_unsigned_with_both_scope_fields(
 
     let claims = TestJwtClaims {
         iss: "http://127.0.0.1:4444".to_string(),
-        aud: "http://127.0.0.1:8080".to_string(),
+        aud: "test-audience".to_string(),
         sub: "test-user".to_string(),
         exp: now + 3600, // Valid for 1 hour
         iat: now,
         scope: scope_string.map(|s| s.to_string()),
         scopes: scopes_array.map(|s| s.into_iter().map(String::from).collect()),
+    };
+
+    let header_b64 = general_purpose::URL_SAFE_NO_PAD.encode(header);
+    let claims_b64 = general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_string(&claims).unwrap());
+
+    format!("{header_b64}.{claims_b64}.") // No signature for unsigned
+}
+
+/// Helper to create a test JWT with custom audience (unsigned - for negative tests)
+pub fn create_test_jwt_unsigned_with_audience(audience: &str, scopes: Option<&str>) -> String {
+    use base64::{Engine as _, engine::general_purpose};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let header = r#"{"alg":"RS256","typ":"JWT"}"#;
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+    let claims = TestJwtClaims {
+        iss: "http://127.0.0.1:4444".to_string(),
+        aud: audience.to_string(),
+        sub: "test-user".to_string(),
+        exp: now + 3600, // Valid for 1 hour
+        iat: now,
+        scope: scopes.map(|s| s.to_string()),
+        scopes: None,
     };
 
     let header_b64 = general_purpose::URL_SAFE_NO_PAD.encode(header);
@@ -140,7 +167,7 @@ pub fn create_expired_jwt() -> String {
 
     let claims = TestJwtClaims {
         iss: "http://127.0.0.1:4444".to_string(),
-        aud: "http://127.0.0.1:8080".to_string(),
+        aud: "test-audience".to_string(),
         sub: "test-user".to_string(),
         exp: now - 3600, // Expired 1 hour ago
         iat: now - 7200, // Issued 2 hours ago
@@ -202,7 +229,7 @@ impl HydraClient {
         while retries > 0 {
             match self
                 .client
-                .get(format!("{}/.well-known/openid-configuration", self.public_url))
+                .get(format!("{}/.well-known/jwks.json", self.public_url))
                 .send()
                 .await
             {
@@ -221,7 +248,16 @@ impl HydraClient {
         client_id: &str,
         scopes: &str,
     ) -> Result<CreateClientResponse, Box<dyn std::error::Error>> {
-        let request_body = serde_json::json!({
+        self.create_client_with_audience(client_id, scopes, None).await
+    }
+
+    pub async fn create_client_with_audience(
+        &self,
+        client_id: &str,
+        scopes: &str,
+        audience: Option<&str>,
+    ) -> Result<CreateClientResponse, Box<dyn std::error::Error>> {
+        let mut request_body = serde_json::json!({
             "client_id": client_id,
             "client_secret": format!("{}-secret", client_id),
             "grant_types": ["client_credentials"],
@@ -229,6 +265,11 @@ impl HydraClient {
             "token_endpoint_auth_method": "client_secret_basic",
             "access_token_strategy": "jwt"
         });
+
+        // Add audience if specified
+        if let Some(aud) = audience {
+            request_body["audience"] = serde_json::json!([aud]);
+        }
 
         let response = self
             .client
@@ -251,12 +292,30 @@ impl HydraClient {
         client_secret: &str,
         scopes: &str,
     ) -> Result<TokenResponse, Box<dyn std::error::Error>> {
+        self.get_token_with_audience(client_id, client_secret, scopes, None)
+            .await
+    }
+
+    pub async fn get_token_with_audience(
+        &self,
+        client_id: &str,
+        client_secret: &str,
+        scopes: &str,
+        audience: Option<&str>,
+    ) -> Result<TokenResponse, Box<dyn std::error::Error>> {
+        let mut body = format!("grant_type=client_credentials&scope={scopes}");
+        if let Some(aud) = audience {
+            // Simple URL encoding for audience parameter
+            let encoded_aud = aud.replace(" ", "%20").replace("&", "%26").replace("=", "%3D");
+            body.push_str(&format!("&audience={encoded_aud}"));
+        }
+
         let response = self
             .client
             .post(format!("{}/oauth2/token", self.public_url))
             .basic_auth(client_id, Some(client_secret))
             .header("Content-Type", "application/x-www-form-urlencoded")
-            .body(format!("grant_type=client_credentials&scope={scopes}"))
+            .body(body)
             .send()
             .await?;
 
@@ -274,23 +333,42 @@ pub async fn setup_hydra_test(
     client_id: &str,
     scopes: &str,
 ) -> Result<(TestServer, String), Box<dyn std::error::Error>> {
+    setup_hydra_test_with_audience(client_id, scopes, None).await
+}
+
+/// Setup helper for Hydra-based tests using Hydra instance 1 with audience support
+pub async fn setup_hydra_test_with_audience(
+    client_id: &str,
+    scopes: &str,
+    audience: Option<&str>,
+) -> Result<(TestServer, String), Box<dyn std::error::Error>> {
     let hydra = HydraClient::new(4444, 4445);
 
     // Wait for Hydra to be ready
     hydra.wait_for_hydra().await?;
 
     // Create OAuth client with unique ID to avoid conflicts
-    let unique_client_id = format!("{}-{}", client_id, chrono::Utc::now().timestamp());
-    let client_response = hydra.create_client(&unique_client_id, scopes).await?;
+    let unique_client_id = format!("{client_id}-{}", Uuid::new_v4());
+    let client_response = hydra
+        .create_client_with_audience(&unique_client_id, scopes, audience)
+        .await?;
 
     // Get access token
     let token_response = hydra
-        .get_token(&client_response.client_id, &client_response.client_secret, scopes)
+        .get_token_with_audience(
+            &client_response.client_id,
+            &client_response.client_secret,
+            scopes,
+            audience,
+        )
         .await?;
 
-    // Setup Nexus server with OAuth pointing to Hydra
-    let config = oauth_config_basic();
-    let server = TestServer::builder().build(config).await;
+    let config = if let Some(aud) = audience {
+        oauth_config_with_audience(aud)
+    } else {
+        oauth_config_basic().to_string()
+    };
+    let server = TestServer::builder().build(&config).await;
 
     Ok((server, token_response.access_token))
 }
@@ -335,6 +413,7 @@ pub fn oauth_config_basic() -> &'static str {
         [server.oauth]
         url = "http://127.0.0.1:4444/.well-known/jwks.json"
         poll_interval = "5m"
+        expected_issuer = "http://127.0.0.1:4444"
 
         [server.oauth.protected_resource]
         resource = "http://127.0.0.1:8080"
@@ -346,11 +425,32 @@ pub fn oauth_config_basic() -> &'static str {
     "#}
 }
 
+pub fn oauth_config_with_audience(audience: &str) -> String {
+    format!(
+        r#"
+        [server.oauth]
+        url = "http://127.0.0.1:4444/.well-known/jwks.json"
+        poll_interval = "5m"
+        expected_issuer = "http://127.0.0.1:4444"
+        expected_audience = "{audience}"
+
+        [server.oauth.protected_resource]
+        resource = "http://127.0.0.1:8080"
+        authorization_servers = ["http://127.0.0.1:4444"]
+        scopes_supported = ["read", "write", "admin"]
+
+        [mcp]
+        enabled = true
+    "#
+    )
+}
+
 pub fn oauth_config_multiple_auth_servers() -> &'static str {
     indoc! {r#"
         [server.oauth]
         url = "http://127.0.0.1:4444/.well-known/jwks.json"
         poll_interval = "5m"
+        expected_issuer = "http://127.0.0.1:4444"
 
         [server.oauth.protected_resource]
         resource = "http://127.0.0.1:8080"
@@ -371,6 +471,7 @@ pub fn oauth_config_without_scopes() -> &'static str {
         [server.oauth]
         url = "http://127.0.0.1:4444/.well-known/jwks.json"
         poll_interval = "5m"
+        expected_issuer = "http://127.0.0.1:4444"
 
         [server.oauth.protected_resource]
         resource = "http://127.0.0.1:8080"
@@ -386,6 +487,7 @@ pub fn oauth_config_complex_scopes() -> &'static str {
         [server.oauth]
         url = "http://127.0.0.1:4444/.well-known/jwks.json"
         poll_interval = "30s"
+        expected_issuer = "http://127.0.0.1:4444"
 
         [server.oauth.protected_resource]
         resource = "https://api.example.com"

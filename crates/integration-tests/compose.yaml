@@ -46,7 +46,7 @@ services:
       SERVE_ADMIN_PORT: "4455"
     restart: unless-stopped
     depends_on:
-      - hydra-migrate
+      - hydra-2-migrate
     networks:
       - hydra-2
 

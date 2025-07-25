@@ -67,6 +67,10 @@ pub struct OauthConfig {
     /// Polling interval for JWKs updates.
     #[serde(default, deserialize_with = "deserialize_option_duration")]
     pub poll_interval: Option<Duration>,
+    /// Expected issuer (iss claim) for token validation.
+    pub expected_issuer: Option<String>,
+    /// Expected audience (aud claim) for token validation.
+    pub expected_audience: Option<String>,
     /// Protected resource configuration.
     pub protected_resource: ProtectedResourceConfig,
 }
@@ -897,6 +901,8 @@ mod tests {
                 poll_interval: Some(
                     300s,
                 ),
+                expected_issuer: None,
+                expected_audience: None,
                 protected_resource: ProtectedResourceConfig {
                     resource: Url {
                         scheme: "https",
@@ -975,6 +981,8 @@ mod tests {
                     fragment: None,
                 },
                 poll_interval: None,
+                expected_issuer: None,
+                expected_audience: None,
                 protected_resource: ProtectedResourceConfig {
                     resource: Url {
                         scheme: "https",
@@ -1009,6 +1017,95 @@ mod tests {
                         },
                     ],
                     scopes_supported: None,
+                },
+            },
+        )
+        "#);
+    }
+
+    #[test]
+    fn oauth_config_with_issuer_audience() {
+        let config = indoc! {r#"
+            [server.oauth]
+            url = "https://auth.example.com/.well-known/jwks.json"
+            poll_interval = "5m"
+            expected_issuer = "https://auth.example.com"
+            expected_audience = "my-app-client-id"
+
+            [server.oauth.protected_resource]
+            resource = "https://api.example.com"
+            authorization_servers = ["https://auth.example.com"]
+            scopes_supported = ["read", "write"]
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+
+        insta::assert_debug_snapshot!(&config.server.oauth, @r#"
+        Some(
+            OauthConfig {
+                url: Url {
+                    scheme: "https",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: Some(
+                        Domain(
+                            "auth.example.com",
+                        ),
+                    ),
+                    port: None,
+                    path: "/.well-known/jwks.json",
+                    query: None,
+                    fragment: None,
+                },
+                poll_interval: Some(
+                    300s,
+                ),
+                expected_issuer: Some(
+                    "https://auth.example.com",
+                ),
+                expected_audience: Some(
+                    "my-app-client-id",
+                ),
+                protected_resource: ProtectedResourceConfig {
+                    resource: Url {
+                        scheme: "https",
+                        cannot_be_a_base: false,
+                        username: "",
+                        password: None,
+                        host: Some(
+                            Domain(
+                                "api.example.com",
+                            ),
+                        ),
+                        port: None,
+                        path: "/",
+                        query: None,
+                        fragment: None,
+                    },
+                    authorization_servers: [
+                        Url {
+                            scheme: "https",
+                            cannot_be_a_base: false,
+                            username: "",
+                            password: None,
+                            host: Some(
+                                Domain(
+                                    "auth.example.com",
+                                ),
+                            ),
+                            port: None,
+                            path: "/",
+                            query: None,
+                            fragment: None,
+                        },
+                    ],
+                    scopes_supported: Some(
+                        [
+                            "read",
+                            "write",
+                        ],
+                    ),
                 },
             },
         )
@@ -1051,6 +1148,8 @@ mod tests {
                     fragment: None,
                 },
                 poll_interval: None,
+                expected_issuer: None,
+                expected_audience: None,
                 protected_resource: ProtectedResourceConfig {
                     resource: Url {
                         scheme: "https",
@@ -1174,6 +1273,8 @@ mod tests {
                 poll_interval: Some(
                     30s,
                 ),
+                expected_issuer: None,
+                expected_audience: None,
                 protected_resource: ProtectedResourceConfig {
                     resource: Url {
                         scheme: "https",
@@ -1276,6 +1377,8 @@ mod tests {
                     fragment: None,
                 },
                 poll_interval: None,
+                expected_issuer: None,
+                expected_audience: None,
                 protected_resource: ProtectedResourceConfig {
                     resource: Url {
                         scheme: "https",
@@ -1339,6 +1442,8 @@ mod tests {
                     fragment: None,
                 },
                 poll_interval: None,
+                expected_issuer: None,
+                expected_audience: None,
                 protected_resource: ProtectedResourceConfig {
                     resource: Url {
                         scheme: "https",

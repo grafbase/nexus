@@ -105,6 +105,14 @@ impl JwtAuth {
                     return false;
                 }
 
+                if !self.validate_issuer(&claims.custom) {
+                    return false;
+                }
+
+                if !self.validate_audience(&claims.custom) {
+                    return false;
+                }
+
                 self.validate_scopes(claims.custom.get_scopes())
             })
     }
@@ -120,6 +128,49 @@ impl JwtAuth {
         }
 
         scopes.iter().all(|scope| supported_scopes.contains(scope))
+    }
+
+    fn validate_issuer(&self, claims: &CustomClaims) -> bool {
+        let Some(expected_issuer) = &self.config.expected_issuer else {
+            // If no expected issuer is configured, skip validation
+            return true;
+        };
+
+        match claims.get_issuer() {
+            Some(issuer) if issuer == expected_issuer => {
+                log::debug!("Token issuer validation passed: {issuer}");
+
+                true
+            }
+            Some(issuer) => {
+                log::debug!("Token rejected: invalid issuer '{issuer}', expected '{expected_issuer}'");
+
+                false
+            }
+            None => {
+                log::debug!("Token rejected: missing issuer claim, expected '{expected_issuer}'");
+
+                false
+            }
+        }
+    }
+
+    fn validate_audience(&self, claims: &CustomClaims) -> bool {
+        let Some(expected_audience) = &self.config.expected_audience else {
+            // If no expected audience is configured, skip validation
+            return true;
+        };
+
+        if claims.has_audience(expected_audience) {
+            log::debug!("Token audience validation passed for: {expected_audience}");
+
+            true
+        } else {
+            let audiences = claims.get_audiences();
+            log::debug!("Token rejected: audience '{expected_audience}' not found in token audiences: {audiences:?}");
+
+            false
+        }
     }
 }
 

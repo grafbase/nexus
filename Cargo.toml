@@ -51,6 +51,7 @@ server = { path = "crates/server" }
 tantivy = "0.24.2"
 temp-env = "0.3.6"
 thiserror = "2.0.12"
+uuid = "1.17.0"
 
 tokio = { version = "1.46.1", default-features = false }
 tokio-util = "0.7"
