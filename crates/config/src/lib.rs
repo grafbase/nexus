@@ -83,8 +83,6 @@ pub struct ProtectedResourceConfig {
     pub resource: Url,
     /// List of authorization server URLs.
     pub authorization_servers: Vec<Url>,
-    /// Optional list of supported OAuth2 scopes.
-    pub scopes_supported: Option<Vec<String>>,
 }
 
 impl ProtectedResourceConfig {
@@ -875,7 +873,6 @@ mod tests {
             [server.oauth.protected_resource]
             resource = "https://api.example.com"
             authorization_servers = ["https://auth.example.com"]
-            scopes_supported = ["read", "write", "admin"]
         "#};
 
         let config: Config = toml::from_str(config).unwrap();
@@ -936,13 +933,6 @@ mod tests {
                             fragment: None,
                         },
                     ],
-                    scopes_supported: Some(
-                        [
-                            "read",
-                            "write",
-                            "admin",
-                        ],
-                    ),
                 },
             },
         )
@@ -1016,7 +1006,6 @@ mod tests {
                             fragment: None,
                         },
                     ],
-                    scopes_supported: None,
                 },
             },
         )
@@ -1035,7 +1024,6 @@ mod tests {
             [server.oauth.protected_resource]
             resource = "https://api.example.com"
             authorization_servers = ["https://auth.example.com"]
-            scopes_supported = ["read", "write"]
         "#};
 
         let config: Config = toml::from_str(config).unwrap();
@@ -1100,12 +1088,6 @@ mod tests {
                             fragment: None,
                         },
                     ],
-                    scopes_supported: Some(
-                        [
-                            "read",
-                            "write",
-                        ],
-                    ),
                 },
             },
         )
@@ -1213,7 +1195,6 @@ mod tests {
                             fragment: None,
                         },
                     ],
-                    scopes_supported: None,
                 },
             },
         )
@@ -1308,7 +1289,6 @@ mod tests {
                             fragment: None,
                         },
                     ],
-                    scopes_supported: None,
                 },
             },
         )
@@ -1343,152 +1323,5 @@ mod tests {
 
         let result: Result<Config, _> = toml::from_str(config);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn oauth_empty_authorization_servers() {
-        let config = indoc! {r#"
-            [server.oauth]
-            url = "https://auth.example.com/.well-known/jwks.json"
-
-            [server.oauth.protected_resource]
-            resource = "https://api.example.com"
-            authorization_servers = []
-        "#};
-
-        let config: Config = toml::from_str(config).unwrap();
-
-        insta::assert_debug_snapshot!(&config.server.oauth, @r#"
-        Some(
-            OauthConfig {
-                url: Url {
-                    scheme: "https",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: Some(
-                        Domain(
-                            "auth.example.com",
-                        ),
-                    ),
-                    port: None,
-                    path: "/.well-known/jwks.json",
-                    query: None,
-                    fragment: None,
-                },
-                poll_interval: None,
-                expected_issuer: None,
-                expected_audience: None,
-                protected_resource: ProtectedResourceConfig {
-                    resource: Url {
-                        scheme: "https",
-                        cannot_be_a_base: false,
-                        username: "",
-                        password: None,
-                        host: Some(
-                            Domain(
-                                "api.example.com",
-                            ),
-                        ),
-                        port: None,
-                        path: "/",
-                        query: None,
-                        fragment: None,
-                    },
-                    authorization_servers: [],
-                    scopes_supported: None,
-                },
-            },
-        )
-        "#);
-    }
-
-    #[test]
-    fn oauth_with_complex_scopes() {
-        let config = indoc! {r#"
-            [server.oauth]
-            url = "https://auth.example.com/.well-known/jwks.json"
-
-            [server.oauth.protected_resource]
-            resource = "https://api.example.com"
-            authorization_servers = ["https://auth.example.com"]
-            scopes_supported = [
-                "user:read",
-                "user:write",
-                "admin:all",
-                "repo:public",
-                "repo:private"
-            ]
-        "#};
-
-        let config: Config = toml::from_str(config).unwrap();
-
-        insta::assert_debug_snapshot!(&config.server.oauth, @r#"
-        Some(
-            OauthConfig {
-                url: Url {
-                    scheme: "https",
-                    cannot_be_a_base: false,
-                    username: "",
-                    password: None,
-                    host: Some(
-                        Domain(
-                            "auth.example.com",
-                        ),
-                    ),
-                    port: None,
-                    path: "/.well-known/jwks.json",
-                    query: None,
-                    fragment: None,
-                },
-                poll_interval: None,
-                expected_issuer: None,
-                expected_audience: None,
-                protected_resource: ProtectedResourceConfig {
-                    resource: Url {
-                        scheme: "https",
-                        cannot_be_a_base: false,
-                        username: "",
-                        password: None,
-                        host: Some(
-                            Domain(
-                                "api.example.com",
-                            ),
-                        ),
-                        port: None,
-                        path: "/",
-                        query: None,
-                        fragment: None,
-                    },
-                    authorization_servers: [
-                        Url {
-                            scheme: "https",
-                            cannot_be_a_base: false,
-                            username: "",
-                            password: None,
-                            host: Some(
-                                Domain(
-                                    "auth.example.com",
-                                ),
-                            ),
-                            port: None,
-                            path: "/",
-                            query: None,
-                            fragment: None,
-                        },
-                    ],
-                    scopes_supported: Some(
-                        [
-                            "user:read",
-                            "user:write",
-                            "admin:all",
-                            "repo:public",
-                            "repo:private",
-                        ],
-                    ),
-                },
-            },
-        )
-        "#);
     }
 }

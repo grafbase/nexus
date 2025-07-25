@@ -111,25 +111,8 @@ impl JwtAuth {
                     return false;
                 }
 
-                if !self.validate_audience(&claims.custom) {
-                    return false;
-                }
-
-                self.validate_scopes(claims.custom.get_scopes())
+                self.validate_audience(&claims.custom)
             })
-    }
-
-    fn validate_scopes(&self, scopes: Vec<String>) -> bool {
-        let Some(supported_scopes) = &self.config.protected_resource.scopes_supported else {
-            return true;
-        };
-
-        if scopes.is_empty() {
-            log::debug!("Token rejected: no scopes present but scopes are required");
-            return false;
-        }
-
-        scopes.iter().all(|scope| supported_scopes.contains(scope))
     }
 
     fn validate_issuer(&self, claims: &CustomClaims) -> bool {

@@ -6,7 +6,6 @@ mod issuer_validation;
 mod jwks_caching;
 mod mcp;
 mod metadata;
-mod scope_validation;
 mod token_validation;
 
 use std::{net::SocketAddr, sync::Arc, time::Duration};
@@ -68,61 +67,6 @@ pub fn create_test_jwt_unsigned(scopes: Option<&str>) -> String {
         iat: now,
         scope: scopes.map(|s| s.to_string()),
         scopes: None,
-    };
-
-    let header_b64 = general_purpose::URL_SAFE_NO_PAD.encode(header);
-    let claims_b64 = general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_string(&claims).unwrap());
-
-    format!("{header_b64}.{claims_b64}.") // No signature for unsigned
-}
-
-/// Helper to create a test JWT with scopes as an array (unsigned - for negative tests)
-pub fn create_test_jwt_unsigned_with_scope_array(scopes: Option<Vec<&str>>) -> String {
-    use base64::{Engine as _, engine::general_purpose};
-
-    let header = r#"{"alg":"none","typ":"JWT"}"#;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    let claims = TestJwtClaims {
-        iss: "http://127.0.0.1:4444".to_string(),
-        aud: "test-audience".to_string(),
-        sub: "test-user".to_string(),
-        exp: now + 3600, // Valid for 1 hour
-        iat: now,
-        scope: None,
-        scopes: scopes.map(|s| s.into_iter().map(String::from).collect()),
-    };
-
-    let header_b64 = general_purpose::URL_SAFE_NO_PAD.encode(header);
-    let claims_b64 = general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_string(&claims).unwrap());
-
-    format!("{header_b64}.{claims_b64}.") // No signature for unsigned
-}
-
-/// Helper to create a test JWT with both scope and scopes fields (unsigned - for testing precedence)
-pub fn create_test_jwt_unsigned_with_both_scope_fields(
-    scope_string: Option<&str>,
-    scopes_array: Option<Vec<&str>>,
-) -> String {
-    use base64::{Engine as _, engine::general_purpose};
-
-    let header = r#"{"alg":"none","typ":"JWT"}"#;
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    let claims = TestJwtClaims {
-        iss: "http://127.0.0.1:4444".to_string(),
-        aud: "test-audience".to_string(),
-        sub: "test-user".to_string(),
-        exp: now + 3600, // Valid for 1 hour
-        iat: now,
-        scope: scope_string.map(|s| s.to_string()),
-        scopes: scopes_array.map(|s| s.into_iter().map(String::from).collect()),
     };
 
     let header_b64 = general_purpose::URL_SAFE_NO_PAD.encode(header);
@@ -404,8 +348,6 @@ pub async fn setup_cross_provider_test(
 pub struct OAuthProtectedResourceMetadata {
     pub resource: String,
     pub authorization_servers: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scopes_supported: Option<Vec<String>>,
 }
 
 pub fn oauth_config_basic() -> &'static str {
@@ -418,7 +360,6 @@ pub fn oauth_config_basic() -> &'static str {
         [server.oauth.protected_resource]
         resource = "http://127.0.0.1:8080"
         authorization_servers = ["http://127.0.0.1:4444"]
-        scopes_supported = ["read", "write", "admin"]
 
         [mcp]
         enabled = true
@@ -437,7 +378,6 @@ pub fn oauth_config_with_audience(audience: &str) -> String {
         [server.oauth.protected_resource]
         resource = "http://127.0.0.1:8080"
         authorization_servers = ["http://127.0.0.1:4444"]
-        scopes_supported = ["read", "write", "admin"]
 
         [mcp]
         enabled = true
@@ -459,7 +399,6 @@ pub fn oauth_config_multiple_auth_servers() -> &'static str {
             "http://127.0.0.1:4454",
             "https://auth.example.com"
         ]
-        scopes_supported = ["read", "write", "admin"]
 
         [mcp]
         enabled = true
@@ -492,14 +431,7 @@ pub fn oauth_config_complex_scopes() -> &'static str {
         [server.oauth.protected_resource]
         resource = "https://api.example.com"
         authorization_servers = ["http://127.0.0.1:4444"]
-        scopes_supported = [
-            "user:read",
-            "user:write",
-            "admin:all",
-            "repo:public",
-            "repo:private",
-            "mcp:execute"
-        ]
+
 
         [mcp]
         enabled = true
@@ -588,7 +520,6 @@ pub fn oauth_config_with_jwks_url(jwks_url: &str, poll_interval: &str) -> String
         [server.oauth.protected_resource]
         resource = "http://127.0.0.1:8080"
         authorization_servers = ["http://127.0.0.1:4444"]
-        scopes_supported = ["read", "write", "admin"]
 
         [mcp]
         enabled = true
@@ -606,7 +537,6 @@ pub fn oauth_config_no_poll_interval(jwks_url: &str) -> String {
         [server.oauth.protected_resource]
         resource = "http://127.0.0.1:8080"
         authorization_servers = ["http://127.0.0.1:4444"]
-        scopes_supported = ["read", "write", "admin"]
 
         [mcp]
         enabled = true

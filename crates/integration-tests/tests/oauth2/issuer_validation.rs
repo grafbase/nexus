@@ -15,7 +15,6 @@ async fn no_issuer_audience_validation_when_not_configured() {
         [server.oauth.protected_resource]
         resource = "http://127.0.0.1:8080"
         authorization_servers = ["http://127.0.0.1:4444"]
-        scopes_supported = ["read", "write", "admin"]
 
         [mcp]
         enabled = true
@@ -56,7 +55,6 @@ async fn with_hydra_token() {
         [server.oauth.protected_resource]
         resource = "http://127.0.0.1:8080"
         authorization_servers = ["http://127.0.0.1:4444"]
-        scopes_supported = ["read", "write", "admin"]
 
         [mcp]
         enabled = true
@@ -94,7 +92,6 @@ async fn wrong_issuer_validation() {
         [server.oauth.protected_resource]
         resource = "http://127.0.0.1:8080"
         authorization_servers = ["http://127.0.0.1:4444"]
-        scopes_supported = ["read", "write", "admin"]
 
         [mcp]
         enabled = true

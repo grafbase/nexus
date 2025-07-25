@@ -20,11 +20,6 @@ async fn endpoint_basic() {
       "resource": "http://127.0.0.1:8080/",
       "authorization_servers": [
         "http://127.0.0.1:4444/"
-      ],
-      "scopes_supported": [
-        "read",
-        "write",
-        "admin"
       ]
     }
     "#);
@@ -47,11 +42,6 @@ async fn multiple_auth_servers() {
         "http://127.0.0.1:4444/",
         "http://127.0.0.1:4454/",
         "https://auth.example.com/"
-      ],
-      "scopes_supported": [
-        "read",
-        "write",
-        "admin"
       ]
     }
     "#);
@@ -92,14 +82,6 @@ async fn complex_scopes() {
       "resource": "https://api.example.com/",
       "authorization_servers": [
         "http://127.0.0.1:4444/"
-      ],
-      "scopes_supported": [
-        "user:read",
-        "user:write",
-        "admin:all",
-        "repo:public",
-        "repo:private",
-        "mcp:execute"
       ]
     }
     "#);
@@ -171,7 +153,6 @@ async fn endpoint_with_tls() {
         [server.oauth.protected_resource]
         resource = "https://127.0.0.1:8080"
         authorization_servers = ["https://127.0.0.1:4444"]
-        scopes_supported = ["read", "write"]
 
         [mcp]
         enabled = true
@@ -189,10 +170,6 @@ async fn endpoint_with_tls() {
       "resource": "https://127.0.0.1:8080/",
       "authorization_servers": [
         "https://127.0.0.1:4444/"
-      ],
-      "scopes_supported": [
-        "read",
-        "write"
       ]
     }
     "#);
