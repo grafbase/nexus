@@ -67,10 +67,6 @@ jobs:
               "target": "aarch64-apple-darwin",
               "runner": "depot-macos-latest",
             },
-            {
-              "target": "x86_64-pc-windows-msvc",
-              "runner": "depot-windows-2022-16",
-            },
           ]
     runs-on: ${{ matrix.platform.runner }}
     env:
@@ -123,9 +119,6 @@ jobs:
         uses: taiki-e/install-action@7fbb30f035445d55e5f819679e8e16009832db89 # v2.56.24
         with:
           tool: nextest
-
-      - if: runner.os == 'Windows'
-        uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1
 
       - name: Cargo check
         shell: bash
