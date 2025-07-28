@@ -97,14 +97,14 @@ jobs:
             # Install native musl tools for x86_64
             sudo apt-get install -y musl-tools
           elif [[ "${{ matrix.platform.target }}" == "aarch64-unknown-linux-musl" ]]; then
-            # Install cross-compilation tools for aarch64
-            sudo apt-get install -y gcc-aarch64-linux-gnu
+            # Install musl tools for native aarch64 compilation
+            sudo apt-get install -y gcc
 
-            # Download and install musl cross-compiler
+            # Download and install musl toolchain
             mkdir -p /tmp/musl-cross
             cd /tmp/musl-cross
 
-            # Download the aarch64 musl cross toolchain
+            # Download the aarch64 musl toolchain
             curl -L https://musl.cc/aarch64-linux-musl-cross.tgz | tar xz
 
             # Move to system location
@@ -124,6 +124,21 @@ jobs:
           RUSTFLAGS: "-D warnings"
         run: |
           echo "Building nexus for target: ${{ matrix.platform.target }}"
+
+          # For musl targets, set proper environment variables
+          if [[ "${{ matrix.platform.target }}" == "aarch64-unknown-linux-musl" ]]; then
+            export CC_aarch64_unknown_linux_musl="aarch64-linux-musl-gcc"
+            export AR_aarch64_unknown_linux_musl="aarch64-linux-musl-ar"
+            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER="aarch64-linux-musl-gcc"
+            # Disable sccache for musl builds to avoid toolchain issues
+            unset RUSTC_WRAPPER
+            # Work around zstd-sys trying to compile x86_64 assembly on aarch64
+            # This forces it to skip BMI2 optimizations which are x86_64 specific
+            export CARGO_CFG_TARGET_FEATURE=""
+            export CC="aarch64-linux-musl-gcc"
+            export AR="aarch64-linux-musl-ar"
+          fi
+
           cargo build --release --bin nexus --target ${{ matrix.platform.target }} --locked
 
           # Verify the binary was created
@@ -184,7 +199,7 @@ jobs:
   # Create GitHub release
   github-release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [prepare, test, build-binaries, docker-release]
+    needs: [prepare, test, build-binaries]
     runs-on: depot-ubuntu-24.04-small
     steps:
       - name: Get sources
