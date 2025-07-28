@@ -97,24 +97,36 @@ jobs:
           target: ${{ matrix.platform.target }}
           components: clippy, rustfmt
 
-      - name: Cache musl-tools
-        if: ${{ contains(matrix.platform.target, 'linux') }}
-        id: cache-musl
-        uses: actions/cache@v4
-        with:
-          path: |
-            /usr/local/bin/musl-g++
-            /usr/local/bin/aarch64-linux-musl-g++
-          key: ${{ runner.os }}-musl-tools-v1
-
       - name: Install musl-tools
-        if: ${{ contains(matrix.platform.target, 'linux') && steps.cache-musl.outputs.cache-hit != 'true' }}
+        if: ${{ contains(matrix.platform.target, 'linux') }}
         shell: bash
         run: |
-          sudo apt-get install musl musl-tools
-          # This seems like a horrible hack that might come back to bite, but lets see!
-          sudo ln -s /bin/g++ /usr/local/bin/musl-g++
-          sudo ln -s /bin/g++ /usr/local/bin/aarch64-linux-musl-g++
+          sudo apt-get update
+
+          if [[ "${{ matrix.platform.target }}" == "x86_64-unknown-linux-musl" ]]; then
+            # Install native musl tools for x86_64
+            sudo apt-get install -y musl-tools
+          elif [[ "${{ matrix.platform.target }}" == "aarch64-unknown-linux-musl" ]]; then
+            # Install cross-compilation tools for aarch64
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+
+            # Download and install musl cross-compiler
+            mkdir -p /tmp/musl-cross
+            cd /tmp/musl-cross
+
+            # Download the aarch64 musl cross toolchain
+            curl -L https://musl.cc/aarch64-linux-musl-cross.tgz | tar xz
+
+            # Move to system location
+            sudo mv aarch64-linux-musl-cross /opt/
+
+            # Add to PATH
+            echo "/opt/aarch64-linux-musl-cross/bin" >> $GITHUB_PATH
+            export PATH="/opt/aarch64-linux-musl-cross/bin:$PATH"
+
+            # Verify installation
+            which aarch64-linux-musl-gcc
+          fi
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@a416ddeedbd372e614cc1386e8b642692f66865e # v2.57.1
@@ -171,23 +183,12 @@ jobs:
           target: x86_64-unknown-linux-musl
           components: clippy, rustfmt
 
-      - name: Cache musl-tools
-        id: cache-musl
-        uses: actions/cache@v4
-        with:
-          path: |
-            /usr/local/bin/musl-g++
-            /usr/local/bin/aarch64-linux-musl-g++
-          key: ${{ runner.os }}-musl-tools-v1
-
       - name: Install musl-tools
-        if: steps.cache-musl.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          sudo apt-get install musl musl-tools
-          # This seems like a horrible hack that might come back to bite, but lets see!
-          sudo ln -s /bin/g++ /usr/local/bin/musl-g++
-          sudo ln -s /bin/g++ /usr/local/bin/aarch64-linux-musl-g++
+          sudo apt-get update
+          # Install native musl tools for x86_64 (integration tests only run on x86_64)
+          sudo apt-get install -y musl-tools
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@a416ddeedbd372e614cc1386e8b642692f66865e # v2.57.1
