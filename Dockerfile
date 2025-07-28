@@ -1,7 +1,8 @@
 FROM rust:1.88-bookworm AS chef
 
 COPY rust-toolchain.toml rust-toolchain.toml
-RUN cargo install --locked cargo-chef sccache
+RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash && \
+    cargo binstall --no-confirm cargo-chef cargo-zigbuild sccache
 ENV RUSTC_WRAPPER=sccache SCCACHE_DIR=/sccache
 
 WORKDIR /nexus
@@ -17,7 +18,7 @@ COPY --from=planner /nexus/recipe.json recipe.json
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
-    cargo chef cook --release --recipe-path recipe.json
+    cargo chef cook --release --recipe-path recipe.json --zigbuild
 
 COPY Cargo.lock Cargo.lock
 COPY Cargo.toml Cargo.toml
@@ -27,7 +28,7 @@ COPY ./nexus ./nexus
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
-    cargo build --release --bin nexus
+    cargo zigbuild --release --bin nexus
 
 #
 # === Final image ===
