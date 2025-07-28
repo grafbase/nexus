@@ -11,7 +11,7 @@ mod logger;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    let config = args.config();
+    let config = args.config()?;
 
     logger::init(&args);
     server::serve(serve_config(&args, config)).await?;

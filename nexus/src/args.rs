@@ -1,4 +1,4 @@
-use std::{fmt, io::IsTerminal, net::SocketAddr, path::PathBuf, str::FromStr};
+use std::{borrow::Cow, fmt, io::IsTerminal, net::SocketAddr, path::PathBuf, str::FromStr};
 
 use clap::{Parser, ValueEnum};
 use config::Config;
@@ -23,8 +23,14 @@ pub struct Args {
 }
 
 impl Args {
-    pub fn config(&self) -> Config {
-        Config::load(&self.config).unwrap_or_default()
+    pub fn config(&self) -> anyhow::Result<Config> {
+        let config = if self.config.exists() {
+            Config::load(&self.config)?
+        } else {
+            Config::default()
+        };
+
+        Ok(config)
     }
 }
 
@@ -83,7 +89,14 @@ pub(crate) enum LogLevel {
 
 impl LogLevel {
     pub fn env_filter(self) -> EnvFilter {
-        EnvFilter::from_str(self.as_ref()).expect("These all are valid env filters.")
+        let filter_str = match self {
+            LogLevel::Off => Cow::Borrowed("off"),
+            // For other levels, set the default to 'warn' for all crates,
+            // but use the selected level for workspace crates
+            level => Cow::Owned(format!("warn,nexus={level},server={level},mcp={level},config={level}")),
+        };
+
+        EnvFilter::from_str(&filter_str).expect("These all are valid env filters.")
     }
 }
 

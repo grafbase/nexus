@@ -9,7 +9,7 @@ mod tool;
 
 use std::{sync::Arc, time::Duration};
 
-use axum::{Router, http::StatusCode, routing};
+use axum::{Router, routing};
 use config::McpConfig;
 use rmcp::{
     model::ProtocolVersion,
@@ -22,7 +22,6 @@ pub(crate) const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V_2025_03_
 
 /// Creates an axum router for MCP.
 pub async fn router(config: &McpConfig) -> anyhow::Result<Router> {
-    log::info!("Creating MCP router for path: {}", config.path);
     let mcp_server = server::McpServer::new(config).await?;
 
     let service = StreamableHttpService::new(
@@ -34,18 +33,5 @@ pub async fn router(config: &McpConfig) -> anyhow::Result<Router> {
         },
     );
 
-    // Handler for OPTIONS requests
-    async fn handle_options() -> StatusCode {
-        log::info!("Handling OPTIONS request for MCP");
-        StatusCode::OK
-    }
-
-    // Use method routing to explicitly handle OPTIONS
-    Ok(Router::new().route(
-        &config.path,
-        routing::get_service(service.clone())
-            .post_service(service.clone())
-            .delete_service(service)
-            .options(handle_options),
-    ))
+    Ok(Router::new().route(&config.path, routing::any_service(service)))
 }
