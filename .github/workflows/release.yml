@@ -173,7 +173,7 @@ jobs:
   # Create GitHub release
   github-release:
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [prepare, test, build-binaries, docker-release]
+    needs: [prepare, test, build-binaries]
     runs-on: depot-ubuntu-24.04-small
     steps:
       - name: Get sources
