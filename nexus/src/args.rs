@@ -24,8 +24,8 @@ pub struct Args {
 }
 
 impl Args {
-    pub fn config(&self) -> anyhow::Result<Config> {
-        Config::load(&self.config)
+    pub fn config(&self) -> Config {
+        Config::load(&self.config).unwrap_or_default()
     }
 }
 

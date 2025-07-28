@@ -20,7 +20,7 @@ use serde::Deserialize;
 use url::Url;
 
 /// Main configuration structure for the Nexus application.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     /// HTTP server configuration settings.
