@@ -5,8 +5,7 @@ use config::Config;
 use logforth::filter::EnvFilter;
 
 #[derive(Debug, Parser)]
-#[command(name = "Grafbase Nexus", version)]
-/// Grafbase Nexus
+#[command(name = "Grafbase Nexus", version, long_about = concat!("Grafbase Nexus v", env!("CARGO_PKG_VERSION")))]
 pub struct Args {
     /// IP address on which the server will listen for incomming connections.
     /// Default: 127.0.0.1:6000
