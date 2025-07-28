@@ -267,7 +267,7 @@ jobs:
           pr_number: ${{ github.event.pull_request.number }}
 
   docker-main:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'workflow_call'
     needs: [check-rust-format, check-toml-format, unit-tests, integration-tests]
     runs-on: depot-ubuntu-24.04-8
     permissions:
