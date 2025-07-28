@@ -20,6 +20,7 @@ jobs:
           fetch-depth: 2
 
       - name: Check for version change and create tag
+        id: version_check
         run: |
           # Get current version
           CURRENT_VERSION=$(grep -E '^version = "[0-9]+\.[0-9]+\.[0-9]+"' nexus/Cargo.toml | cut -d'"' -f2)
@@ -44,9 +45,29 @@ jobs:
               git push origin "$CURRENT_VERSION"
 
               echo "Created tag $CURRENT_VERSION"
+              echo "should_release=true" >> $GITHUB_OUTPUT
+              echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
             else
               echo "Tag $CURRENT_VERSION already exists"
+              echo "should_release=false" >> $GITHUB_OUTPUT
             fi
           else
             echo "No version change detected"
+            echo "should_release=false" >> $GITHUB_OUTPUT
           fi
+
+      - name: Trigger release workflow
+        if: steps.version_check.outputs.should_release == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'release.yml',
+              ref: 'main',
+              inputs: {
+                tag: '${{ steps.version_check.outputs.version }}'
+              }
+            });
+            console.log('Triggered release workflow for version ${{ steps.version_check.outputs.version }}');
