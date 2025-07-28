@@ -241,7 +241,7 @@ async fn jwt_with_future_issued_time() {
         + 3600; // 1 hour in the future
 
     let future_iat_claims = format!(
-        r#"{{"iss":"http://127.0.0.1:4444","aud":"http://127.0.0.1:8080","sub":"test-user","exp":{},"iat":{},"scope":"read write admin"}}"#,
+        r#"{{"iss":"http://127.0.0.1:4444","aud":"http://127.0.0.1:8080","sub":"test-user","exp":{},"iat":{}}}"#,
         future_time + 7200,
         future_time
     );
@@ -287,7 +287,7 @@ async fn jwt_with_unicode_characters() {
         .as_secs();
 
     let unicode_claims = format!(
-        r#"{{"iss":"http://127.0.0.1:4444","aud":"http://127.0.0.1:8080","sub":"用户-тест-🚀","exp":{},"iat":{},"scope":"read write admin"}}"#,
+        r#"{{"iss":"http://127.0.0.1:4444","aud":"http://127.0.0.1:8080","sub":"用户-тест-🚀","exp":{},"iat":{}}}"#,
         now + 3600,
         now
     );
@@ -388,7 +388,7 @@ async fn malformed_jwks_response() {
 
     let server = TestServer::builder().build(config).await;
 
-    let unsigned_token = super::create_test_jwt_unsigned(Some("read write admin"));
+    let unsigned_token = super::create_test_jwt_unsigned();
 
     let response = server
         .client
@@ -426,7 +426,7 @@ async fn oauth_jwks_network_failure() {
 
     let server = TestServer::builder().build(config).await;
 
-    let unsigned_token = super::create_test_jwt_unsigned(Some("read write admin"));
+    let unsigned_token = super::create_test_jwt_unsigned();
     let response = server
         .client
         .request(reqwest::Method::GET, "/mcp")
@@ -457,7 +457,7 @@ async fn jwt_with_missing_required_claims() {
 
     // Create JWT missing required claims (no exp, iss, aud)
     let header = r#"{"alg":"RS256","typ":"JWT"}"#;
-    let minimal_claims = r#"{"sub":"test-user","scope":"read write admin"}"#;
+    let minimal_claims = r#"{"sub":"test-user"}"#;
 
     let header_b64 = general_purpose::URL_SAFE_NO_PAD.encode(header);
     let payload_b64 = general_purpose::URL_SAFE_NO_PAD.encode(minimal_claims);
@@ -499,7 +499,7 @@ async fn jwt_with_wrong_audience() {
         .as_secs();
 
     let wrong_aud_claims = format!(
-        r#"{{"iss":"http://127.0.0.1:4444","aud":"http://wrong-audience.com","sub":"test-user","exp":{},"iat":{},"scope":"read write admin"}}"#,
+        r#"{{"iss":"http://127.0.0.1:4444","aud":"http://wrong-audience.com","sub":"test-user","exp":{},"iat":{}}}"#,
         now + 3600,
         now
     );
@@ -548,7 +548,7 @@ async fn jwt_with_nbf_future() {
     let future_time = now + 3600; // 1 hour in the future
 
     let future_nbf_claims = format!(
-        r#"{{"iss":"http://127.0.0.1:4444","aud":"http://127.0.0.1:8080","sub":"test-user","exp":{},"iat":{},"nbf":{},"scope":"read write admin"}}"#,
+        r#"{{"iss":"http://127.0.0.1:4444","aud":"http://127.0.0.1:8080","sub":"test-user","exp":{},"iat":{},"nbf":{}}}"#,
         now + 7200,  // exp 2 hours from now
         now,         // iat now
         future_time  // nbf 1 hour from now
@@ -619,9 +619,7 @@ async fn bearer_case_variations() {
 #[tokio::test]
 async fn case_insensitive_bearer_with_valid_token() {
     // Test that case-insensitive Bearer works with actual valid tokens (RFC 7235 compliance)
-    let (server, access_token) = super::setup_hydra_test("case-insensitive-test", "read write admin")
-        .await
-        .unwrap();
+    let (server, access_token) = super::setup_hydra_test().await.unwrap();
 
     // Test various case combinations with a valid token
     let test_cases = vec![

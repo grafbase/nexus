@@ -128,7 +128,7 @@ async fn comprehensive_error_descriptions() {
     "#);
 
     // Test case 7: Valid JWT structure but invalid signature (leads to Unauthorized)
-    let unsigned_token = super::create_test_jwt_unsigned(Some("read write admin"));
+    let unsigned_token = super::create_test_jwt_unsigned();
 
     let response = server
         .client
@@ -210,7 +210,7 @@ async fn internal_server_error_jwks_failure() {
     let server = TestServer::builder().build(config).await;
 
     // Create a valid JWT structure but the JWKS fetch will fail
-    let unsigned_token = super::create_test_jwt_unsigned(Some("read write admin"));
+    let unsigned_token = super::create_test_jwt_unsigned();
     let response = server
         .client
         .request(reqwest::Method::GET, "/mcp")

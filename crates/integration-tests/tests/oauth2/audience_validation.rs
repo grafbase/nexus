@@ -10,10 +10,9 @@ async fn with_hydra_token() {
     let server = TestServer::builder().build(&config).await;
 
     // Get a real signed token from Hydra with the expected audience
-    let (_, access_token) =
-        super::setup_hydra_test_with_audience("audience-validation-test", "read", Some(test_audience))
-            .await
-            .unwrap();
+    let (_, access_token) = super::setup_hydra_test_with_audience(Some(test_audience))
+        .await
+        .unwrap();
 
     let response = server
         .client
@@ -42,7 +41,7 @@ async fn wrong_audience_validation() {
     let server = TestServer::builder().build(&config).await;
 
     // Get a real signed token from Hydra with a different audience
-    let (_, access_token) = super::setup_hydra_test_with_audience("wrong-audience-test", "read", Some(token_audience))
+    let (_, access_token) = super::setup_hydra_test_with_audience(Some(token_audience))
         .await
         .unwrap();
 
@@ -67,7 +66,7 @@ async fn no_audience_claim_when_expected() {
     let server = TestServer::builder().build(&config).await;
 
     // Get a token without audience (using the original setup without audience)
-    let (_, access_token) = super::setup_hydra_test("no-audience-test", "read").await.unwrap();
+    let (_, access_token) = super::setup_hydra_test().await.unwrap();
 
     let response = server
         .client
@@ -96,10 +95,9 @@ async fn multiple_audiences_one_matches() {
     // For this test, we need to create a custom JWT with multiple audiences
     // Since Hydra might not easily support this, let's create a token with the correct audience
     // and verify it works (this simulates the case where one of multiple audiences matches)
-    let (_, access_token) =
-        super::setup_hydra_test_with_audience("multi-audience-test", "read", Some(expected_audience))
-            .await
-            .unwrap();
+    let (_, access_token) = super::setup_hydra_test_with_audience(Some(expected_audience))
+        .await
+        .unwrap();
 
     let response = server
         .client
@@ -126,10 +124,9 @@ async fn combined_issuer_and_audience_validation() {
     let server = TestServer::builder().build(&config).await;
 
     // Get a token with correct issuer and audience
-    let (_, access_token) =
-        super::setup_hydra_test_with_audience("combined-validation-test", "read", Some(expected_audience))
-            .await
-            .unwrap();
+    let (_, access_token) = super::setup_hydra_test_with_audience(Some(expected_audience))
+        .await
+        .unwrap();
 
     let response = server
         .client
@@ -157,7 +154,7 @@ async fn case_sensitivity() {
     let config = super::oauth_config_with_audience(expected_audience);
     let server = TestServer::builder().build(&config).await;
 
-    let (_, access_token) = super::setup_hydra_test_with_audience("case-sensitive-test", "read", Some(token_audience))
+    let (_, access_token) = super::setup_hydra_test_with_audience(Some(token_audience))
         .await
         .unwrap();
 
@@ -182,7 +179,7 @@ async fn with_unsigned_jwt_correct_audience() {
     let server = TestServer::builder().build(&config).await;
 
     // Create an unsigned JWT with the correct audience
-    let unsigned_token = super::create_test_jwt_unsigned_with_audience(expected_audience, Some("read"));
+    let unsigned_token = super::create_test_jwt_unsigned_with_audience(expected_audience);
 
     let response = server
         .client
@@ -210,7 +207,7 @@ async fn with_unsigned_jwt_wrong_audience() {
     let server = TestServer::builder().build(&config).await;
 
     // Create an unsigned JWT with wrong audience
-    let unsigned_token = super::create_test_jwt_unsigned_with_audience(token_audience, Some("read"));
+    let unsigned_token = super::create_test_jwt_unsigned_with_audience(token_audience);
 
     let response = server
         .client
@@ -232,7 +229,7 @@ async fn no_audience_validation_when_not_configured_with_unsigned_jwt() {
     let server = TestServer::builder().build(config).await;
 
     // Create an unsigned JWT with any audience
-    let unsigned_token = super::create_test_jwt_unsigned_with_audience("any-audience", Some("read"));
+    let unsigned_token = super::create_test_jwt_unsigned_with_audience("any-audience");
 
     let response = server
         .client

@@ -12,7 +12,6 @@ use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use indoc::indoc;
 use integration_tests::TestServer;
-use uuid::Uuid;
 
 /// Extension trait to add authorization helper methods to reqwest::RequestBuilder
 pub trait RequestBuilderExt {
@@ -43,14 +42,10 @@ pub struct TestJwtClaims {
     pub sub: String,
     pub exp: u64,
     pub iat: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scope: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scopes: Option<Vec<String>>,
 }
 
 /// Helper to create a basic test JWT (unsigned - for negative tests)
-pub fn create_test_jwt_unsigned(scopes: Option<&str>) -> String {
+pub fn create_test_jwt_unsigned() -> String {
     use base64::{Engine as _, engine::general_purpose};
 
     let header = r#"{"alg":"none","typ":"JWT"}"#;
@@ -65,18 +60,18 @@ pub fn create_test_jwt_unsigned(scopes: Option<&str>) -> String {
         sub: "test-user".to_string(),
         exp: now + 3600, // Valid for 1 hour
         iat: now,
-        scope: scopes.map(|s| s.to_string()),
-        scopes: None,
     };
 
-    let header_b64 = general_purpose::URL_SAFE_NO_PAD.encode(header);
-    let claims_b64 = general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_string(&claims).unwrap());
+    let claims_json = serde_json::to_string(&claims).unwrap();
 
-    format!("{header_b64}.{claims_b64}.") // No signature for unsigned
+    let header_b64 = general_purpose::URL_SAFE_NO_PAD.encode(header);
+    let claims_b64 = general_purpose::URL_SAFE_NO_PAD.encode(claims_json);
+
+    format!("{header_b64}.{claims_b64}.")
 }
 
-/// Helper to create a test JWT with custom audience (unsigned - for negative tests)
-pub fn create_test_jwt_unsigned_with_audience(audience: &str, scopes: Option<&str>) -> String {
+/// Helper to create a basic test JWT with custom audience (unsigned - for negative tests)
+pub fn create_test_jwt_unsigned_with_audience(audience: &str) -> String {
     use base64::{Engine as _, engine::general_purpose};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -89,14 +84,14 @@ pub fn create_test_jwt_unsigned_with_audience(audience: &str, scopes: Option<&st
         sub: "test-user".to_string(),
         exp: now + 3600, // Valid for 1 hour
         iat: now,
-        scope: scopes.map(|s| s.to_string()),
-        scopes: None,
     };
 
-    let header_b64 = general_purpose::URL_SAFE_NO_PAD.encode(header);
-    let claims_b64 = general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_string(&claims).unwrap());
+    let claims_json = serde_json::to_string(&claims).unwrap();
 
-    format!("{header_b64}.{claims_b64}.") // No signature for unsigned
+    let header_b64 = general_purpose::URL_SAFE_NO_PAD.encode(header);
+    let claims_b64 = general_purpose::URL_SAFE_NO_PAD.encode(claims_json);
+
+    format!("{header_b64}.{claims_b64}.")
 }
 
 /// Helper to create an expired JWT
@@ -115,8 +110,6 @@ pub fn create_expired_jwt() -> String {
         sub: "test-user".to_string(),
         exp: now - 3600, // Expired 1 hour ago
         iat: now - 7200, // Issued 2 hours ago
-        scope: Some("read write".to_string()),
-        scopes: None,
     };
 
     let header_b64 = general_purpose::URL_SAFE_NO_PAD.encode(header);
@@ -126,32 +119,8 @@ pub fn create_expired_jwt() -> String {
 }
 
 pub struct HydraClient {
-    pub admin_url: String,
     pub public_url: String,
     pub client: reqwest::Client,
-}
-
-#[derive(Debug, serde::Serialize)]
-pub struct CreateClientRequest {
-    pub client_id: String,
-    pub client_secret: String,
-    pub grant_types: Vec<String>,
-    pub scope: String,
-    pub token_endpoint_auth_method: String,
-}
-
-#[derive(Debug, serde::Deserialize)]
-pub struct CreateClientResponse {
-    pub client_id: String,
-    pub client_secret: String,
-}
-
-#[derive(Debug, serde::Serialize)]
-pub struct TokenRequest {
-    pub grant_type: String,
-    pub client_id: String,
-    pub client_secret: String,
-    pub scope: String,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -160,10 +129,9 @@ pub struct TokenResponse {
 }
 
 impl HydraClient {
-    pub fn new(hydra_public_port: u16, hydra_admin_port: u16) -> Self {
+    pub fn new(public_port: u16, _admin_port: u16) -> Self {
         Self {
-            admin_url: format!("http://127.0.0.1:{hydra_admin_port}"),
-            public_url: format!("http://127.0.0.1:{hydra_public_port}"),
+            public_url: format!("http://127.0.0.1:{public_port}"),
             client: reqwest::Client::new(),
         }
     }
@@ -174,6 +142,7 @@ impl HydraClient {
             match self
                 .client
                 .get(format!("{}/.well-known/jwks.json", self.public_url))
+                .timeout(Duration::from_secs(5))
                 .send()
                 .await
             {
@@ -187,124 +156,81 @@ impl HydraClient {
         Err("Hydra not ready after 30 seconds".into())
     }
 
-    pub async fn create_client(
-        &self,
-        client_id: &str,
-        scopes: &str,
-    ) -> Result<CreateClientResponse, Box<dyn std::error::Error>> {
-        self.create_client_with_audience(client_id, scopes, None).await
-    }
-
-    pub async fn create_client_with_audience(
-        &self,
-        client_id: &str,
-        scopes: &str,
-        audience: Option<&str>,
-    ) -> Result<CreateClientResponse, Box<dyn std::error::Error>> {
-        let mut request_body = serde_json::json!({
-            "client_id": client_id,
-            "client_secret": format!("{}-secret", client_id),
-            "grant_types": ["client_credentials"],
-            "scope": scopes,
-            "token_endpoint_auth_method": "client_secret_basic",
-            "access_token_strategy": "jwt"
-        });
-
-        // Add audience if specified
-        if let Some(aud) = audience {
-            request_body["audience"] = serde_json::json!([aud]);
-        }
-
-        let response = self
-            .client
-            .post(format!("{}/admin/clients", self.admin_url))
-            .json(&request_body)
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            let error_text = response.text().await?;
-            return Err(format!("Failed to create client: {error_text}").into());
-        }
-
-        Ok(response.json().await?)
-    }
-
     pub async fn get_token(
         &self,
         client_id: &str,
         client_secret: &str,
-        scopes: &str,
     ) -> Result<TokenResponse, Box<dyn std::error::Error>> {
-        self.get_token_with_audience(client_id, client_secret, scopes, None)
-            .await
+        self.get_token_with_audience(client_id, client_secret, None).await
     }
 
     pub async fn get_token_with_audience(
         &self,
         client_id: &str,
         client_secret: &str,
-        scopes: &str,
         audience: Option<&str>,
     ) -> Result<TokenResponse, Box<dyn std::error::Error>> {
-        let mut body = format!("grant_type=client_credentials&scope={scopes}");
+        let mut body = "grant_type=client_credentials".to_string();
         if let Some(aud) = audience {
             // Simple URL encoding for audience parameter
             let encoded_aud = aud.replace(" ", "%20").replace("&", "%26").replace("=", "%3D");
             body.push_str(&format!("&audience={encoded_aud}"));
         }
 
-        let response = self
-            .client
-            .post(format!("{}/oauth2/token", self.public_url))
-            .basic_auth(client_id, Some(client_secret))
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .body(body)
-            .send()
-            .await?;
+        // Retry logic for token requests to handle connection issues
+        let mut retries = 3;
+        let mut last_error = None;
 
-        if !response.status().is_success() {
-            let error_text = response.text().await?;
-            return Err(format!("Failed to get token: {error_text}").into());
+        while retries > 0 {
+            match self
+                .client
+                .post(format!("{}/oauth2/token", self.public_url))
+                .basic_auth(client_id, Some(client_secret))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .body(body.clone())
+                .send()
+                .await
+            {
+                Ok(response) => {
+                    if !response.status().is_success() {
+                        let error_text = response.text().await?;
+                        return Err(format!("Failed to get token: {error_text}").into());
+                    }
+                    return Ok(response.json().await?);
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    retries -= 1;
+                    if retries > 0 {
+                        // Small delay before retry
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                    }
+                }
+            }
         }
 
-        Ok(response.json().await?)
+        Err(format!("Failed to get token after 3 attempts: {last_error:?}").into())
     }
 }
 
 /// Setup helper for Hydra-based tests using Hydra instance 1
-pub async fn setup_hydra_test(
-    client_id: &str,
-    scopes: &str,
-) -> Result<(TestServer, String), Box<dyn std::error::Error>> {
-    setup_hydra_test_with_audience(client_id, scopes, None).await
+pub async fn setup_hydra_test() -> Result<(TestServer, String), Box<dyn std::error::Error>> {
+    setup_hydra_test_with_audience(None).await
 }
 
 /// Setup helper for Hydra-based tests using Hydra instance 1 with audience support
 pub async fn setup_hydra_test_with_audience(
-    client_id: &str,
-    scopes: &str,
     audience: Option<&str>,
 ) -> Result<(TestServer, String), Box<dyn std::error::Error>> {
     let hydra = HydraClient::new(4444, 4445);
 
-    // Wait for Hydra to be ready
     hydra.wait_for_hydra().await?;
 
-    // Create OAuth client with unique ID to avoid conflicts
-    let unique_client_id = format!("{client_id}-{}", Uuid::new_v4());
-    let client_response = hydra
-        .create_client_with_audience(&unique_client_id, scopes, audience)
-        .await?;
+    let client_id = "shared-test-client-universal";
+    let client_secret = format!("{client_id}-secret");
 
-    // Get access token
     let token_response = hydra
-        .get_token_with_audience(
-            &client_response.client_id,
-            &client_response.client_secret,
-            scopes,
-            audience,
-        )
+        .get_token_with_audience(client_id, &client_secret, audience)
         .await?;
 
     let config = if let Some(aud) = audience {
@@ -312,30 +238,26 @@ pub async fn setup_hydra_test_with_audience(
     } else {
         oauth_config_basic().to_string()
     };
+
     let server = TestServer::builder().build(&config).await;
 
     Ok((server, token_response.access_token))
 }
 
 /// Setup helper for cross-provider testing: token from Hydra 2, Nexus configured for Hydra 1
-pub async fn setup_cross_provider_test(
-    client_id: &str,
-    scopes: &str,
-) -> Result<(TestServer, String), Box<dyn std::error::Error>> {
+pub async fn setup_cross_provider_test() -> Result<(TestServer, String), Box<dyn std::error::Error>> {
     // Get token from Hydra 2 (port 4454)
     let hydra2 = HydraClient::new(4454, 4455);
 
     // Wait for Hydra 2 to be ready
     hydra2.wait_for_hydra().await?;
 
-    // Create OAuth client on Hydra 2 with unique ID to avoid conflicts
-    let unique_client_id = format!("{}-hydra2-{}", client_id, chrono::Utc::now().timestamp());
-    let client_response = hydra2.create_client(&unique_client_id, scopes).await?;
+    // Use universal client for Hydra 2
+    let client_id = "shared-hydra2-client-universal";
+    let client_secret = format!("{client_id}-secret");
 
-    // Get access token from Hydra 2
-    let token_response = hydra2
-        .get_token(&client_response.client_id, &client_response.client_secret, scopes)
-        .await?;
+    // Get access token from Hydra 2 using pre-created client
+    let token_response = hydra2.get_token(client_id, &client_secret).await?;
 
     // Setup Nexus server with OAuth pointing to Hydra 1 (this should reject tokens from Hydra 2)
     let config = oauth_config_basic(); // This points to Hydra 1
@@ -399,39 +321,6 @@ pub fn oauth_config_multiple_auth_servers() -> &'static str {
             "http://127.0.0.1:4454",
             "https://auth.example.com"
         ]
-
-        [mcp]
-        enabled = true
-    "#}
-}
-
-pub fn oauth_config_without_scopes() -> &'static str {
-    indoc! {r#"
-        [server.oauth]
-        url = "http://127.0.0.1:4444/.well-known/jwks.json"
-        poll_interval = "5m"
-        expected_issuer = "http://127.0.0.1:4444"
-
-        [server.oauth.protected_resource]
-        resource = "http://127.0.0.1:8080"
-        authorization_servers = ["http://127.0.0.1:4444"]
-
-        [mcp]
-        enabled = true
-    "#}
-}
-
-pub fn oauth_config_complex_scopes() -> &'static str {
-    indoc! {r#"
-        [server.oauth]
-        url = "http://127.0.0.1:4444/.well-known/jwks.json"
-        poll_interval = "30s"
-        expected_issuer = "http://127.0.0.1:4444"
-
-        [server.oauth.protected_resource]
-        resource = "https://api.example.com"
-        authorization_servers = ["http://127.0.0.1:4444"]
-
 
         [mcp]
         enabled = true

@@ -11,7 +11,7 @@ async fn mock_server_basic_functionality() {
 
     // Create a properly formatted but invalid JWT to trigger JWKS fetching
     // This JWT has valid structure but will fail signature validation
-    let invalid_but_formatted_jwt = super::create_test_jwt_unsigned(Some("read write"));
+    let invalid_but_formatted_jwt = super::create_test_jwt_unsigned();
 
     // Test the server configuration
     let config = oauth_config_with_jwks_url(&mock_server.jwks_url(), "5m");
@@ -43,7 +43,7 @@ async fn cache_miss_then_hit() {
     let server = TestServer::builder().build(&config).await;
 
     // Create a properly formatted but unsigned JWT to trigger JWKS fetching
-    let invalid_token = super::create_test_jwt_unsigned(Some("read write"));
+    let invalid_token = super::create_test_jwt_unsigned();
 
     // First request should be a cache miss (fetches JWKS)
     let response1 = server
@@ -103,7 +103,7 @@ async fn cache_expiration_and_refresh() {
     let config = oauth_config_with_jwks_url(&mock_server.jwks_url(), "1s");
     let server = TestServer::builder().build(&config).await;
 
-    let invalid_token = super::create_test_jwt_unsigned(Some("read write"));
+    let invalid_token = super::create_test_jwt_unsigned();
 
     // First request - cache miss
     let response1 = server
@@ -188,7 +188,7 @@ async fn cache_concurrent_requests() {
             let response = server_clone
                 .client
                 .request(reqwest::Method::POST, "/mcp")
-                .authorization(&super::create_test_jwt_unsigned(Some("read write")))
+                .authorization(&super::create_test_jwt_unsigned())
                 .mcp_json(r#"{"jsonrpc": "2.0", "method": "ping", "id": 1}"#)
                 .send()
                 .await
@@ -227,7 +227,7 @@ async fn cache_no_ttl_never_expires() {
     let config = oauth_config_no_poll_interval(&mock_server.jwks_url());
     let server = TestServer::builder().build(&config).await;
 
-    let invalid_token = super::create_test_jwt_unsigned(Some("read write"));
+    let invalid_token = super::create_test_jwt_unsigned();
 
     // First request - cache miss
     let response1 = server
@@ -269,7 +269,7 @@ async fn cache_no_ttl_never_expires() {
 #[tokio::test]
 async fn cache_with_authentication_flow() {
     // This test uses real Hydra tokens to test JWKS caching during actual authentication
-    let (server, access_token) = setup_hydra_test("jwks-cache-test", "read write").await.unwrap();
+    let (server, access_token) = setup_hydra_test().await.unwrap();
 
     // First authenticated request - may trigger JWKS fetch
     let response1 = server
@@ -317,7 +317,7 @@ async fn cache_different_ttl_configurations() {
         let config = oauth_config_with_jwks_url(&mock_server.jwks_url(), ttl_config);
         let server = TestServer::builder().build(&config).await;
 
-        let invalid_token = super::create_test_jwt_unsigned(Some("read write"));
+        let invalid_token = super::create_test_jwt_unsigned();
 
         // First request
         let response1 = server
@@ -391,7 +391,7 @@ async fn cache_handles_server_errors() {
     let response = server
         .client
         .request(reqwest::Method::POST, "/mcp")
-        .authorization(&super::create_test_jwt_unsigned(Some("read write")))
+        .authorization(&super::create_test_jwt_unsigned())
         .mcp_json(r#"{"jsonrpc": "2.0", "method": "ping", "id": 1}"#)
         .send()
         .await
@@ -413,7 +413,7 @@ async fn cache_refresh_race_condition() {
     let config = oauth_config_with_jwks_url(&mock_server.jwks_url(), "500ms");
     let server = TestServer::builder().build(&config).await;
 
-    let invalid_token = super::create_test_jwt_unsigned(Some("read write"));
+    let invalid_token = super::create_test_jwt_unsigned();
 
     // Initial request to populate cache
     let response = server
@@ -442,7 +442,7 @@ async fn cache_refresh_race_condition() {
             let response = server_clone
                 .client
                 .request(reqwest::Method::POST, "/mcp")
-                .authorization(&super::create_test_jwt_unsigned(Some("read write")))
+                .authorization(&super::create_test_jwt_unsigned())
                 .mcp_json(r#"{"jsonrpc": "2.0", "method": "ping", "id": 1}"#)
                 .send()
                 .await

@@ -24,7 +24,7 @@ async fn initialization_requires_oauth() {
 
 #[tokio::test]
 async fn initialization_with_valid_oauth() {
-    let (server, access_token) = super::setup_hydra_test("mcp-init-client", "read").await.unwrap();
+    let (server, access_token) = super::setup_hydra_test().await.unwrap();
 
     let response = server
         .client
@@ -44,7 +44,7 @@ async fn initialization_with_valid_oauth() {
 
 #[tokio::test]
 async fn tools_list_with_oauth() {
-    let (server, access_token) = super::setup_hydra_test("mcp-tools-client", "read").await.unwrap();
+    let (server, access_token) = super::setup_hydra_test().await.unwrap();
 
     let response = server
         .client
@@ -79,7 +79,7 @@ async fn tools_list_denied_without_oauth() {
 
 #[tokio::test]
 async fn tools_call_with_oauth() {
-    let (server, access_token) = super::setup_hydra_test("mcp-call-client", "read write").await.unwrap();
+    let (server, access_token) = super::setup_hydra_test().await.unwrap();
 
     let response = server
         .client
@@ -164,7 +164,7 @@ async fn options_request_with_oauth() {
 
     assert_eq!(response.status(), 401, "OPTIONS requires auth on MCP endpoint");
 
-    let (server, access_token) = super::setup_hydra_test("mcp-options-client", "read").await.unwrap();
+    let (server, access_token) = super::setup_hydra_test().await.unwrap();
 
     let auth_response = server
         .client
@@ -179,9 +179,7 @@ async fn options_request_with_oauth() {
 
 #[tokio::test]
 async fn different_http_methods_oauth() {
-    let (server, access_token) = super::setup_hydra_test("mcp-methods-client", "read write")
-        .await
-        .unwrap();
+    let (server, access_token) = super::setup_hydra_test().await.unwrap();
 
     let post_response = server
         .client
@@ -245,9 +243,7 @@ async fn error_responses_require_oauth() {
 
 #[tokio::test]
 async fn concurrent_requests_with_oauth() {
-    let (server, access_token) = super::setup_hydra_test("mcp-concurrent-client", "read write")
-        .await
-        .unwrap();
+    let (server, access_token) = super::setup_hydra_test().await.unwrap();
 
     let futures = (0..5).map(|i| {
         let server = &server;
@@ -282,13 +278,12 @@ async fn multiple_oauth_tokens() {
 
     let mut tokens = Vec::new();
 
-    for i in 0..3 {
-        let unique_client_id = format!("multi-token-client-{}-{}", i, chrono::Utc::now().timestamp());
-        let client_response = hydra.create_client(&unique_client_id, "read write").await.unwrap();
-        let token_response = hydra
-            .get_token(&client_response.client_id, &client_response.client_secret, "read write")
-            .await
-            .unwrap();
+    // Use universal client to generate multiple tokens
+    let client_id = "shared-test-client-universal";
+    let client_secret = format!("{client_id}-secret");
+
+    for _i in 0..3 {
+        let token_response = hydra.get_token(client_id, &client_secret).await.unwrap();
         tokens.push(token_response.access_token);
     }
 
@@ -309,7 +304,7 @@ async fn multiple_oauth_tokens() {
 
 #[tokio::test]
 async fn ping_method_with_oauth() {
-    let (server, access_token) = super::setup_hydra_test("mcp-ping-client", "read").await.unwrap();
+    let (server, access_token) = super::setup_hydra_test().await.unwrap();
 
     let response = server
         .client
@@ -328,7 +323,7 @@ async fn ping_method_with_oauth() {
 
 #[tokio::test]
 async fn notifications_with_oauth() {
-    let (server, access_token) = super::setup_hydra_test("mcp-notify-client", "read").await.unwrap();
+    let (server, access_token) = super::setup_hydra_test().await.unwrap();
 
     let response = server
         .client
@@ -350,7 +345,7 @@ async fn notifications_with_oauth() {
 
 #[tokio::test]
 async fn batch_requests_with_oauth() {
-    let (server, access_token) = super::setup_hydra_test("mcp-batch-client", "read").await.unwrap();
+    let (server, access_token) = super::setup_hydra_test().await.unwrap();
 
     let batch_request = json!([
         {"jsonrpc": "2.0", "method": "tools/list", "id": 1},

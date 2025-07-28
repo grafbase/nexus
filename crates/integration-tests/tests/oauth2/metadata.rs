@@ -48,8 +48,8 @@ async fn multiple_auth_servers() {
 }
 
 #[tokio::test]
-async fn without_scopes() {
-    let config = super::oauth_config_without_scopes();
+async fn basic_metadata() {
+    let config = super::oauth_config_basic();
     let server = TestServer::builder().build(config).await;
 
     let response = server.client.get("/.well-known/oauth-protected-resource").await;
@@ -60,26 +60,6 @@ async fn without_scopes() {
     insta::assert_json_snapshot!(metadata, @r#"
     {
       "resource": "http://127.0.0.1:8080/",
-      "authorization_servers": [
-        "http://127.0.0.1:4444/"
-      ]
-    }
-    "#);
-}
-
-#[tokio::test]
-async fn complex_scopes() {
-    let config = super::oauth_config_complex_scopes();
-    let server = TestServer::builder().build(config).await;
-
-    let response = server.client.get("/.well-known/oauth-protected-resource").await;
-    assert_eq!(response.status(), 200);
-
-    let metadata: OAuthProtectedResourceMetadata = response.json().await.unwrap();
-
-    insta::assert_json_snapshot!(metadata, @r#"
-    {
-      "resource": "https://api.example.com/",
       "authorization_servers": [
         "http://127.0.0.1:4444/"
       ]

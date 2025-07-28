@@ -6,8 +6,8 @@ services:
       - "4445:4445" # Admin port
     command: serve -c /etc/config/hydra/hydra.yml all --dev
     volumes:
-      - hydra-sqlite:/var/lib/sqlite:Z
-      - ./docker/hydra:/etc/config/hydra:Z
+      - hydra-sqlite:/var/lib/sqlite:rw
+      - ./docker/hydra:/etc/config/hydra:ro
     environment:
       DSN: "sqlite:///var/lib/sqlite/db.sqlite?_fk=true"
       URLS_SELF_ISSUER: "http://127.0.0.1:4444"
@@ -16,6 +16,7 @@ services:
       - hydra-migrate
     networks:
       - hydra
+    user: "0:0"
 
   hydra-migrate:
     image: oryd/hydra:v2.3.0
@@ -23,11 +24,24 @@ services:
       DSN: "sqlite:///var/lib/sqlite/db.sqlite?_fk=true"
     command: migrate -c /etc/config/hydra/hydra.yml sql -e --yes
     volumes:
-      - hydra-sqlite:/var/lib/sqlite:Z
-      - ./docker/hydra:/etc/config/hydra:Z
+      - hydra-sqlite:/var/lib/sqlite:rw
+      - ./docker/hydra:/etc/config/hydra:ro
     restart: on-failure
     networks:
       - hydra
+    user: "0:0"
+
+  hydra-init-clients:
+    image: alpine/curl:latest
+    entrypoint: ["/bin/sh"]
+    command: ["/etc/hydra/init/create-test-clients.sh"]
+    volumes:
+      - ./docker/hydra/init:/etc/hydra/init:ro
+    depends_on:
+      - hydra
+    networks:
+      - hydra
+    restart: on-failure
 
   # Adding a second hydra to act as a different OAuth2 provider
   hydra-2:
@@ -37,10 +51,10 @@ services:
       - "4455:4455" # Admin port
     command: serve -c /etc/config/hydra/hydra.yml all --dev
     volumes:
-      - hydra-2-sqlite:/var/lib/sqlite:Z
-      - ./docker/hydra:/etc/config/hydra:Z
+      - hydra-2-sqlite:/var/lib/sqlite:rw
+      - ./docker/hydra:/etc/config/hydra:ro
     environment:
-      DSN: "sqlite:///var/lib/sqlite/db.sqlite?_fk=true"
+      DSN: "sqlite:///var/lib/sqlite/db2.sqlite?_fk=true"
       URLS_SELF_ISSUER: "http://127.0.0.1:4454"
       SERVE_PUBLIC_PORT: "4454"
       SERVE_ADMIN_PORT: "4455"
@@ -49,18 +63,35 @@ services:
       - hydra-2-migrate
     networks:
       - hydra-2
+    user: "0:0"
 
   hydra-2-migrate:
     image: oryd/hydra:v2.3.0
     environment:
-      DSN: "sqlite:///var/lib/sqlite/db.sqlite?_fk=true"
+      DSN: "sqlite:///var/lib/sqlite/db2.sqlite?_fk=true"
     command: migrate -c /etc/config/hydra/hydra.yml sql -e --yes
     volumes:
-      - hydra-2-sqlite:/var/lib/sqlite:Z
-      - ./docker/hydra:/etc/config/hydra:Z
+      - hydra-2-sqlite:/var/lib/sqlite:rw
+      - ./docker/hydra:/etc/config/hydra:ro
     restart: on-failure
     networks:
       - hydra-2
+    user: "0:0"
+
+  hydra-2-init-clients:
+    image: alpine/curl:latest
+    entrypoint: ["/bin/sh"]
+    command: ["/etc/hydra/init/create-test-clients.sh"]
+    volumes:
+      - ./docker/hydra/init:/etc/hydra/init:ro
+    depends_on:
+      - hydra-2
+    networks:
+      - hydra-2
+    environment:
+      HYDRA_ADMIN_URL: "http://hydra-2:4455"
+      HYDRA_PUBLIC_URL: "http://hydra-2:4454"
+    restart: on-failure
 
 networks:
   hydra:

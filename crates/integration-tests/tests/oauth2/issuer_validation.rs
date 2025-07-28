@@ -23,7 +23,7 @@ async fn no_issuer_audience_validation_when_not_configured() {
     let server = TestServer::builder().build(config).await;
 
     // Use Hydra to get a valid signed token, even though issuer/audience might differ
-    let (_hydra_server, access_token) = super::setup_hydra_test("no-validation-test", "read").await.unwrap();
+    let (_hydra_server, access_token) = super::setup_hydra_test().await.unwrap();
 
     let response = server
         .client
@@ -63,7 +63,7 @@ async fn with_hydra_token() {
     let server = TestServer::builder().build(config).await;
 
     // Get a real signed token from Hydra
-    let (_, access_token) = super::setup_hydra_test("issuer-validation-test", "read").await.unwrap();
+    let (_, access_token) = super::setup_hydra_test().await.unwrap();
 
     let response = server
         .client
@@ -100,7 +100,7 @@ async fn wrong_issuer_validation() {
     let server = TestServer::builder().build(config).await;
 
     // Get a real signed token from Hydra (which will have issuer http://127.0.0.1:4444)
-    let (_, access_token) = super::setup_hydra_test("wrong-issuer-test", "read").await.unwrap();
+    let (_, access_token) = super::setup_hydra_test().await.unwrap();
 
     let response = server
         .client

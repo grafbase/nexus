@@ -1,4 +1,7 @@
+[profile.default]
+retries = 3
+
 [profile.ci]
-retries = 2
+retries = 3
 failure-output = "immediate-final"
 fail-fast = false

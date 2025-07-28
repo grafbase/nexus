@@ -19,8 +19,6 @@ fn create_jwt_with_unsupported_algorithm() -> String {
         sub: "test-user".to_string(),
         exp: now + 3600,
         iat: now,
-        scope: Some("read write admin".to_string()),
-        scopes: None,
     };
 
     let header_b64 = general_purpose::URL_SAFE_NO_PAD.encode(header);
@@ -168,7 +166,7 @@ async fn invalid_jwt_signature_denied() {
     let config = super::oauth_config_basic();
     let server = TestServer::builder().build(config).await;
 
-    let unsigned_token = super::create_test_jwt_unsigned(Some("read write"));
+    let unsigned_token = super::create_test_jwt_unsigned();
 
     let response = server
         .client
@@ -242,9 +240,7 @@ async fn cross_provider_token_rejected() {
     // are rejected when used with Nexus configured for a different provider (Hydra 1)
     // This is critical for security - prevents token reuse across different systems
 
-    let (server, access_token) = super::setup_cross_provider_test("test-cross-provider", "read write")
-        .await
-        .unwrap();
+    let (server, access_token) = super::setup_cross_provider_test().await.unwrap();
 
     // Try to use token from Hydra 2 with Nexus configured for Hydra 1
     let response = server
@@ -272,7 +268,7 @@ async fn cross_provider_token_rejected() {
 
 #[tokio::test]
 async fn valid_jwt_access() {
-    let (server, access_token) = super::setup_hydra_test("test-client", "read write").await.unwrap();
+    let (server, access_token) = super::setup_hydra_test().await.unwrap();
 
     // Test authenticated access to MCP endpoint
     let response = server
