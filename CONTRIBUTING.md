@@ -28,6 +28,11 @@ cargo build --bin nexus
 For cross-compilation to different targets (especially musl targets), we use `cargo-zigbuild` which provides better cross-compilation support:
 
 ```bash
+# Install Zig (required by cargo-zigbuild)
+# On macOS: brew install zig
+# On Linux: Download from https://ziglang.org/download/ or use your package manager
+# On GitHub Actions: We use goto-bus-stop/setup-zig@v2
+
 # Install cargo-binstall for faster tool installation (optional but recommended)
 curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 
