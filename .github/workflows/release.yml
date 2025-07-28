@@ -91,11 +91,13 @@ jobs:
         uses: cargo-bins/cargo-binstall@main
 
       - name: Install Zig
+        if: ${{ contains(matrix.platform.target, 'linux') }}
         uses: goto-bus-stop/setup-zig@v2
         with:
           version: 0.13.0
 
       - name: Install cargo-zigbuild
+        if: ${{ contains(matrix.platform.target, 'linux') }}
         shell: bash
         run: |
           cargo binstall cargo-zigbuild --no-confirm
@@ -106,7 +108,12 @@ jobs:
           RUSTFLAGS: "-D warnings"
         run: |
           echo "Building nexus for target: ${{ matrix.platform.target }}"
-          cargo zigbuild --release --bin nexus --target ${{ matrix.platform.target }} --locked
+
+          if [[ "${{ matrix.platform.target }}" == *"linux"* ]]; then
+            cargo zigbuild --release --bin nexus --target ${{ matrix.platform.target }} --locked
+          else
+            cargo build --release --bin nexus --target ${{ matrix.platform.target }} --locked
+          fi
 
           # Verify the binary was created
           if [[ ! -f "target/${{ matrix.platform.target }}/release/nexus" ]]; then

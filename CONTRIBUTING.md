@@ -25,13 +25,15 @@ cargo build --bin nexus
 
 ### Cross-Compilation
 
-For cross-compilation to different targets (especially musl targets), we use `cargo-zigbuild` which provides better cross-compilation support:
+For cross-compilation, we use different approaches depending on the target:
+
+#### Linux Targets (musl)
+
+For Linux musl targets, we use `cargo-zigbuild` which provides excellent cross-compilation support:
 
 ```bash
 # Install Zig (required by cargo-zigbuild)
-# On macOS: brew install zig
-# On Linux: Download from https://ziglang.org/download/ or use your package manager
-# On GitHub Actions: We use goto-bus-stop/setup-zig@v2
+# Download from https://ziglang.org/download/ or use your package manager
 
 # Install cargo-binstall for faster tool installation (optional but recommended)
 curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
@@ -41,12 +43,23 @@ cargo binstall cargo-zigbuild --no-confirm
 # Or compile from source if you prefer:
 # cargo install cargo-zigbuild --locked
 
-# Build for a specific target
+# Build for Linux targets
 cargo zigbuild --release --bin nexus --target x86_64-unknown-linux-musl
+cargo zigbuild --release --bin nexus --target aarch64-unknown-linux-musl
 ```
 
-Supported targets include:
-- `x86_64-unknown-linux-musl`
-- `aarch64-unknown-linux-musl`
-- `x86_64-apple-darwin`
-- `aarch64-apple-darwin`
+#### macOS Targets
+
+For macOS targets, use standard `cargo build` (no zigbuild needed):
+
+```bash
+# Build for macOS targets
+cargo build --release --bin nexus --target x86_64-apple-darwin
+cargo build --release --bin nexus --target aarch64-apple-darwin
+```
+
+Note: When building for a different macOS architecture than your host, you may need to install the appropriate Rust target:
+```bash
+rustup target add x86_64-apple-darwin    # If on Apple Silicon
+rustup target add aarch64-apple-darwin   # If on Intel Mac
+```
