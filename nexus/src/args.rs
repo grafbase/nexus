@@ -9,7 +9,7 @@ use logforth::filter::EnvFilter;
 /// Grafbase Nexus
 pub struct Args {
     /// IP address on which the server will listen for incomming connections.
-    /// Default: 127.0.0.1:6000
+    /// Default: 127.0.0.1:8000
     #[arg(short, long, env = "NEXUS_LISTEN_ADDRESS")]
     pub listen_address: Option<SocketAddr>,
     /// Path to the TOML configuration file
