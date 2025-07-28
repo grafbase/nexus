@@ -3,7 +3,6 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 use args::Args;
 use clap::Parser;
 use config::Config;
-use log;
 use server::ServeConfig;
 
 mod args;
@@ -17,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
     logger::init(&args);
 
     if let Err(e) = server::serve(serve_config(&args, config)).await {
-        log::error!("{}", e);
+        log::error!("{e}");
         std::process::exit(1);
     }
 
