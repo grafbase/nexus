@@ -83,7 +83,7 @@ async fn http_service(config: &HttpConfig) -> anyhow::Result<RunningService<Role
     match streamable_http_service(config).await {
         Ok(service) => Ok(service),
         Err(_) => {
-            log::warn!("streamable-http failed, trying SSE");
+            log::warn!("streamable-http failed for url ({}), trying SSE", config.url);
             sse_service(config).await
         }
     }

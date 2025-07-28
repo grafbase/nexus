@@ -3236,6 +3236,8 @@ dependencies = [
  "anyhow",
  "clap",
  "config",
+ "jiff",
+ "log",
  "logforth",
  "server",
  "tokio",
