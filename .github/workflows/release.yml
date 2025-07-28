@@ -74,16 +74,6 @@ jobs:
               "runner": "depot-macos-latest",
               "name": "macos-aarch64",
             }
-          - {
-              "target": "x86_64-pc-windows-msvc",
-              "runner": "depot-windows-2022-16",
-              "name": "windows-x86_64",
-            }
-          - {
-              "target": "aarch64-pc-windows-msvc",
-              "runner": "depot-windows-2022-16",
-              "name": "windows-aarch64",
-            }
     runs-on: ${{ matrix.platform.runner }}
     steps:
       - name: Get sources
@@ -116,9 +106,6 @@ jobs:
           sudo ln -s /bin/g++ /usr/local/bin/musl-g++
           sudo ln -s /bin/g++ /usr/local/bin/aarch64-linux-musl-g++
 
-      - if: runner.os == 'Windows'
-        uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1
-
       - name: Build release binary
         shell: bash
         env:
@@ -128,16 +115,9 @@ jobs:
           cargo build --release --bin nexus --target ${{ matrix.platform.target }} --locked
 
           # Verify the binary was created
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            if [[ ! -f "target/${{ matrix.platform.target }}/release/nexus.exe" ]]; then
-              echo "Error: Binary not found at target/${{ matrix.platform.target }}/release/nexus.exe"
-              exit 1
-            fi
-          else
-            if [[ ! -f "target/${{ matrix.platform.target }}/release/nexus" ]]; then
-              echo "Error: Binary not found at target/${{ matrix.platform.target }}/release/nexus"
-              exit 1
-            fi
+          if [[ ! -f "target/${{ matrix.platform.target }}/release/nexus" ]]; then
+            echo "Error: Binary not found at target/${{ matrix.platform.target }}/release/nexus"
+            exit 1
           fi
           echo "Binary build completed successfully"
 
@@ -146,28 +126,16 @@ jobs:
         run: |
           mkdir -p release
 
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            BINARY_NAME="nexus-${{ needs.prepare.outputs.version }}-${{ matrix.platform.name }}.exe"
-            cp "target/${{ matrix.platform.target }}/release/nexus.exe" "release/$BINARY_NAME"
+          BINARY_NAME="nexus-${{ needs.prepare.outputs.version }}-${{ matrix.platform.name }}"
+          cp "target/${{ matrix.platform.target }}/release/nexus" "release/$BINARY_NAME"
+          chmod +x "release/$BINARY_NAME"
 
-            # Verify Windows binary
-            if [[ ! -f "release/$BINARY_NAME" ]]; then
-              echo "Error: Failed to copy Windows binary"
-              exit 1
-            fi
-            echo "Windows binary prepared: $BINARY_NAME"
-          else
-            BINARY_NAME="nexus-${{ needs.prepare.outputs.version }}-${{ matrix.platform.name }}"
-            cp "target/${{ matrix.platform.target }}/release/nexus" "release/$BINARY_NAME"
-            chmod +x "release/$BINARY_NAME"
-
-            # Verify Unix binary
-            if [[ ! -f "release/$BINARY_NAME" ]] || [[ ! -x "release/$BINARY_NAME" ]]; then
-              echo "Error: Failed to copy or set executable permission for Unix binary"
-              exit 1
-            fi
-            echo "Unix binary prepared: $BINARY_NAME"
+          # Verify Unix binary
+          if [[ ! -f "release/$BINARY_NAME" ]] || [[ ! -x "release/$BINARY_NAME" ]]; then
+            echo "Error: Failed to copy or set executable permission for Unix binary"
+            exit 1
           fi
+          echo "Unix binary prepared: $BINARY_NAME"
 
           # Show file info
           ls -la release/
