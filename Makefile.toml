@@ -13,7 +13,7 @@ install_crate = { crate_name = "cargo-release", binary = "cargo", test_arg = [
 ], version = "0.24.10" }
 
 [tasks.bump]
-description = "Bumps the nexus package to the specified version"
+description = "Bumps the nexus package to the specified version (will trigger automatic release when merged to main)"
 dependencies = ["install-cargo-release"]
 script = '''
 VERSION=${@}

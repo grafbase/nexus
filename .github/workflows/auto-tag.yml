@@ -1,0 +1,52 @@
+name: Auto Tag Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "nexus/Cargo.toml"
+
+permissions:
+  contents: write
+
+jobs:
+  auto-tag:
+    runs-on: depot-ubuntu-24.04-small
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for version change and create tag
+        run: |
+          # Get current version
+          CURRENT_VERSION=$(grep -E '^version = "[0-9]+\.[0-9]+\.[0-9]+"' nexus/Cargo.toml | cut -d'"' -f2)
+
+          # Get previous version
+          git checkout HEAD~1
+          PREVIOUS_VERSION=$(grep -E '^version = "[0-9]+\.[0-9]+\.[0-9]+"' nexus/Cargo.toml | cut -d'"' -f2 || echo "0.0.0")
+          git checkout -
+
+          # Only proceed if version changed
+          if [[ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]]; then
+            echo "Version changed from $PREVIOUS_VERSION to $CURRENT_VERSION"
+
+            # Check if tag already exists
+            if ! git ls-remote --tags origin | grep -q "refs/tags/$CURRENT_VERSION"; then
+              # Configure git
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+
+              # Create and push tag
+              git tag -a "$CURRENT_VERSION" -m "Release $CURRENT_VERSION"
+              git push origin "$CURRENT_VERSION"
+
+              echo "Created tag $CURRENT_VERSION"
+            else
+              echo "Tag $CURRENT_VERSION already exists"
+            fi
+          else
+            echo "No version change detected"
+          fi
