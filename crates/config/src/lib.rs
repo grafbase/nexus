@@ -58,6 +58,13 @@ pub struct ServerConfig {
     pub oauth: Option<OauthConfig>,
 }
 
+impl ServerConfig {
+    /// Returns whether OAuth2 authentication is configured for this server.
+    pub fn uses_oauth(&self) -> bool {
+        self.oauth.is_some()
+    }
+}
+
 /// OAuth2 configuration for authentication.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -190,6 +197,10 @@ mod tests {
             mcp: McpConfig {
                 enabled: false,
                 path: "/mcp-path",
+                downstream_cache: McpDownstreamCacheConfig {
+                    max_capacity: 1000,
+                    idle_timeout: 600s,
+                },
                 servers: {},
             },
         }
@@ -220,6 +231,10 @@ mod tests {
             mcp: McpConfig {
                 enabled: true,
                 path: "/mcp",
+                downstream_cache: McpDownstreamCacheConfig {
+                    max_capacity: 1000,
+                    idle_timeout: 600s,
+                },
                 servers: {},
             },
         }
@@ -404,6 +419,10 @@ mod tests {
         McpConfig {
             enabled: true,
             path: "/custom-mcp",
+            downstream_cache: McpDownstreamCacheConfig {
+                max_capacity: 1000,
+                idle_timeout: 600s,
+            },
             servers: {
                 "another_stdio": Stdio {
                     cmd: [
@@ -855,6 +874,54 @@ mod tests {
                     auth: Some(
                         Token {
                             token: SecretBox<str>([REDACTED]),
+                        },
+                    ),
+                },
+            ),
+        }
+        "#);
+    }
+
+    #[test]
+    fn mcp_server_forward_auth() {
+        let config = indoc! {r#"
+            [mcp.servers.github_api]
+            protocol = "streamable-http"
+            url = "https://api.githubcopilot.com/mcp/"
+
+            [mcp.servers.github_api.auth]
+            type = "forward"
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+
+        insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
+        {
+            "github_api": Http(
+                HttpConfig {
+                    protocol: Some(
+                        StreamableHttp,
+                    ),
+                    url: Url {
+                        scheme: "https",
+                        cannot_be_a_base: false,
+                        username: "",
+                        password: None,
+                        host: Some(
+                            Domain(
+                                "api.githubcopilot.com",
+                            ),
+                        ),
+                        port: None,
+                        path: "/mcp/",
+                        query: None,
+                        fragment: None,
+                    },
+                    tls: None,
+                    message_url: None,
+                    auth: Some(
+                        Forward {
+                            type: Forward,
                         },
                     ),
                 },

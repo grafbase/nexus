@@ -2,6 +2,7 @@ mod audience_validation;
 mod authorization;
 mod edge_cases;
 mod error_handling;
+mod forwarding;
 mod issuer_validation;
 mod jwks_caching;
 mod mcp;

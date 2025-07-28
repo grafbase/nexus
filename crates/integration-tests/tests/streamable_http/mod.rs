@@ -26,10 +26,8 @@ async fn list_tools() {
       "tools": [
         {
           "name": "search",
-          "description": "Search for relevant tools. A list of matching tools with their\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\nname of the tool you want to execute, and defining the input\nparameters.\n",
+          "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "SearchParameters",
             "type": "object",
             "properties": {
               "keywords": {
@@ -50,10 +48,8 @@ async fn list_tools() {
         },
         {
           "name": "execute",
-          "description": "Executes a tool with the given parameters. Before using, you must call the\nsearch function to retrieve the tools you need for your task. If you do not\nknow how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name\nmust be a string, and the parameters must be a map of strings to JSON values.\n",
+          "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "ExecuteParameters",
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
@@ -196,7 +192,7 @@ async fn call_tool_wrong_server_prefix() {
         .execute_expect_error("mtah_service__adder", json!({ "a": 1, "b": 2 }))
         .await;
 
-    insta::assert_snapshot!(error.to_string(), @"Mcp error: -32601: tools/call. Did you mean: math_service__adder");
+    insta::assert_snapshot!(error.to_string(), @"Mcp error: -32601: tools/call");
 
     mcp_client.disconnect().await;
 }
@@ -281,10 +277,8 @@ async fn multiple_services_multiple_tools() {
       "tools": [
         {
           "name": "search",
-          "description": "Search for relevant tools. A list of matching tools with their\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\nname of the tool you want to execute, and defining the input\nparameters.\n",
+          "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "SearchParameters",
             "type": "object",
             "properties": {
               "keywords": {
@@ -305,10 +299,8 @@ async fn multiple_services_multiple_tools() {
         },
         {
           "name": "execute",
-          "description": "Executes a tool with the given parameters. Before using, you must call the\nsearch function to retrieve the tools you need for your task. If you do not\nknow how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name\nmust be a string, and the parameters must be a map of strings to JSON values.\n",
+          "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "ExecuteParameters",
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
@@ -362,7 +354,7 @@ async fn multiple_services_multiple_tools() {
 }
 
 #[tokio::test]
-async fn test_custom_mcp_path_with_tools() {
+async fn custom_mcp_path_with_tools() {
     let config = indoc! {r#"
         [mcp]
         enabled = true
@@ -385,10 +377,8 @@ async fn test_custom_mcp_path_with_tools() {
       "tools": [
         {
           "name": "search",
-          "description": "Search for relevant tools. A list of matching tools with their\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\nname of the tool you want to execute, and defining the input\nparameters.\n",
+          "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "SearchParameters",
             "type": "object",
             "properties": {
               "keywords": {
@@ -409,10 +399,8 @@ async fn test_custom_mcp_path_with_tools() {
         },
         {
           "name": "execute",
-          "description": "Executes a tool with the given parameters. Before using, you must call the\nsearch function to retrieve the tools you need for your task. If you do not\nknow how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name\nmust be a string, and the parameters must be a map of strings to JSON values.\n",
+          "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "ExecuteParameters",
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
@@ -486,10 +474,8 @@ async fn tools_with_tls() {
       "tools": [
         {
           "name": "search",
-          "description": "Search for relevant tools. A list of matching tools with their\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\nname of the tool you want to execute, and defining the input\nparameters.\n",
+          "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "SearchParameters",
             "type": "object",
             "properties": {
               "keywords": {
@@ -510,10 +496,8 @@ async fn tools_with_tls() {
         },
         {
           "name": "execute",
-          "description": "Executes a tool with the given parameters. Before using, you must call the\nsearch function to retrieve the tools you need for your task. If you do not\nknow how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name\nmust be a string, and the parameters must be a map of strings to JSON values.\n",
+          "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "ExecuteParameters",
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
@@ -583,10 +567,8 @@ async fn tls_downstream_service() {
       "tools": [
         {
           "name": "search",
-          "description": "Search for relevant tools. A list of matching tools with their\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\nname of the tool you want to execute, and defining the input\nparameters.\n",
+          "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "SearchParameters",
             "type": "object",
             "properties": {
               "keywords": {
@@ -607,10 +589,8 @@ async fn tls_downstream_service() {
         },
         {
           "name": "execute",
-          "description": "Executes a tool with the given parameters. Before using, you must call the\nsearch function to retrieve the tools you need for your task. If you do not\nknow how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name\nmust be a string, and the parameters must be a map of strings to JSON values.\n",
+          "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "ExecuteParameters",
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
@@ -678,26 +658,24 @@ async fn search_exact_matching() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "tool": {
-          "name": "math_service__adder",
-          "description": "Adds two numbers together",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "a": {
-                "type": "number",
-                "description": "First number to add"
-              },
-              "b": {
-                "type": "number",
-                "description": "Second number to add"
-              }
+        "name": "math_service__adder",
+        "description": "Adds two numbers together",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "number",
+              "description": "First number to add"
             },
-            "required": [
-              "a",
-              "b"
-            ]
-          }
+            "b": {
+              "type": "number",
+              "description": "Second number to add"
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ]
         },
         "score": 0.8630463
       }
@@ -728,35 +706,30 @@ async fn search_fuzzy_matching() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "tool": {
-          "name": "text_service__text_processor",
-          "description": "Processes text with various string manipulation operations like case conversion and reversal",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "text": {
-                "type": "string",
-                "description": "Input text to process"
-              },
-              "action": {
-                "type": "string",
-                "enum": [
-                  "uppercase",
-                  "lowercase",
-                  "reverse",
-                  "word_count"
-                ],
-                "description": "Action to perform on the text"
-              }
+        "name": "text_service__text_processor",
+        "description": "Processes text with various string manipulation operations like case conversion and reversal",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "description": "Input text to process"
             },
-            "required": [
-              "text",
-              "action"
-            ]
+            "action": {
+              "type": "string",
+              "enum": [
+                "uppercase",
+                "lowercase",
+                "reverse",
+                "word_count"
+              ],
+              "description": "Action to perform on the text"
+            }
           },
-          "annotations": {
-            "title": "Text Processor"
-          }
+          "required": [
+            "text",
+            "action"
+          ]
         },
         "score": 0.6
       }
@@ -787,26 +760,24 @@ async fn search_multiple_keywords() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "tool": {
-          "name": "math_service__adder",
-          "description": "Adds two numbers together",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "a": {
-                "type": "number",
-                "description": "First number to add"
-              },
-              "b": {
-                "type": "number",
-                "description": "Second number to add"
-              }
+        "name": "math_service__adder",
+        "description": "Adds two numbers together",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "number",
+              "description": "First number to add"
             },
-            "required": [
-              "a",
-              "b"
-            ]
-          }
+            "b": {
+              "type": "number",
+              "description": "Second number to add"
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ]
         },
         "score": 0.6
       }
@@ -838,37 +809,33 @@ async fn search_two() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "tool": {
-          "name": "math_service__adder",
-          "description": "Adds two numbers together",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "a": {
-                "type": "number",
-                "description": "First number to add"
-              },
-              "b": {
-                "type": "number",
-                "description": "Second number to add"
-              }
+        "name": "math_service__adder",
+        "description": "Adds two numbers together",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "number",
+              "description": "First number to add"
             },
-            "required": [
-              "a",
-              "b"
-            ]
-          }
+            "b": {
+              "type": "number",
+              "description": "Second number to add"
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ]
         },
         "score": 2.4077742
       },
       {
-        "tool": {
-          "name": "math_service__failing_tool",
-          "description": "A tool that always fails for testing error handling",
-          "inputSchema": {
-            "type": "object",
-            "properties": {}
-          }
+        "name": "math_service__failing_tool",
+        "description": "A tool that always fails for testing error handling",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
         },
         "score": 1.8299086
       }
@@ -899,26 +866,24 @@ async fn search_case_insensitive() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "tool": {
-          "name": "math_service__adder",
-          "description": "Adds two numbers together",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "a": {
-                "type": "number",
-                "description": "First number to add"
-              },
-              "b": {
-                "type": "number",
-                "description": "Second number to add"
-              }
+        "name": "math_service__adder",
+        "description": "Adds two numbers together",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "number",
+              "description": "First number to add"
             },
-            "required": [
-              "a",
-              "b"
-            ]
-          }
+            "b": {
+              "type": "number",
+              "description": "Second number to add"
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ]
         },
         "score": 0.8630463
       }
@@ -949,26 +914,24 @@ async fn search_by_description() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "tool": {
-          "name": "math_service__adder",
-          "description": "Adds two numbers together",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "a": {
-                "type": "number",
-                "description": "First number to add"
-              },
-              "b": {
-                "type": "number",
-                "description": "Second number to add"
-              }
+        "name": "math_service__adder",
+        "description": "Adds two numbers together",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "number",
+              "description": "First number to add"
             },
-            "required": [
-              "a",
-              "b"
-            ]
-          }
+            "b": {
+              "type": "number",
+              "description": "Second number to add"
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ]
         },
         "score": 0.6
       }
@@ -999,26 +962,24 @@ async fn search_by_server_name() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "tool": {
-          "name": "math_service__adder",
-          "description": "Adds two numbers together",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "a": {
-                "type": "number",
-                "description": "First number to add"
-              },
-              "b": {
-                "type": "number",
-                "description": "Second number to add"
-              }
+        "name": "math_service__adder",
+        "description": "Adds two numbers together",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "number",
+              "description": "First number to add"
             },
-            "required": [
-              "a",
-              "b"
-            ]
-          }
+            "b": {
+              "type": "number",
+              "description": "Second number to add"
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ]
         },
         "score": 0.2301457
       }
@@ -1077,13 +1038,11 @@ async fn search_multiple_tools_ranking() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "tool": {
-          "name": "error_service__failing_tool",
-          "description": "A tool that always fails for testing error handling",
-          "inputSchema": {
-            "type": "object",
-            "properties": {}
-          }
+        "name": "error_service__failing_tool",
+        "description": "A tool that always fails for testing error handling",
+        "input_schema": {
+          "type": "object",
+          "properties": {}
         },
         "score": 1.8299086
       }
@@ -1114,26 +1073,24 @@ async fn search_parameter_fields() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "tool": {
-          "name": "math_service__adder",
-          "description": "Adds two numbers together",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "a": {
-                "type": "number",
-                "description": "First number to add"
-              },
-              "b": {
-                "type": "number",
-                "description": "Second number to add"
-              }
+        "name": "math_service__adder",
+        "description": "Adds two numbers together",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "number",
+              "description": "First number to add"
             },
-            "required": [
-              "a",
-              "b"
-            ]
-          }
+            "b": {
+              "type": "number",
+              "description": "Second number to add"
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ]
         },
         "score": 0.4
       }
@@ -1187,26 +1144,24 @@ async fn search_whitespace_handling() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "tool": {
-          "name": "math_service__adder",
-          "description": "Adds two numbers together",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "a": {
-                "type": "number",
-                "description": "First number to add"
-              },
-              "b": {
-                "type": "number",
-                "description": "Second number to add"
-              }
+        "name": "math_service__adder",
+        "description": "Adds two numbers together",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "number",
+              "description": "First number to add"
             },
-            "required": [
-              "a",
-              "b"
-            ]
-          }
+            "b": {
+              "type": "number",
+              "description": "Second number to add"
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ]
         },
         "score": 0.6
       }
@@ -1237,40 +1192,35 @@ async fn search_tool_annotations() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "tool": {
-          "name": "math_service__calculator",
-          "description": "Performs basic mathematical calculations including addition, subtraction, multiplication and division",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "enum": [
-                  "add",
-                  "subtract",
-                  "multiply",
-                  "divide"
-                ],
-                "description": "Mathematical operation to perform"
-              },
-              "x": {
-                "type": "number",
-                "description": "First operand"
-              },
-              "y": {
-                "type": "number",
-                "description": "Second operand"
-              }
+        "name": "math_service__calculator",
+        "description": "Performs basic mathematical calculations including addition, subtraction, multiplication and division",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "enum": [
+                "add",
+                "subtract",
+                "multiply",
+                "divide"
+              ],
+              "description": "Mathematical operation to perform"
             },
-            "required": [
-              "operation",
-              "x",
-              "y"
-            ]
+            "x": {
+              "type": "number",
+              "description": "First operand"
+            },
+            "y": {
+              "type": "number",
+              "description": "Second operand"
+            }
           },
-          "annotations": {
-            "title": "Scientific Calculator"
-          }
+          "required": [
+            "operation",
+            "x",
+            "y"
+          ]
         },
         "score": 0.57536423
       }
@@ -1307,35 +1257,30 @@ async fn search_relevance_scoring_with_different_tools() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "tool": {
-          "name": "text_service__text_processor",
-          "description": "Processes text with various string manipulation operations like case conversion and reversal",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "text": {
-                "type": "string",
-                "description": "Input text to process"
-              },
-              "action": {
-                "type": "string",
-                "enum": [
-                  "uppercase",
-                  "lowercase",
-                  "reverse",
-                  "word_count"
-                ],
-                "description": "Action to perform on the text"
-              }
+        "name": "text_service__text_processor",
+        "description": "Processes text with various string manipulation operations like case conversion and reversal",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "description": "Input text to process"
             },
-            "required": [
-              "text",
-              "action"
-            ]
+            "action": {
+              "type": "string",
+              "enum": [
+                "uppercase",
+                "lowercase",
+                "reverse",
+                "word_count"
+              ],
+              "description": "Action to perform on the text"
+            }
           },
-          "annotations": {
-            "title": "Text Processor"
-          }
+          "required": [
+            "text",
+            "action"
+          ]
         },
         "score": 2.4428196
       }
@@ -1366,35 +1311,30 @@ async fn search_partial_word_matching() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "tool": {
-          "name": "text_service__text_processor",
-          "description": "Processes text with various string manipulation operations like case conversion and reversal",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "text": {
-                "type": "string",
-                "description": "Input text to process"
-              },
-              "action": {
-                "type": "string",
-                "enum": [
-                  "uppercase",
-                  "lowercase",
-                  "reverse",
-                  "word_count"
-                ],
-                "description": "Action to perform on the text"
-              }
+        "name": "text_service__text_processor",
+        "description": "Processes text with various string manipulation operations like case conversion and reversal",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "description": "Input text to process"
             },
-            "required": [
-              "text",
-              "action"
-            ]
+            "action": {
+              "type": "string",
+              "enum": [
+                "uppercase",
+                "lowercase",
+                "reverse",
+                "word_count"
+              ],
+              "description": "Action to perform on the text"
+            }
           },
-          "annotations": {
-            "title": "Text Processor"
-          }
+          "required": [
+            "text",
+            "action"
+          ]
         },
         "score": 0.4
       }
@@ -1425,35 +1365,30 @@ async fn search_compound_words() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "tool": {
-          "name": "file_service__filesystem",
-          "description": "Manages files and directories with operations like listing, creating, and deleting",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "path": {
-                "type": "string",
-                "description": "File or directory path"
-              },
-              "operation": {
-                "type": "string",
-                "enum": [
-                  "list",
-                  "create",
-                  "delete",
-                  "exists"
-                ],
-                "description": "Filesystem operation to perform"
-              }
+        "name": "file_service__filesystem",
+        "description": "Manages files and directories with operations like listing, creating, and deleting",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "File or directory path"
             },
-            "required": [
-              "path",
-              "operation"
-            ]
+            "operation": {
+              "type": "string",
+              "enum": [
+                "list",
+                "create",
+                "delete",
+                "exists"
+              ],
+              "description": "Filesystem operation to perform"
+            }
           },
-          "annotations": {
-            "title": "File System Manager"
-          }
+          "required": [
+            "path",
+            "operation"
+          ]
         },
         "score": 0.8630463
       }
@@ -1483,40 +1418,35 @@ async fn search_enum_values() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "tool": {
-          "name": "math_service__calculator",
-          "description": "Performs basic mathematical calculations including addition, subtraction, multiplication and division",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "operation": {
-                "type": "string",
-                "enum": [
-                  "add",
-                  "subtract",
-                  "multiply",
-                  "divide"
-                ],
-                "description": "Mathematical operation to perform"
-              },
-              "x": {
-                "type": "number",
-                "description": "First operand"
-              },
-              "y": {
-                "type": "number",
-                "description": "Second operand"
-              }
+        "name": "math_service__calculator",
+        "description": "Performs basic mathematical calculations including addition, subtraction, multiplication and division",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "operation": {
+              "type": "string",
+              "enum": [
+                "add",
+                "subtract",
+                "multiply",
+                "divide"
+              ],
+              "description": "Mathematical operation to perform"
             },
-            "required": [
-              "operation",
-              "x",
-              "y"
-            ]
+            "x": {
+              "type": "number",
+              "description": "First operand"
+            },
+            "y": {
+              "type": "number",
+              "description": "Second operand"
+            }
           },
-          "annotations": {
-            "title": "Scientific Calculator"
-          }
+          "required": [
+            "operation",
+            "x",
+            "y"
+          ]
         },
         "score": 0.4
       }
@@ -1547,26 +1477,24 @@ async fn search_deduplication_test() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "tool": {
-          "name": "math_service__adder",
-          "description": "Adds two numbers together",
-          "inputSchema": {
-            "type": "object",
-            "properties": {
-              "a": {
-                "type": "number",
-                "description": "First number to add"
-              },
-              "b": {
-                "type": "number",
-                "description": "Second number to add"
-              }
+        "name": "math_service__adder",
+        "description": "Adds two numbers together",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "a": {
+              "type": "number",
+              "description": "First number to add"
             },
-            "required": [
-              "a",
-              "b"
-            ]
-          }
+            "b": {
+              "type": "number",
+              "description": "Second number to add"
+            }
+          },
+          "required": [
+            "a",
+            "b"
+          ]
         },
         "score": 0.6
       }

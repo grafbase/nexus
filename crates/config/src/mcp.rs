@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::time::Duration;
 
+use duration_str::deserialize_duration;
 use secrecy::SecretString;
 use serde::Deserialize;
 use url::Url;
@@ -15,6 +17,9 @@ pub struct McpConfig {
     /// The path for MCP endpoint.
     #[serde(default = "default_path")]
     pub path: String,
+    /// Configuration for downstream connection caching.
+    #[serde(default)]
+    pub downstream_cache: McpDownstreamCacheConfig,
     /// Map of server names to their configurations.
     pub servers: BTreeMap<String, McpServer>,
 }
@@ -32,11 +37,65 @@ pub enum McpServer {
     Http(Box<HttpConfig>),
 }
 
+impl McpServer {
+    /// Returns `true` if this MCP server configuration forwards authentication
+    /// from the incoming request to the MCP server.
+    pub fn forwards_authentication(&self) -> bool {
+        match self {
+            McpServer::Stdio { .. } => false,
+            McpServer::Http(config) => config.forwards_authentication(),
+        }
+    }
+
+    /// Finalizes the MCP server configuration by applying authentication settings.
+    ///
+    /// For HTTP servers configured to forward authentication, this method will
+    /// set up token-based authentication using the provided token. For all other
+    /// server types, the configuration is returned unchanged.
+    pub fn finalize(&self, token: Option<&SecretString>) -> Self {
+        match self {
+            McpServer::Http(config) if config.forwards_authentication() => {
+                let mut config = config.clone();
+
+                if let Some(token) = token {
+                    config.auth = Some(ClientAuthConfig::Token { token: token.clone() });
+                }
+
+                Self::Http(config)
+            }
+            other => other.clone(),
+        }
+    }
+}
+
+/// Configuration for downstream connection caching.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct McpDownstreamCacheConfig {
+    /// Maximum number of cached downstream connections.
+    #[serde(default = "default_cache_max_capacity")]
+    pub max_capacity: u64,
+    /// How long a cached connection can be idle before being evicted.
+    /// Accepts duration strings like "10m", "30s", "1h" or plain seconds as integer.
+    #[serde(default = "default_cache_idle_timeout", deserialize_with = "deserialize_duration")]
+    pub idle_timeout: Duration,
+}
+
+impl Default for McpDownstreamCacheConfig {
+    fn default() -> Self {
+        Self {
+            max_capacity: default_cache_max_capacity(),
+            idle_timeout: default_cache_idle_timeout(),
+        }
+    }
+}
+
 impl Default for McpConfig {
     fn default() -> Self {
         Self {
             enabled: true,
             path: "/mcp".to_string(),
+            downstream_cache: McpDownstreamCacheConfig::default(),
             servers: BTreeMap::new(),
         }
     }
@@ -97,6 +156,15 @@ impl HttpConfig {
     pub fn uses_protocol_detection(&self) -> bool {
         self.protocol.is_none()
     }
+
+    /// Returns `true` if this HTTP configuration forwards authentication
+    /// from the incoming request to the MCP server.
+    pub fn forwards_authentication(&self) -> bool {
+        match self.auth {
+            Some(ref auth) => matches!(auth, ClientAuthConfig::Forward { .. }),
+            None => false,
+        }
+    }
 }
 
 /// TLS configuration for HTTP-based MCP servers.
@@ -137,6 +205,19 @@ pub enum ClientAuthConfig {
         /// Authentication token to send with requests.
         token: SecretString,
     },
+    /// Forward the request authentication token to the MCP server.
+    Forward {
+        /// A tag to enable forwarding.
+        r#type: ForwardType,
+    },
+}
+
+/// Type indicating that authentication should be forwarded.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ForwardType {
+    /// Forward authentication from the incoming request.
+    Forward,
 }
 
 fn default_enabled() -> bool {
@@ -149,4 +230,12 @@ fn default_path() -> String {
 
 fn default_verify_tls() -> bool {
     true
+}
+
+fn default_cache_max_capacity() -> u64 {
+    1000
+}
+
+fn default_cache_idle_timeout() -> Duration {
+    Duration::from_secs(600)
 }

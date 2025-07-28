@@ -2,15 +2,14 @@
 
 #![deny(missing_docs)]
 
+mod cache;
 mod downstream;
 mod index;
 mod server;
-mod tool;
 
 use std::{sync::Arc, time::Duration};
 
 use axum::{Router, routing};
-use config::McpConfig;
 use rmcp::{
     model::ProtocolVersion,
     transport::{
@@ -21,7 +20,7 @@ use rmcp::{
 pub(crate) const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V_2025_03_26;
 
 /// Creates an axum router for MCP.
-pub async fn router(config: &McpConfig) -> anyhow::Result<Router> {
+pub async fn router(config: &config::Config) -> anyhow::Result<Router> {
     let mcp_server = server::McpServer::new(config).await?;
 
     let service = StreamableHttpService::new(
@@ -33,5 +32,5 @@ pub async fn router(config: &McpConfig) -> anyhow::Result<Router> {
         },
     );
 
-    Ok(Router::new().route(&config.path, routing::any_service(service)))
+    Ok(Router::new().route(&config.mcp.path, routing::any_service(service)))
 }

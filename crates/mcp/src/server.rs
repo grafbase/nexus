@@ -1,53 +1,86 @@
-use crate::index::ToolIndex;
-use crate::tool::{ExecuteTool, RmcpTool, SearchTool};
+pub mod execute;
+pub mod search;
+
+use crate::cache::DynamicDownstreamCache;
 use config::McpConfig;
+use execute::ExecuteParameters;
+use http::request::Parts;
 use indoc::indoc;
 use itertools::Itertools;
 use rmcp::{
     RoleServer, ServerHandler,
     model::{
-        CallToolRequestParam, CallToolResult, ErrorCode, ErrorData, Implementation, ListToolsResult,
-        PaginatedRequestParam, ServerCapabilities, ServerInfo,
+        CallToolRequestMethod, CallToolRequestParam, CallToolResult, Content, ErrorCode, ErrorData, Implementation,
+        ListToolsResult, PaginatedRequestParam, ServerCapabilities, ServerInfo,
     },
     service::RequestContext,
 };
-use std::collections::BTreeMap;
+use search::{SearchParameters, SearchTool};
+use secrecy::SecretString;
+use std::collections::{BTreeMap, HashSet};
 use std::{ops::Deref, sync::Arc};
 
 use crate::downstream::Downstream;
 
 #[derive(Clone)]
-pub(crate) struct McpServer(Arc<McpServerInner>);
+pub(crate) struct McpServer {
+    shared: Arc<McpServerInner>,
+}
 
 pub(crate) struct McpServerInner {
     info: ServerInfo,
-    tools: Vec<Box<dyn RmcpTool>>,
+    // Static downstream (servers without auth forwarding)
+    static_downstream: Option<Arc<Downstream>>,
+    // Static search tool cache
+    static_search_tool: Option<Arc<SearchTool>>,
+    // Names of servers that require auth forwarding
+    dynamic_server_names: HashSet<String>,
+    // Cache for dynamic downstream instances
+    cache: Arc<DynamicDownstreamCache>,
 }
 
 impl Deref for McpServer {
     type Target = McpServerInner;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.shared
     }
 }
 
 impl McpServer {
-    pub(crate) async fn new(config: &McpConfig) -> anyhow::Result<Self> {
-        let downstream = Downstream::new(config).await?;
-        let mut index = ToolIndex::new()?;
+    pub(crate) async fn new(config: &config::Config) -> anyhow::Result<Self> {
+        // Identify which servers need dynamic initialization
+        let mut dynamic_server_names = HashSet::new();
+        let mut static_config = config.mcp.clone();
 
-        for (id, tool) in downstream.list_tools().enumerate() {
-            index.add_tool(tool, id.into())?;
-        }
+        static_config.servers.retain(|name, server_config| {
+            if server_config.forwards_authentication() {
+                dynamic_server_names.insert(name.clone());
 
-        index.commit()?;
+                false
+            } else {
+                true
+            }
+        });
 
-        let index = Arc::new(index);
-        let downstream = Arc::new(downstream);
+        // Create static downstream if there are any static servers
+        let (static_downstream, static_search_tool) = if !static_config.servers.is_empty() {
+            log::debug!("Initializing {} static MCP servers", static_config.servers.len());
+
+            let downstream = Downstream::new(&static_config, None).await?;
+            let tools = downstream.list_tools().cloned().collect();
+            let static_search_tool = SearchTool::new(tools)?;
+
+            (Some(Arc::new(downstream)), Some(Arc::new(static_search_tool)))
+        } else {
+            (None, None)
+        };
+
+        // Create cache for dynamic instances
+        let cache = Arc::new(DynamicDownstreamCache::new(config.mcp.clone()));
 
         let server_info = Implementation {
-            name: generate_server_name(config),
+            name: generate_server_name(&config.mcp),
             version: env!("CARGO_PKG_VERSION").to_string(),
         };
 
@@ -56,15 +89,97 @@ impl McpServer {
                 protocol_version: crate::PROTOCOL_VERSION,
                 capabilities: ServerCapabilities::builder().enable_tools().build(),
                 server_info,
-                instructions: Some(generate_instructions(&downstream)),
+                instructions: Some(generate_instructions(&config.mcp)),
             },
-            tools: vec![
-                Box::new(SearchTool::new(downstream.clone(), index.clone())),
-                Box::new(ExecuteTool::new(downstream, index)),
-            ],
+            static_downstream,
+            static_search_tool,
+            dynamic_server_names,
+            cache,
         };
 
-        Ok(Self(Arc::new(inner)))
+        Ok(Self {
+            shared: Arc::new(inner),
+        })
+    }
+
+    /// Get or create cached search tool for the given authentication context
+    async fn get_search_tool(&self, token: Option<&SecretString>) -> Result<Arc<SearchTool>, ErrorData> {
+        match token {
+            Some(token) if !self.dynamic_server_names.is_empty() => {
+                log::debug!("getting the combined search tool");
+
+                // Dynamic case - get from cache
+                let cached = self
+                    .cache
+                    .get_or_create(token)
+                    .await
+                    .map_err(|e| ErrorData::internal_error(format!("Failed to load dynamic tools: {e}"), None))?;
+
+                Ok(Arc::new(cached.search_tool.clone()))
+            }
+            _ => {
+                log::debug!("getting the static search tool");
+
+                if let Some(search_tool) = &self.static_search_tool {
+                    Ok(search_tool.clone())
+                } else {
+                    // No servers configured - return empty search tool
+                    Ok(Arc::new(SearchTool::new(Vec::new()).map_err(|e| {
+                        ErrorData::internal_error(format!("Failed to create empty search tool: {e}"), None)
+                    })?))
+                }
+            }
+        }
+    }
+
+    /// Execute a tool by routing to the correct downstream
+    async fn execute(
+        &self,
+        params: CallToolRequestParam,
+        token: Option<&SecretString>,
+    ) -> Result<CallToolResult, ErrorData> {
+        // Get the search tool to access all tools
+        let search_tool = self.get_search_tool(token).await?;
+
+        // Use binary search to find the tool
+        search_tool.find_exact(&params.name).ok_or_else(|| {
+            log::debug!("Tool not found: {}", params.name);
+            ErrorData::method_not_found::<CallToolRequestMethod>()
+        })?;
+
+        // Extract server name from tool name
+        let (server_name, _) = params
+            .name
+            .split_once("__")
+            .ok_or_else(|| ErrorData::invalid_params("Invalid tool name format", None))?;
+
+        // Route to appropriate downstream
+        if self.dynamic_server_names.contains(server_name) {
+            // Dynamic server - need token
+            let token = token.ok_or_else(|| {
+                ErrorData::new(
+                    ErrorCode::INVALID_REQUEST,
+                    "Authentication required for this tool",
+                    None,
+                )
+            })?;
+
+            let cached = self
+                .cache
+                .get_or_create(token)
+                .await
+                .map_err(|e| ErrorData::internal_error(format!("Failed to initialize: {e}"), None))?;
+
+            cached.downstream.execute(params).await
+        } else {
+            // Static server
+            let downstream = self
+                .static_downstream
+                .as_ref()
+                .ok_or_else(ErrorData::method_not_found::<CallToolRequestMethod>)?; // Tool not found
+
+            downstream.execute(params).await
+        }
     }
 }
 
@@ -75,29 +190,79 @@ impl ServerHandler for McpServer {
 
     async fn list_tools(
         &self,
-        _: Option<PaginatedRequestParam>, // TODO: do we need to care about pagination?
-        _: RequestContext<RoleServer>,
+        _: Option<PaginatedRequestParam>,
+        _ctx: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
         Ok(ListToolsResult {
             next_cursor: None,
-            tools: self.tools.iter().map(|tool| tool.to_tool()).collect(),
+            tools: vec![search::rmcp_tool(), execute::rmcp_tool()],
         })
     }
 
     async fn call_tool(
         &self,
-        CallToolRequestParam { name, arguments }: CallToolRequestParam,
+        params: CallToolRequestParam,
         ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        if let Some(tool) = self.tools.iter().find(|tool| tool.name() == name) {
-            return tool.call(ctx, arguments).await;
-        }
+        log::debug!("McpServer::call_tool called with tool name: {}", params.name);
 
-        Err(ErrorData::new(
-            ErrorCode::INVALID_PARAMS,
-            format!("Unknown tool '{name}'"),
-            None,
-        ))
+        // Extract token from request extensions
+        let token = ctx
+            .extensions
+            .get::<Parts>()
+            .and_then(|parts| parts.extensions.get::<SecretString>());
+
+        match params.name.as_ref() {
+            "search" => {
+                log::debug!("Handling search tool");
+
+                // Get cached search tool
+                let search_tool = self.get_search_tool(token).await?;
+
+                let search_params: SearchParameters =
+                    serde_json::from_value(serde_json::Value::Object(params.arguments.unwrap_or_default()))
+                        .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
+
+                let tools = search_tool
+                    .find_by_keywords(search_params.keywords)
+                    .await
+                    .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+
+                let mut content = Vec::with_capacity(tools.len());
+
+                for tool in tools {
+                    content.push(Content::json(tool)?);
+                }
+
+                Ok(CallToolResult {
+                    content,
+                    is_error: None,
+                })
+            }
+            "execute" => {
+                log::debug!("handling execute tool");
+
+                // Parse execute parameters
+                let exec_params: ExecuteParameters =
+                    serde_json::from_value(serde_json::Value::Object(params.arguments.unwrap_or_default()))
+                        .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
+
+                log::debug!("execute params - tool name: {}", exec_params.name);
+
+                let params = CallToolRequestParam {
+                    name: exec_params.name.clone().into(),
+                    arguments: Some(exec_params.arguments),
+                };
+
+                // Execute the tool with proper routing
+                self.execute(params, token).await
+            }
+            tool_name => {
+                log::debug!("unknown tool requested: {tool_name}");
+
+                Err(ErrorData::method_not_found::<CallToolRequestMethod>())
+            }
+        }
     }
 }
 
@@ -110,15 +275,12 @@ fn generate_server_name(config: &McpConfig) -> String {
     }
 }
 
-fn generate_instructions(downstream: &Downstream) -> String {
-    let mut servers_info = BTreeMap::new();
+fn generate_instructions(config: &McpConfig) -> String {
+    let mut servers_info = BTreeMap::<String, Vec<String>>::new();
 
     // Group tools by server name
-    for tool in downstream.list_tools() {
-        if let Some((server_name, tool_name)) = tool.name.split_once("__") {
-            let server_tools = servers_info.entry(server_name.to_string()).or_insert_with(Vec::new);
-            server_tools.push((tool_name, tool.description.as_deref().unwrap_or("No description")));
-        }
+    for server_name in config.servers.keys() {
+        servers_info.insert(server_name.clone(), Vec::new());
     }
 
     let mut instructions = indoc! {r#"
@@ -138,19 +300,13 @@ fn generate_instructions(downstream: &Downstream) -> String {
     .to_string();
 
     if !servers_info.is_empty() {
-        instructions.push_str("**Available Servers and Tools:**\n\n");
+        instructions.push_str("**Available Servers:**\n\n");
 
-        for (server_name, tools) in servers_info {
-            instructions.push_str(&format!("**{server_name}:**\n"));
-
-            for (tool_name, description) in tools {
-                instructions.push_str(&format!("- `{server_name}__{tool_name}`: {description}\n"));
-            }
-            instructions.push('\n');
+        for server_name in servers_info.keys() {
+            instructions.push_str(&format!("- **{server_name}**\n"));
         }
 
-        instructions
-            .push_str("**Note:** When executing tools, use the full name format `server__tool` as shown above.\n");
+        instructions.push_str("\n**Note:** Use the `search` tool to discover what tools each server provides.\n");
     } else {
         instructions.push_str("**No downstream servers are currently configured.**\n");
     }

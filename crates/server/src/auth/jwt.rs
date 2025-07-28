@@ -7,6 +7,7 @@ use super::jwks::{Alg, Jwks, JwksCache};
 use config::OauthConfig;
 use http::{header::AUTHORIZATION, request::Parts};
 use jwt_compact::{Algorithm, AlgorithmExt, TimeOptions, UntrustedToken, jwk::JsonWebKey};
+use secrecy::SecretString;
 use url::Url;
 
 const BEARER_TOKEN_LENGTH: usize = 6;
@@ -27,7 +28,7 @@ impl JwtAuth {
         self.config.protected_resource.resource_documentation()
     }
 
-    pub async fn authenticate(&self, parts: &Parts) -> AuthResult<()> {
+    pub async fn authenticate(&self, parts: &Parts) -> AuthResult<SecretString> {
         let token_header = parts
             .headers
             .get(AUTHORIZATION)
@@ -55,7 +56,7 @@ impl JwtAuth {
 
             self.validate_token(&jwks, token).ok_or(AuthError::Unauthorized)?;
 
-            Ok(())
+            Ok(SecretString::from(token_str.to_string()))
         } else if token_str.eq_ignore_ascii_case("bearer") {
             // Handle case where header is exactly "Bearer" with no space/token
             Err(AuthError::InvalidToken("missing token"))

@@ -1,6 +1,6 @@
 use std::{io::Read, sync::Arc};
 
-use config::{ClientAuthConfig, HttpConfig, McpServer, TlsClientConfig};
+use config::{ClientAuthConfig, HttpConfig, TlsClientConfig};
 use reqwest::{
     Certificate, Identity,
     header::{AUTHORIZATION, HeaderMap, HeaderValue},
@@ -32,11 +32,12 @@ struct Inner {
 
 impl DownstreamClient {
     /// Creates a new DownstreamServer with the given name and configuration.
-    pub async fn new(name: &str, config: &McpServer) -> anyhow::Result<Self> {
-        let service = match config {
-            McpServer::Stdio { .. } => todo!(),
-            McpServer::Http(config) => http_service(config).await?,
-        };
+    pub async fn new_stdio(_name: &str, _cmd: &[String]) -> anyhow::Result<Self> {
+        todo!()
+    }
+
+    pub async fn new_http(name: &str, config: &HttpConfig) -> anyhow::Result<Self> {
+        let service = http_service(config).await?;
 
         Ok(Self {
             inner: Arc::new(Inner {

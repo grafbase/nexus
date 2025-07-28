@@ -1,10 +1,14 @@
 mod downstream;
+pub mod tools;
 
+use std::str::FromStr;
 use std::sync::Once;
 use std::time::Duration;
 use std::{net::SocketAddr, path::PathBuf};
 
 use config::Config;
+use logforth::filter::EnvFilter;
+use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 use rmcp::{
     model::CallToolRequestParam,
     service::{RunningService, ServiceExt},
@@ -46,7 +50,7 @@ fn init_logger() {
         if std::env::var("TEST_LOG").is_ok() {
             logforth::builder()
                 .dispatch(|d| {
-                    d.filter(log::LevelFilter::Debug)
+                    d.filter(EnvFilter::from_str("warn,server=debug,mcp=debug,config=debug").unwrap())
                         .append(logforth::append::Stderr::default())
                 })
                 .apply();
@@ -121,16 +125,42 @@ pub struct McpTestClient {
 impl McpTestClient {
     /// Create a new MCP test client that connects to the given MCP endpoint URL
     pub async fn new(mcp_url: String) -> Self {
+        Self::new_with_auth(mcp_url, None).await
+    }
+
+    /// Create a new MCP test client with OAuth2 authentication
+    pub async fn new_with_auth(mcp_url: String, auth_token: Option<&str>) -> Self {
         let transport = if mcp_url.starts_with("https") {
             // For HTTPS, create a client that accepts self-signed certificates
-            let client = reqwest::Client::builder()
-                .danger_accept_invalid_certs(true)
-                .build()
-                .unwrap();
+            let mut builder = reqwest::Client::builder().danger_accept_invalid_certs(true);
+
+            // Add OAuth2 authentication if provided
+            if let Some(token) = auth_token {
+                let mut headers = HeaderMap::new();
+                let auth_value = HeaderValue::from_str(&format!("Bearer {token}")).unwrap();
+
+                headers.insert(AUTHORIZATION, auth_value);
+                builder = builder.default_headers(headers);
+            }
+
+            let client = builder.build().unwrap();
             let config = StreamableHttpClientTransportConfig::with_uri(mcp_url.clone());
             StreamableHttpClientTransport::with_client(client, config)
         } else {
-            StreamableHttpClientTransport::from_uri(mcp_url)
+            // For HTTP, create a client with optional authentication
+            if let Some(token) = auth_token {
+                let mut headers = HeaderMap::new();
+                let auth_value = HeaderValue::from_str(&format!("Bearer {token}")).unwrap();
+
+                headers.insert(AUTHORIZATION, auth_value);
+
+                let client = reqwest::Client::builder().default_headers(headers).build().unwrap();
+                let config = StreamableHttpClientTransportConfig::with_uri(mcp_url.clone());
+
+                StreamableHttpClientTransport::with_client(client, config)
+            } else {
+                StreamableHttpClientTransport::from_uri(mcp_url)
+            }
         };
 
         let service = ().serve(transport).await.unwrap();
@@ -227,7 +257,19 @@ impl TestServer {
         let config: Config = toml::from_str(config_toml).unwrap();
 
         // Find an available port
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut listener = TcpListener::bind("127.0.0.1:0").await;
+
+        #[allow(clippy::panic)]
+        while let Err(e) = listener {
+            if e.kind() == std::io::ErrorKind::AddrInUse {
+                listener = TcpListener::bind("127.0.0.1:0").await;
+            } else {
+                panic!("Failed to bind to address: {e}");
+            }
+        }
+
+        let listener = listener.unwrap();
+
         let address = listener.local_addr().unwrap();
 
         // Check if TLS is configured before moving config into spawn task
@@ -318,6 +360,19 @@ impl TestServer {
 
         McpTestClient::new(mcp_url).await
     }
+
+    /// Create an MCP client with OAuth2 authentication
+    pub async fn mcp_client_with_auth(&self, path: &str, auth_token: &str) -> McpTestClient {
+        let protocol = if self.client.base_url.starts_with("https") {
+            "https"
+        } else {
+            "http"
+        };
+
+        let mcp_url = format!("{protocol}://{}{}", self.address, path);
+
+        McpTestClient::new_with_auth(mcp_url, Some(auth_token)).await
+    }
 }
 
 impl Drop for TestServer {
@@ -388,6 +443,14 @@ impl TestServerBuilder {
 
                 [mcp.servers.{}.auth]
                 token = "{token}"
+            "#, service.name()};
+
+            config.push_str(&auth_config);
+        } else if service.forwards_auth() {
+            let auth_config = indoc::formatdoc! {r#"
+
+                [mcp.servers.{}.auth]
+                type = "forward"
             "#, service.name()};
 
             config.push_str(&auth_config);

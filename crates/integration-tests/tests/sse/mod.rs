@@ -28,10 +28,8 @@ async fn list_single_tool() {
       "tools": [
         {
           "name": "search",
-          "description": "Search for relevant tools. A list of matching tools with their\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\nname of the tool you want to execute, and defining the input\nparameters.\n",
+          "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "SearchParameters",
             "type": "object",
             "properties": {
               "keywords": {
@@ -52,10 +50,8 @@ async fn list_single_tool() {
         },
         {
           "name": "execute",
-          "description": "Executes a tool with the given parameters. Before using, you must call the\nsearch function to retrieve the tools you need for your task. If you do not\nknow how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name\nmust be a string, and the parameters must be a map of strings to JSON values.\n",
+          "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "ExecuteParameters",
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
@@ -188,10 +184,8 @@ async fn mixed_sse_and_streaming_services() {
       "tools": [
         {
           "name": "search",
-          "description": "Search for relevant tools. A list of matching tools with their\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\nname of the tool you want to execute, and defining the input\nparameters.\n",
+          "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "SearchParameters",
             "type": "object",
             "properties": {
               "keywords": {
@@ -212,10 +206,8 @@ async fn mixed_sse_and_streaming_services() {
         },
         {
           "name": "execute",
-          "description": "Executes a tool with the given parameters. Before using, you must call the\nsearch function to retrieve the tools you need for your task. If you do not\nknow how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name\nmust be a string, and the parameters must be a map of strings to JSON values.\n",
+          "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "ExecuteParameters",
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
@@ -293,10 +285,8 @@ async fn tls_downstream_service() {
       "tools": [
         {
           "name": "search",
-          "description": "Search for relevant tools. A list of matching tools with their\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\nname of the tool you want to execute, and defining the input\nparameters.\n",
+          "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "SearchParameters",
             "type": "object",
             "properties": {
               "keywords": {
@@ -317,10 +307,8 @@ async fn tls_downstream_service() {
         },
         {
           "name": "execute",
-          "description": "Executes a tool with the given parameters. Before using, you must call the\nsearch function to retrieve the tools you need for your task. If you do not\nknow how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name\nmust be a string, and the parameters must be a map of strings to JSON values.\n",
+          "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "ExecuteParameters",
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {

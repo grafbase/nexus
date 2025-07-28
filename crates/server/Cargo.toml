@@ -19,6 +19,7 @@ jwt-compact = { workspace = true, features = ["clock", "rsa", "ed25519-compact",
 log = { workspace = true, features = ["kv"] }
 mcp.workspace = true
 reqwest = { workspace = true, features = ["rustls-tls"] }
+secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

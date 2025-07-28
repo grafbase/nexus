@@ -161,7 +161,7 @@ mod tests {
 
     // MCP Integration tests that actually test the protocol using rmcp client
     #[tokio::test]
-    async fn test_mcp_list_tools() {
+    async fn mcp_list_tools() {
         let service = create_test_service().await.expect("Failed to create test service");
 
         // List tools
@@ -198,7 +198,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_mcp_call_tool_success() {
+    async fn mcp_call_tool_success() {
         let service = create_test_service().await.expect("Failed to create test service");
 
         // Call the hello tool
@@ -223,7 +223,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_mcp_simple_tool_call() {
+    async fn mcp_simple_tool_call() {
         let service = create_test_service().await.expect("Failed to create test service");
 
         // Call the hello tool

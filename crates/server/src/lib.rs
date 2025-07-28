@@ -44,7 +44,7 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
 
     // Apply CORS to MCP router before merging
     if config.mcp.enabled {
-        let mcp_router = mcp::router(&config.mcp).await?.layer(cors.clone());
+        let mcp_router = mcp::router(&config).await?.layer(cors.clone());
         protected_router = protected_router.merge(mcp_router);
     }
 

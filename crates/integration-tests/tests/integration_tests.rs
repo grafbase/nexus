@@ -200,10 +200,8 @@ async fn no_tools_by_default() {
       "tools": [
         {
           "name": "search",
-          "description": "Search for relevant tools. A list of matching tools with their\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\nname of the tool you want to execute, and defining the input\nparameters.\n",
+          "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "SearchParameters",
             "type": "object",
             "properties": {
               "keywords": {
@@ -224,10 +222,8 @@ async fn no_tools_by_default() {
         },
         {
           "name": "execute",
-          "description": "Executes a tool with the given parameters. Before using, you must call the\nsearch function to retrieve the tools you need for your task. If you do not\nknow how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name\nmust be a string, and the parameters must be a map of strings to JSON values.\n",
+          "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "ExecuteParameters",
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
@@ -299,7 +295,7 @@ async fn server_info_with_downstream_servers() {
     insta::assert_snapshot!(&server_info.server_info.name, @"Tool Aggregator (filesystem_server, math_server, text_server)");
 
     // Assert instructions with proper formatting for readability
-    insta::assert_snapshot!(&server_info.instructions.as_ref().unwrap(), @r###"
+    insta::assert_snapshot!(&server_info.instructions.as_ref().unwrap(), @r"
     This is an MCP server aggregator providing access to many tools through two main functions:
     `search` and `execute`.
 
@@ -312,20 +308,14 @@ async fn server_info_with_downstream_servers() {
 
     Always use the `search` tool first to discover available tools. Do not guess tool names.
 
-    **Available Servers and Tools:**
+    **Available Servers:**
 
-    **filesystem_server:**
-    - `filesystem_server__filesystem`: Manages files and directories with operations like listing, creating, and deleting
+    - **filesystem_server**
+    - **math_server**
+    - **text_server**
 
-    **math_server:**
-    - `math_server__adder`: Adds two numbers together
-    - `math_server__calculator`: Performs basic mathematical calculations including addition, subtraction, multiplication and division
-
-    **text_server:**
-    - `text_server__text_processor`: Processes text with various string manipulation operations like case conversion and reversal
-
-    **Note:** When executing tools, use the full name format `server__tool` as shown above.
-    "###);
+    **Note:** Use the `search` tool to discover what tools each server provides.
+    ");
 
     mcp_client.disconnect().await;
 }

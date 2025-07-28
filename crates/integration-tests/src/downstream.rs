@@ -57,6 +57,7 @@ pub struct TestService {
     auth_token: Option<String>,
     require_auth: bool,
     expected_token: Option<String>,
+    forward_auth: bool,
 }
 
 #[derive(Clone)]
@@ -92,6 +93,7 @@ impl TestService {
             auth_token: None,
             require_auth: false,
             expected_token: None,
+            forward_auth: false,
         }
     }
 
@@ -144,6 +146,15 @@ impl TestService {
 
     pub fn get_expected_token(&self) -> Option<&String> {
         self.expected_token.as_ref()
+    }
+
+    pub fn with_forward_auth(mut self) -> Self {
+        self.forward_auth = true;
+        self
+    }
+
+    pub fn forwards_auth(&self) -> bool {
+        self.forward_auth
     }
 
     pub fn get_tls_cert_paths(&self) -> Option<(PathBuf, PathBuf)> {

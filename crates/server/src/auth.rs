@@ -102,11 +102,15 @@ where
         let mut next = self.next.clone();
         let layer = self.layer.clone();
 
-        let (parts, body) = req.into_parts();
+        let (mut parts, body) = req.into_parts();
 
         Box::pin(async move {
             match layer.jwt.authenticate(&parts).await {
-                Ok(()) => next.call(Request::from_parts(parts, body)).await,
+                Ok(token) => {
+                    // Inject token into request extensions
+                    parts.extensions.insert(token);
+                    next.call(Request::from_parts(parts, body)).await
+                }
                 Err(auth_error) => {
                     let metadata_endpoint = layer.jwt.metadata_endpoint();
                     let header_value = format!("Bearer resource_metadata=\"{metadata_endpoint}\"");
