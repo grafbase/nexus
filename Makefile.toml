@@ -32,7 +32,7 @@ description = "Pushes a tag with the current version"
 script = '''
 git switch main
 git pull
-VERSION=$(cargo pkgid -p nexus | rev | cut -d '@' -f 1 | rev)
+VERSION=$(cargo pkgid -p nexus | rev | cut -d '#' -f 1 | rev)
 git tag $VERSION
 git push --tags
 '''
