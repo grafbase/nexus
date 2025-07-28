@@ -79,25 +79,17 @@ jobs:
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
 
-      - name: Cache cargo registry
+      - name: Cache cargo registry and build
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: ${{ runner.os }}-${{ matrix.platform.target }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+            target/
+          key: ${{ runner.os }}-${{ matrix.platform.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.platform.target }}-cargo-registry-
-
-      - name: Cache cargo target
-        if: runner.os != 'macOS'
-        uses: actions/cache@v4
-        with:
-          path: target/
-          key: ${{ runner.os }}-${{ matrix.platform.target }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.platform.target }}-cargo-target-
+            ${{ runner.os }}-${{ matrix.platform.target }}-cargo-
 
       - name: Install Rust
         uses: ./.github/actions/install-rust
@@ -160,21 +152,6 @@ jobs:
         shell: bash
         run: |
           cargo nextest run --target ${{ matrix.platform.target }} --no-tests=warn --profile ci --lib
-
-      - name: Clean up problematic files on macOS
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          # Clean up files that cause issues with tar on macOS
-          # Remove dependency files and files with non-ASCII characters
-          find target -name "*.d" -type f -delete 2>/dev/null || true
-          find target -name "*[^[:ascii:]]*" -type f -delete 2>/dev/null || true
-          # Remove any files with illegal byte sequences in their names
-          find target -type f | while IFS= read -r file; do
-            if ! echo "$file" | iconv -f UTF-8 -t UTF-8 >/dev/null 2>&1; then
-              rm -f "$file" 2>/dev/null || true
-            fi
-          done
 
   integration-tests:
     needs: [check-rust-format, check-toml-format]
