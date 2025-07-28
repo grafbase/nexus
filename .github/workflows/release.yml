@@ -159,29 +159,15 @@ jobs:
       - name: Get sources
         uses: actions/checkout@v4
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Build and push versioned Docker image
-        uses: depot/build-push-action@2583627a84956d07561420dcc1d0eb1f2af3fac0 # v1
+        uses: ./.github/actions/docker-build
         with:
-          project: ${{ env.DEPOT_PROJECT }}
-          token: ${{ secrets.DEPOT_TOKEN }}
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: |
-            ghcr.io/grafbase/nexus:${{ needs.prepare.outputs.version }}
-          file: ./Dockerfile
+          commit_sha: ${{ needs.prepare.outputs.version }}
+          dockerhub_username: ${{ secrets.DOCKERHUB_USERNAME }}
+          dockerhub_token: ${{ secrets.DOCKERHUB_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          depot_project: ${{ env.DEPOT_PROJECT }}
+          depot_token: ${{ secrets.DEPOT_TOKEN }}
 
   # Create GitHub release
   github-release:
