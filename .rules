@@ -58,7 +58,15 @@ let message = format!("User {username} has {count} items");
 
 // Bad
 let message = format!("User {} has {} items", username, count);
+
+// Good
+log::debug!("creating stdio downstream service for {name}");
+
+// Bad
+log::debug!("creating stdio downstream service for {}", name);
 ```
+
+And so on. You will find many places where these rules apply, not only for format! or log macros.
 
 ### File Organization
 Prefer flat module structure:
@@ -151,6 +159,40 @@ cargo insta approve
 cargo insta review
 ```
 
+### Multi-line strings
+
+When writing strings that contain multiple lines, prefer the `indoc` crate and its `indoc!` and `formatdoc!` macros.
+
+```rust
+use indoc::{indoc, formatdoc};
+
+// Good: Use indoc for multi-line strings
+let message = indoc! {r#"
+    This is a string.
+    This is another string.
+"#};
+
+// Bad: Use raw strings without indoc
+let message = r#"
+    This is a string.
+    This is another string.
+"#;
+
+// Good: use formatdoc with string interpolation
+let name = "Alice";
+let message = formatdoc! {r#"
+    Hello, {name}!
+    Welcome to our platform.
+"#};
+
+// Bad: use format directly
+let name = "Alice";
+let message = format!(r#"
+    Hello, {name}!
+    Welcome to our platform.
+"#);
+```
+
 ## Development Workflow
 
 ### Starting Services
@@ -182,6 +224,10 @@ cargo fmt
 # Check formatting without changes
 cargo fmt --check
 ```
+
+## Examples
+
+Do NOT write any examples or new markdown files if not explicitly requested. You can modify the existing ones.
 
 ## Architecture Patterns
 
