@@ -27,7 +27,9 @@ rmcp = { workspace = true, features = [
     "transport-streamable-http-server",
     "auth",
     "transport-io",
+    "transport-child-process",
     "client-side-sse",
+
 ] }
 schemars.workspace = true
 secrecy.workspace = true
@@ -35,6 +37,9 @@ serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 sha2.workspace = true
 tantivy.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["process", "time", "macros"] }
+tokio-util.workspace = true
 
 [lints]
 workspace = true

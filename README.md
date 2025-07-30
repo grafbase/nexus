@@ -4,9 +4,9 @@ Plug in all your MCP servers, APIs, and LLM providers. Route everything through 
 
 ## Features
 
-- **MCP Server Aggregation**: Connect multiple MCP servers (stdio, SSE, HTTP) through a single endpoint
+- **MCP Server Aggregation**: Connect multiple MCP servers (STDIO, SSE, HTTP) through a single endpoint
 - **Context-Aware Tool Search**: Intelligent fuzzy search across all connected tools using natural language queries
-- **Protocol Support**: Supports stdio, SSE (Server-Sent Events), and streamable HTTP MCP servers
+- **Protocol Support**: Supports STDIO (subprocess), SSE (Server-Sent Events), and streamable HTTP MCP servers
 - **Flexible Configuration**: TOML-based configuration with environment variable substitution
 - **Security**: Built-in CORS, CSRF protection, OAuth2, and TLS support.
 - **Docker Ready**: Available as a container image with minimal configuration needed
@@ -83,6 +83,11 @@ auth.token = "{{ env.GITHUB_TOKEN }}"
 
 [mcp.servers.filesystem]
 cmd = ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/Users/YOUR_USERNAME/Desktop"]
+
+[mcp.servers.python_server]
+cmd = ["python", "-m", "mcp_server"]
+env = { PYTHONPATH = "/opt/mcp" }
+cwd = "/workspace"
 ```
 
 ### Configuration Options
@@ -100,11 +105,24 @@ cmd = ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/Users/YOUR_USER
 
 #### MCP Server Types
 
-1. **Stdio Servers**: Launch local processes
+1. **STDIO Servers**: Launch local processes that communicate via standard input/output
    ```toml
    [mcp.servers.my_tool]
    cmd = ["path/to/executable", "--arg1", "--arg2"]
+
+   # Optional: Set environment variables
+   env = { DEBUG = "1", API_KEY = "{{ env.MY_API_KEY }}" }
+
+   # Optional: Set working directory
+   cwd = "/path/to/working/directory"
+
+   # Optional: Configure stderr handling (default: "null")
+   stderr = "inherit"  # Show in console
+   # or
+   stderr = { file = "/var/log/mcp/server.log" }  # Log to file
    ```
+
+   **Note**: STDIO servers must output valid JSON-RPC messages on stdout. The `cmd` array must have at least one element (the executable).
 
 2. **SSE Servers**: Connect to Server-Sent Events endpoints
    ```toml
@@ -246,6 +264,15 @@ When an AI assistant connects to Nexus, it can:
 
 All tools from downstream servers are namespaced with their server name (e.g., `github__search_code`, `filesystem__read_file`).
 
+### STDIO Server Integration
+
+STDIO servers are spawned as child processes and communicate via JSON-RPC over standard input/output:
+
+1. **Process Management**: Nexus automatically manages the lifecycle of STDIO server processes
+2. **Tool Discovery**: Tools from STDIO servers are discovered dynamically and indexed for search
+3. **Error Handling**: If a STDIO process crashes or outputs invalid JSON, appropriate errors are returned
+4. **Environment Isolation**: Each STDIO server runs in its own process with configurable environment
+
 ## Example Usage
 
 Once configured, AI assistants can interact with Nexus like this:
@@ -263,6 +290,43 @@ Once configured, AI assistants can interact with Nexus like this:
    [Calls execute with name: "github__search_code" and appropriate arguments]
    ```
 
+## Common STDIO Server Examples
+
+### Python MCP Server
+```toml
+[mcp.servers.python_tools]
+cmd = ["python", "-m", "my_mcp_server"]
+env = { PYTHONPATH = "/opt/mcp", PYTHONUNBUFFERED = "1" }
+stderr = "inherit"  # See Python output during development
+```
+
+### Node.js MCP Server
+```toml
+[mcp.servers.node_tools]
+cmd = ["node", "mcp-server.js"]
+cwd = "/path/to/project"
+env = { NODE_ENV = "production" }
+```
+
+### Using npx packages
+```toml
+[mcp.servers.filesystem]
+cmd = ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/home/user"]
+```
+
+## Troubleshooting STDIO Servers
+
+### Server doesn't start
+- **Check executable path**: Ensure the command exists and is executable
+- **View stderr output**: Set `stderr = "inherit"` temporarily to see error messages
+- **Verify JSON-RPC output**: The server must output valid JSON-RPC on stdout
+- **Check working directory**: Ensure `cwd` path exists if specified
+
+### Tools not appearing
+- **Wait for initialization**: STDIO servers may take a moment to start
+- **Use search**: STDIO tools only appear in search results, not in the base tool list
+- **Check server logs**: Enable stderr logging to see if the server is responding to tool list requests
+
 ## Security Considerations
 
 - Always use environment variables for sensitive tokens
@@ -272,6 +336,8 @@ Once configured, AI assistants can interact with Nexus like this:
 - Ensure JWKs URLs use HTTPS in production
 - Validate JWT token issuer and audience claims
 - Keep your MCP servers and Nexus updated
+- Be cautious when running STDIO servers with elevated privileges
+- Validate and sanitize any user input passed to STDIO server commands
 
 ### OAuth2 Security
 

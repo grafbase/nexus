@@ -2,6 +2,7 @@ mod cors;
 mod csrf;
 mod oauth2;
 mod sse;
+mod stdio;
 mod streamable_http;
 mod token_auth;
 mod tools;

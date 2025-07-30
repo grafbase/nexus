@@ -60,13 +60,42 @@ let message = format!("User {username} has {count} items");
 let message = format!("User {} has {} items", username, count);
 
 // Good
+assert!(
+    startup_duration < Duration::from_secs(5),
+    "STDIO server startup took too long: {startup_duration:?}",
+);
+
+// Bad
+assert!(
+    startup_duration < Duration::from_secs(5),
+    "STDIO server startup took too long: {:?}",
+    startup_duration
+);
+
+// Good
 log::debug!("creating stdio downstream service for {name}");
 
 // Bad
 log::debug!("creating stdio downstream service for {}", name);
 ```
 
+When accessing fields or calling methods, interpolation is not needed:
+
+```rust
+// Good: Direct field/method access
+let message = format!("Status: {}", server.status());
+let info = format!("User: {}", user.name);
+
+// Bad: Unnecessary named interpolation
+let message = format!("Status: {status}", status = server.status());
+let info = format!("User: {name}", name = user.name);
+```
+
 And so on. You will find many places where these rules apply, not only for format! or log macros.
+
+### Tools
+
+The Nexus server will always return two tools when listed: `search` and `execute`. If you want to find tools in tests you created, you have to search for them.
 
 ### File Organization
 Prefer flat module structure:

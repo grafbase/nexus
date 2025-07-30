@@ -1,7 +1,6 @@
 use indoc::indoc;
 use integration_tests::{TestServer, TestService};
 use serde_json::json;
-use tokio::runtime::Handle;
 
 use crate::tools::{AdderTool, CalculatorTool};
 
@@ -162,6 +161,7 @@ async fn multiple_services_with_different_tokens() {
 }
 
 #[tokio::test]
+#[should_panic]
 async fn startup_fails_with_invalid_downstream_auth() {
     let config = indoc! {r#"
         [mcp]
@@ -177,9 +177,5 @@ async fn startup_fails_with_invalid_downstream_auth() {
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        Handle::current().block_on(async { builder.build(config).await })
-    }));
-
-    assert!(result.is_err());
+    builder.build(config).await;
 }

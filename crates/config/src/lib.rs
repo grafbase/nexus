@@ -15,7 +15,10 @@ use std::{
 
 pub use cors::*;
 use duration_str::deserialize_option_duration;
-pub use mcp::{ClientAuthConfig, HttpConfig, HttpProtocol, McpConfig, McpServer, TlsClientConfig};
+pub use mcp::{
+    ClientAuthConfig, HttpConfig, HttpProtocol, McpConfig, McpServer, StdioConfig, StdioTarget, StdioTargetType,
+    TlsClientConfig,
+};
 use serde::Deserialize;
 use url::Url;
 
@@ -252,12 +255,283 @@ mod tests {
 
         insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
         {
-            "local_code_interpreter": Stdio {
-                cmd: [
-                    "/usr/bin/mcp/code_interpreter_server",
-                    "--json-output",
-                ],
-            },
+            "local_code_interpreter": Stdio(
+                StdioConfig {
+                    cmd: [
+                        "/usr/bin/mcp/code_interpreter_server",
+                        "--json-output",
+                    ],
+                    env: {},
+                    cwd: None,
+                    stdout: Simple(
+                        Pipe,
+                    ),
+                    stderr: Simple(
+                        Null,
+                    ),
+                },
+            ),
+        }
+        "#);
+    }
+
+    #[test]
+    fn mcp_stdio_server_with_env_and_cwd() {
+        let config = indoc! {r#"
+            [mcp.servers.local_interpreter]
+            cmd = ["python", "-m", "mcp_server", "--port", "3000"]
+            env = { PYTHONPATH = "/opt/mcp", DEBUG = "1" }
+            cwd = "/tmp/mcp"
+        "#};
+
+        let config: Config = toml::from_str(config).expect("Failed to parse config");
+
+        insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
+        {
+            "local_interpreter": Stdio(
+                StdioConfig {
+                    cmd: [
+                        "python",
+                        "-m",
+                        "mcp_server",
+                        "--port",
+                        "3000",
+                    ],
+                    env: {
+                        "DEBUG": "1",
+                        "PYTHONPATH": "/opt/mcp",
+                    },
+                    cwd: Some(
+                        "/tmp/mcp",
+                    ),
+                    stdout: Simple(
+                        Pipe,
+                    ),
+                    stderr: Simple(
+                        Null,
+                    ),
+                },
+            ),
+        }
+        "#);
+    }
+
+    #[test]
+    fn mcp_stdio_server_empty_command_fails() {
+        let config = indoc! {r#"
+            [mcp.servers.invalid]
+            cmd = []
+        "#};
+
+        let result: Result<Config, _> = toml::from_str(config);
+        assert!(result.is_err());
+
+        let error_msg = result.unwrap_err().to_string();
+        // The error occurs at the enum level because untagged enum can't match the variant
+        // This still validates that empty commands are rejected at parse time
+        assert!(error_msg.contains("data did not match any variant") || error_msg.contains("Command cannot be empty"));
+    }
+
+    #[test]
+    fn mcp_stdio_server_minimal_config() {
+        let config = indoc! {r#"
+            [mcp.servers.simple]
+            cmd = ["echo", "hello"]
+        "#};
+
+        let config: Config = toml::from_str(config).expect("Failed to parse config");
+
+        insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
+        {
+            "simple": Stdio(
+                StdioConfig {
+                    cmd: [
+                        "echo",
+                        "hello",
+                    ],
+                    env: {},
+                    cwd: None,
+                    stdout: Simple(
+                        Pipe,
+                    ),
+                    stderr: Simple(
+                        Null,
+                    ),
+                },
+            ),
+        }
+        "#);
+    }
+
+    #[test]
+    fn mcp_stdio_server_single_command() {
+        let config = indoc! {r#"
+            [mcp.servers.single]
+            cmd = ["./server"]
+        "#};
+
+        let config: Config = toml::from_str(config).expect("Failed to parse config");
+
+        insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
+        {
+            "single": Stdio(
+                StdioConfig {
+                    cmd: [
+                        "./server",
+                    ],
+                    env: {},
+                    cwd: None,
+                    stdout: Simple(
+                        Pipe,
+                    ),
+                    stderr: Simple(
+                        Null,
+                    ),
+                },
+            ),
+        }
+        "#);
+    }
+
+    #[test]
+    fn mcp_mixed_stdio_and_http_servers() {
+        let config = indoc! {r#"
+            [mcp.servers.stdio_server]
+            cmd = ["python", "server.py"]
+
+            [mcp.servers.http_server]
+            url = "http://localhost:8080"
+        "#};
+
+        let config: Config = toml::from_str(config).expect("Failed to parse config");
+
+        insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
+        {
+            "http_server": Http(
+                HttpConfig {
+                    protocol: None,
+                    url: Url {
+                        scheme: "http",
+                        cannot_be_a_base: false,
+                        username: "",
+                        password: None,
+                        host: Some(
+                            Domain(
+                                "localhost",
+                            ),
+                        ),
+                        port: Some(
+                            8080,
+                        ),
+                        path: "/",
+                        query: None,
+                        fragment: None,
+                    },
+                    tls: None,
+                    message_url: None,
+                    auth: None,
+                },
+            ),
+            "stdio_server": Stdio(
+                StdioConfig {
+                    cmd: [
+                        "python",
+                        "server.py",
+                    ],
+                    env: {},
+                    cwd: None,
+                    stdout: Simple(
+                        Pipe,
+                    ),
+                    stderr: Simple(
+                        Null,
+                    ),
+                },
+            ),
+        }
+        "#);
+    }
+
+    #[test]
+    fn mcp_stdio_server_with_stdout_stderr_config() {
+        let config = indoc! {r#"
+            [mcp.servers.configured_stdio]
+            cmd = ["python", "server.py"]
+            stdout = "pipe"
+            stderr = "inherit"
+
+            [mcp.servers.file_logging_stdio]
+            cmd = ["node", "server.js"]
+            stderr = { file = "/tmp/server.log" }
+        "#};
+
+        let config: Config = toml::from_str(config).expect("Failed to parse config");
+
+        insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
+        {
+            "configured_stdio": Stdio(
+                StdioConfig {
+                    cmd: [
+                        "python",
+                        "server.py",
+                    ],
+                    env: {},
+                    cwd: None,
+                    stdout: Simple(
+                        Pipe,
+                    ),
+                    stderr: Simple(
+                        Inherit,
+                    ),
+                },
+            ),
+            "file_logging_stdio": Stdio(
+                StdioConfig {
+                    cmd: [
+                        "node",
+                        "server.js",
+                    ],
+                    env: {},
+                    cwd: None,
+                    stdout: Simple(
+                        Pipe,
+                    ),
+                    stderr: File {
+                        file: "/tmp/server.log",
+                    },
+                },
+            ),
+        }
+        "#);
+    }
+
+    #[test]
+    fn mcp_stdio_server_with_null_stderr() {
+        let config = indoc! {r#"
+            [mcp.servers.quiet_stdio]
+            cmd = ["./quiet-server"]
+            stderr = "null"
+        "#};
+
+        let config: Config = toml::from_str(config).expect("Failed to parse config");
+
+        insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
+        {
+            "quiet_stdio": Stdio(
+                StdioConfig {
+                    cmd: [
+                        "./quiet-server",
+                    ],
+                    env: {},
+                    cwd: None,
+                    stdout: Simple(
+                        Pipe,
+                    ),
+                    stderr: Simple(
+                        Null,
+                    ),
+                },
+            ),
         }
         "#);
     }
@@ -424,21 +698,41 @@ mod tests {
                 idle_timeout: 600s,
             },
             servers: {
-                "another_stdio": Stdio {
-                    cmd: [
-                        "python",
-                        "-m",
-                        "mcp_server",
-                        "--port",
-                        "3000",
-                    ],
-                },
-                "local_code_interpreter": Stdio {
-                    cmd: [
-                        "/usr/bin/mcp/code_interpreter_server",
-                        "--json-output",
-                    ],
-                },
+                "another_stdio": Stdio(
+                    StdioConfig {
+                        cmd: [
+                            "python",
+                            "-m",
+                            "mcp_server",
+                            "--port",
+                            "3000",
+                        ],
+                        env: {},
+                        cwd: None,
+                        stdout: Simple(
+                            Pipe,
+                        ),
+                        stderr: Simple(
+                            Null,
+                        ),
+                    },
+                ),
+                "local_code_interpreter": Stdio(
+                    StdioConfig {
+                        cmd: [
+                            "/usr/bin/mcp/code_interpreter_server",
+                            "--json-output",
+                        ],
+                        env: {},
+                        cwd: None,
+                        stdout: Simple(
+                            Pipe,
+                        ),
+                        stderr: Simple(
+                            Null,
+                        ),
+                    },
+                ),
                 "sse_api": Http(
                     HttpConfig {
                         protocol: Some(

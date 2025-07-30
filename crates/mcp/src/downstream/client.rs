@@ -1,6 +1,6 @@
-use std::{io::Read, sync::Arc};
+use std::{fs, io::Read, sync::Arc};
 
-use config::{ClientAuthConfig, HttpConfig, TlsClientConfig};
+use config::{ClientAuthConfig, HttpConfig, StdioTarget, StdioTargetType, TlsClientConfig};
 use reqwest::{
     Certificate, Identity,
     header::{AUTHORIZATION, HeaderMap, HeaderValue},
@@ -10,11 +10,13 @@ use rmcp::{
     model::{CallToolRequestParam, CallToolResult, Tool},
     service::RunningService,
     transport::{
-        SseClientTransport, StreamableHttpClientTransport, common::client_side_sse::FixedInterval,
+        SseClientTransport, StreamableHttpClientTransport, TokioChildProcess, common::client_side_sse::FixedInterval,
         sse_client::SseClientConfig, streamable_http_client::StreamableHttpClientTransportConfig,
     },
 };
 use secrecy::ExposeSecret;
+use std::process::Stdio;
+use tokio::process::Command;
 
 /// An MCP server which acts as proxy for a downstream MCP server, no matter the protocol.
 #[derive(Clone)]
@@ -31,9 +33,42 @@ struct Inner {
 }
 
 impl DownstreamClient {
-    /// Creates a new DownstreamServer with the given name and configuration.
-    pub async fn new_stdio(_name: &str, _cmd: &[String]) -> anyhow::Result<Self> {
-        todo!()
+    /// Creates a running service for STDIO-based MCP communication.
+    ///
+    /// This function spawns a child process and establishes STDIO communication with it.
+    pub async fn new_stdio(name: &str, config: &config::StdioConfig) -> anyhow::Result<Self> {
+        log::debug!("creating stdio downstream service for {name}");
+
+        let mut command = Command::new(config.executable());
+        command.args(config.args());
+
+        // Set environment variables
+        for (key, value) in &config.env {
+            command.env(key, value);
+        }
+
+        // Set working directory if specified
+        if let Some(cwd) = &config.cwd {
+            command.current_dir(cwd);
+        }
+
+        // Configure stderr based on configuration
+        let stderr_stdio = stdio_target(&config.stderr)?;
+        log::debug!("stdio configuration for {name}: stderr={:?}", config.stderr);
+
+        let transport = TokioChildProcess::builder(command)
+            .stderr(stderr_stdio)
+            .spawn()
+            .map(|(transport, _stderr)| transport)?;
+
+        let service = ().serve(transport).await?;
+
+        Ok(Self {
+            inner: Arc::new(Inner {
+                name: name.to_string(),
+                service,
+            }),
+        })
     }
 
     pub async fn new_http(name: &str, config: &HttpConfig) -> anyhow::Result<Self> {
@@ -141,7 +176,7 @@ fn create_client(tls: Option<&TlsClientConfig>, auth: Option<&ClientAuthConfig>)
         if let Some(ref path) = tls.root_ca_cert_path {
             let mut pem = Vec::new();
 
-            let mut file = std::fs::File::open(path)?;
+            let mut file = fs::File::open(path)?;
             file.read_to_end(&mut pem)?;
 
             let cert = Certificate::from_pem(&pem)?;
@@ -152,12 +187,12 @@ fn create_client(tls: Option<&TlsClientConfig>, auth: Option<&ClientAuthConfig>)
 
         if let Some((cert_path, key_path)) = identity {
             let mut cert_pem = Vec::new();
-            let mut cert_file = std::fs::File::open(cert_path)?;
+            let mut cert_file = fs::File::open(cert_path)?;
             cert_file.read_to_end(&mut cert_pem)?;
 
             // Read client private key
             let mut key_pem = Vec::new();
-            let mut key_file = std::fs::File::open(key_path)?;
+            let mut key_file = fs::File::open(key_path)?;
             key_file.read_to_end(&mut key_pem)?;
 
             // Combine certificate and key into a single PEM bundle
@@ -174,12 +209,26 @@ fn create_client(tls: Option<&TlsClientConfig>, auth: Option<&ClientAuthConfig>)
 
     if let Some(ClientAuthConfig::Token { token }) = auth {
         let mut headers = HeaderMap::new();
-
         let auth_value = HeaderValue::from_str(&format!("Bearer {}", token.expose_secret()))?;
+
         headers.insert(AUTHORIZATION, auth_value);
 
         builder = builder.default_headers(headers);
     }
 
     Ok(builder.build()?)
+}
+
+/// Converts a StdioTarget configuration to a tokio::process::Stdio.
+fn stdio_target(target: &StdioTarget) -> anyhow::Result<Stdio> {
+    match target {
+        StdioTarget::Simple(StdioTargetType::Pipe) => Ok(Stdio::piped()),
+        StdioTarget::Simple(StdioTargetType::Inherit) => Ok(Stdio::inherit()),
+        StdioTarget::Simple(StdioTargetType::Null) => Ok(Stdio::null()),
+        StdioTarget::File { file } => {
+            let file = fs::OpenOptions::new().create(true).append(true).open(file)?;
+
+            Ok(Stdio::from(file))
+        }
+    }
 }

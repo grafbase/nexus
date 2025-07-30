@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use duration_str::deserialize_duration;
 use secrecy::SecretString;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer, de::Error};
 use url::Url;
 
 /// Configuration for MCP (Model Context Protocol) settings.
@@ -26,10 +26,7 @@ pub struct McpConfig {
 #[serde(rename_all = "snake_case", untagged, deny_unknown_fields)]
 pub enum McpServer {
     /// A server that runs as a subprocess with command and arguments.
-    Stdio {
-        /// Command and arguments to run the server.
-        cmd: Vec<String>,
-    },
+    Stdio(Box<StdioConfig>),
     /// A server accessible via HTTP.
     Http(Box<HttpConfig>),
 }
@@ -39,7 +36,7 @@ impl McpServer {
     /// from the incoming request to the MCP server.
     pub fn forwards_authentication(&self) -> bool {
         match self {
-            McpServer::Stdio { .. } => false,
+            McpServer::Stdio(..) => false,
             McpServer::Http(config) => config.forwards_authentication(),
         }
     }
@@ -94,6 +91,137 @@ impl Default for McpConfig {
             downstream_cache: McpDownstreamCacheConfig::default(),
             servers: BTreeMap::new(),
         }
+    }
+}
+
+/// Configuration for STDIO-based MCP servers.
+///
+/// STDIO servers are spawned as child processes and communicate via standard input/output
+/// using JSON-RPC messages over the MCP protocol.
+///
+/// # Stdout/Stderr Configuration
+///
+/// - `stdout` must always be "pipe" for MCP JSON-RPC communication
+/// - `stderr` can be configured to control subprocess logging behavior
+///
+/// **Note**: Due to limitations in the rmcp library's `TokioChildProcess` implementation,
+/// stderr file redirection may not work as expected. The configuration is processed but
+/// the rmcp transport layer may override these settings. This is a known limitation.
+///
+/// # Example Configuration
+/// ```toml
+/// [mcp.servers.python_server]
+/// cmd = ["python", "-m", "mcp_server", "--port", "3000"]
+/// env = { PYTHONPATH = "/opt/mcp", DEBUG = "1" }
+/// cwd = "/tmp/mcp"
+/// # stdout defaults to "pipe" (required for MCP)
+/// stderr = "null"  # Discard logs (default)
+///
+/// [mcp.servers.debug_server]
+/// cmd = ["node", "debug-server.js"]
+/// stderr = "inherit"  # Show logs in console for debugging
+///
+/// [mcp.servers.logged_server]
+/// cmd = ["./production-server"]
+/// stderr = { file = "/var/log/mcp/server.log" }  # Attempt file logging
+/// # Note: File logging may not work due to rmcp library limitations
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StdioConfig {
+    /// Command and arguments to run the server.
+    /// Must contain at least one element (the executable).
+    ///
+    /// The first element is treated as the executable, and subsequent elements as arguments.
+    #[serde(deserialize_with = "deserialize_non_empty_command")]
+    pub cmd: Vec<String>,
+
+    /// Environment variables to set for the subprocess.
+    /// These will be added to the child process environment.
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
+
+    /// Working directory for the subprocess.
+    /// If not specified, the child process will inherit the parent's working directory.
+    #[serde(default)]
+    pub cwd: Option<PathBuf>,
+
+    /// Configuration for stdout handling.
+    /// If not specified, defaults to "pipe" for MCP communication.
+    #[serde(default)]
+    pub stdout: StdioTarget,
+
+    /// Configuration for stderr handling.
+    /// If not specified, defaults to "null" to discard subprocess logs.
+    ///
+    /// Note: Due to rmcp library limitations, file redirection may not work as expected.
+    #[serde(default = "default_stderr_target")]
+    pub stderr: StdioTarget,
+}
+
+impl StdioConfig {
+    /// Returns the executable (first element of cmd).
+    ///
+    /// This is guaranteed to be non-empty due to validation during deserialization.
+    pub fn executable(&self) -> &str {
+        &self.cmd[0] // Safe because validation ensures non-empty
+    }
+
+    /// Returns the arguments (all elements after the first).
+    pub fn args(&self) -> &[String] {
+        &self.cmd[1..]
+    }
+}
+
+/// Configuration for how to handle stdout/stderr streams of a child process.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "snake_case", untagged)]
+pub enum StdioTarget {
+    /// Simple string configuration.
+    Simple(StdioTargetType),
+    /// File configuration with path.
+    File {
+        /// Path to the file where output should be written.
+        file: PathBuf,
+    },
+}
+
+impl Default for StdioTarget {
+    fn default() -> Self {
+        Self::Simple(StdioTargetType::Pipe)
+    }
+}
+
+/// Simple stdio target types.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StdioTargetType {
+    /// Pipe the stream to the parent process (default for stdout).
+    Pipe,
+    /// Inherit the stream from the parent process.
+    Inherit,
+    /// Discard the stream output.
+    Null,
+}
+
+/// Default stderr target - null to discard subprocess logs.
+fn default_stderr_target() -> StdioTarget {
+    StdioTarget::Simple(StdioTargetType::Null)
+}
+
+/// Custom deserializer for non-empty command vector.
+/// Ensures validation happens at parse time, not runtime.
+fn deserialize_non_empty_command<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let vec = Vec::<String>::deserialize(deserializer)?;
+
+    match vec.split_first() {
+        Some((_, _)) => Ok(vec),
+        None => Err(D::Error::custom(
+            "Command cannot be empty - must contain at least the executable",
+        )),
     }
 }
 

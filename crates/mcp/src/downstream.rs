@@ -41,10 +41,10 @@ impl Downstream {
             let name = name.clone();
 
             match server_config.finalize(token) {
-                McpServer::Stdio { cmd } if token.is_none() => {
+                McpServer::Stdio(stdio_config) if token.is_none() => {
                     server_futures.push(
                         async move {
-                            let server = DownstreamClient::new_stdio(&name, &cmd)
+                            let server = DownstreamClient::new_stdio(&name, &stdio_config)
                                 .await
                                 .map_err(|err| DownstreamError(name.clone(), err))?;
 
