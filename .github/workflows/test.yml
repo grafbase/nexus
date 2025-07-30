@@ -133,11 +133,6 @@ jobs:
       - name: Cargo check
         shell: bash
         run: |
-          # Disable sccache for aarch64 targets to avoid "Compiler not supported" error
-          if [[ "${{ matrix.platform.target }}" == "aarch64-unknown-linux-musl" ]] || [[ "${{ matrix.platform.target }}" == "aarch64-apple-darwin" ]]; then
-            unset RUSTC_WRAPPER
-          fi
-
           cargo check \
             --locked \
             --target ${{ matrix.platform.target }}
@@ -145,11 +140,6 @@ jobs:
       - name: Clippy
         shell: bash
         run: |
-          # Disable sccache for aarch64 targets to avoid "Compiler not supported" error
-          if [[ "${{ matrix.platform.target }}" == "aarch64-unknown-linux-musl" ]] || [[ "${{ matrix.platform.target }}" == "aarch64-apple-darwin" ]]; then
-            unset RUSTC_WRAPPER
-          fi
-
           cargo clippy \
             --locked \
             --target ${{ matrix.platform.target }}
@@ -158,11 +148,6 @@ jobs:
         id: unit-tests
         shell: bash
         run: |
-          # Disable sccache for aarch64 targets to avoid "Compiler not supported" error
-          if [[ "${{ matrix.platform.target }}" == "aarch64-unknown-linux-musl" ]] || [[ "${{ matrix.platform.target }}" == "aarch64-apple-darwin" ]]; then
-            unset RUSTC_WRAPPER
-          fi
-
           cargo nextest run --target ${{ matrix.platform.target }} --no-tests=warn --profile ci --lib
 
   integration-tests:
