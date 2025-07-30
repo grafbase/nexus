@@ -12,13 +12,10 @@ use url::Url;
 #[serde(default, deny_unknown_fields)]
 pub struct McpConfig {
     /// Whether MCP is enabled or disabled.
-    #[serde(default = "default_enabled")]
     pub enabled: bool,
     /// The path for MCP endpoint.
-    #[serde(default = "default_path")]
     pub path: String,
     /// Configuration for downstream connection caching.
-    #[serde(default)]
     pub downstream_cache: McpDownstreamCacheConfig,
     /// Map of server names to their configurations.
     pub servers: BTreeMap<String, McpServer>,
@@ -73,19 +70,18 @@ impl McpServer {
 #[serde(default, deny_unknown_fields)]
 pub struct McpDownstreamCacheConfig {
     /// Maximum number of cached downstream connections.
-    #[serde(default = "default_cache_max_capacity")]
-    pub max_capacity: u64,
+    pub max_size: u64,
     /// How long a cached connection can be idle before being evicted.
     /// Accepts duration strings like "10m", "30s", "1h" or plain seconds as integer.
-    #[serde(default = "default_cache_idle_timeout", deserialize_with = "deserialize_duration")]
+    #[serde(deserialize_with = "deserialize_duration")]
     pub idle_timeout: Duration,
 }
 
 impl Default for McpDownstreamCacheConfig {
     fn default() -> Self {
         Self {
-            max_capacity: default_cache_max_capacity(),
-            idle_timeout: default_cache_idle_timeout(),
+            max_size: 1000,
+            idle_timeout: Duration::from_secs(600),
         }
     }
 }
@@ -172,7 +168,6 @@ impl HttpConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct TlsClientConfig {
     /// Whether to verify TLS certificates.
-    #[serde(default = "default_verify_tls")]
     pub verify_certs: bool,
     /// Whether to accept invalid hostnames in TLS certificates.
     pub accept_invalid_hostnames: bool,
@@ -218,24 +213,4 @@ pub enum ClientAuthConfig {
 pub enum ForwardType {
     /// Forward authentication from the incoming request.
     Forward,
-}
-
-fn default_enabled() -> bool {
-    true
-}
-
-fn default_path() -> String {
-    "/mcp".to_string()
-}
-
-fn default_verify_tls() -> bool {
-    true
-}
-
-fn default_cache_max_capacity() -> u64 {
-    1000
-}
-
-fn default_cache_idle_timeout() -> Duration {
-    Duration::from_secs(600)
 }

@@ -22,7 +22,7 @@ pub struct DynamicDownstreamCache {
 impl DynamicDownstreamCache {
     pub fn new(config: McpConfig) -> Self {
         let cache = Cache::builder()
-            .max_capacity(config.downstream_cache.max_capacity)
+            .max_capacity(config.downstream_cache.max_size)
             .time_to_idle(config.downstream_cache.idle_timeout)
             .build();
 

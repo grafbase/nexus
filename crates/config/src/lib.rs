@@ -198,7 +198,7 @@ mod tests {
                 enabled: false,
                 path: "/mcp-path",
                 downstream_cache: McpDownstreamCacheConfig {
-                    max_capacity: 1000,
+                    max_size: 1000,
                     idle_timeout: 600s,
                 },
                 servers: {},
@@ -232,7 +232,7 @@ mod tests {
                 enabled: true,
                 path: "/mcp",
                 downstream_cache: McpDownstreamCacheConfig {
-                    max_capacity: 1000,
+                    max_size: 1000,
                     idle_timeout: 600s,
                 },
                 servers: {},
@@ -420,7 +420,7 @@ mod tests {
             enabled: true,
             path: "/custom-mcp",
             downstream_cache: McpDownstreamCacheConfig {
-                max_capacity: 1000,
+                max_size: 1000,
                 idle_timeout: 600s,
             },
             servers: {
