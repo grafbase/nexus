@@ -107,25 +107,22 @@ jobs:
             # Install native musl tools for x86_64
             sudo apt-get install -y musl-tools
           elif [[ "${{ matrix.platform.target }}" == "aarch64-unknown-linux-musl" ]]; then
-            # Install cross-compilation tools for aarch64
-            sudo apt-get install -y gcc-aarch64-linux-gnu
+            # We're already on an aarch64 runner, so we just need native musl tools
+            sudo apt-get install -y musl-tools musl-dev
 
-            # Download and install musl cross-compiler
-            mkdir -p /tmp/musl-cross
-            cd /tmp/musl-cross
-
-            # Download the aarch64 musl cross toolchain
-            curl -L https://musl.cc/aarch64-linux-musl-cross.tgz | tar xz
-
-            # Move to system location
-            sudo mv aarch64-linux-musl-cross /opt/
-
-            # Add to PATH
-            echo "/opt/aarch64-linux-musl-cross/bin" >> $GITHUB_PATH
-            export PATH="/opt/aarch64-linux-musl-cross/bin:$PATH"
+            # Create symlinks for the expected compiler names
+            sudo ln -sf /usr/bin/musl-gcc /usr/local/bin/aarch64-linux-musl-gcc
+            sudo ln -sf /usr/bin/ar /usr/local/bin/aarch64-linux-musl-ar
 
             # Verify installation
             which aarch64-linux-musl-gcc
+            aarch64-linux-musl-gcc --version
+
+            # Set up environment to disable assembly in zstd-sys for ARM64
+            # This works around the issue where zstd-sys tries to compile x86_64 assembly on ARM64
+            echo "CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc" >> $GITHUB_ENV
+            echo "AR_aarch64_unknown_linux_musl=aarch64-linux-musl-ar" >> $GITHUB_ENV
+            echo "CFLAGS_aarch64_unknown_linux_musl=-DZSTD_DISABLE_ASM" >> $GITHUB_ENV
           fi
 
       - name: Install cargo-nextest
@@ -136,6 +133,11 @@ jobs:
       - name: Cargo check
         shell: bash
         run: |
+          # Disable sccache for aarch64 targets to avoid "Compiler not supported" error
+          if [[ "${{ matrix.platform.target }}" == "aarch64-unknown-linux-musl" ]] || [[ "${{ matrix.platform.target }}" == "aarch64-apple-darwin" ]]; then
+            unset RUSTC_WRAPPER
+          fi
+
           cargo check \
             --locked \
             --target ${{ matrix.platform.target }}
@@ -143,6 +145,11 @@ jobs:
       - name: Clippy
         shell: bash
         run: |
+          # Disable sccache for aarch64 targets to avoid "Compiler not supported" error
+          if [[ "${{ matrix.platform.target }}" == "aarch64-unknown-linux-musl" ]] || [[ "${{ matrix.platform.target }}" == "aarch64-apple-darwin" ]]; then
+            unset RUSTC_WRAPPER
+          fi
+
           cargo clippy \
             --locked \
             --target ${{ matrix.platform.target }}
@@ -151,6 +158,11 @@ jobs:
         id: unit-tests
         shell: bash
         run: |
+          # Disable sccache for aarch64 targets to avoid "Compiler not supported" error
+          if [[ "${{ matrix.platform.target }}" == "aarch64-unknown-linux-musl" ]] || [[ "${{ matrix.platform.target }}" == "aarch64-apple-darwin" ]]; then
+            unset RUSTC_WRAPPER
+          fi
+
           cargo nextest run --target ${{ matrix.platform.target }} --no-tests=warn --profile ci --lib
 
   integration-tests:
