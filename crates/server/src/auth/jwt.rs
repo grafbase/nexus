@@ -74,46 +74,53 @@ impl JwtAuth {
         use jwt_compact::alg::*;
 
         let time_options = TimeOptions::default();
+        let mut validation_results = Vec::new();
 
-        jwks.keys
-            .iter()
-            // If 'kid' was provided, we only use the jwk with the correct id.
-            .filter(|jwk| match (&untrusted_token.header().key_id, &jwk.key_id) {
+        // Collect all potential validation results to prevent timing attacks
+        for jwk in &jwks.keys {
+            // Always check key ID match regardless of whether we'll use this key
+            let kid_matches = match (&untrusted_token.header().key_id, &jwk.key_id) {
                 (Some(expected), Some(kid)) => expected == kid,
                 (Some(_), None) => false,
                 (None, _) => true,
-            })
-            .map(|jwk| &jwk.key)
-            .filter_map(|jwk| match Alg::from_str(untrusted_token.algorithm()).ok()? {
-                Alg::HS256 => decode(Hs256, jwk, &untrusted_token),
-                Alg::HS384 => decode(Hs384, jwk, &untrusted_token),
-                Alg::HS512 => decode(Hs512, jwk, &untrusted_token),
-                Alg::ES256 => decode(Es256, jwk, &untrusted_token),
-                Alg::RS256 => decode(Rsa::rs256(), jwk, &untrusted_token),
-                Alg::RS384 => decode(Rsa::rs384(), jwk, &untrusted_token),
-                Alg::RS512 => decode(Rsa::rs512(), jwk, &untrusted_token),
-                Alg::PS256 => decode(Rsa::ps256(), jwk, &untrusted_token),
-                Alg::PS384 => decode(Rsa::ps384(), jwk, &untrusted_token),
-                Alg::PS512 => decode(Rsa::ps512(), jwk, &untrusted_token),
-                Alg::EdDSA => decode(Ed25519, jwk, &untrusted_token),
-            })
-            .find(|token| {
-                let claims = token.claims();
+            };
 
-                if claims.validate_expiration(&time_options).is_err() {
-                    return false;
+            if let Ok(alg) = Alg::from_str(untrusted_token.algorithm()) {
+                let decode_result = match alg {
+                    Alg::HS256 => decode(Hs256, &jwk.key, &untrusted_token),
+                    Alg::HS384 => decode(Hs384, &jwk.key, &untrusted_token),
+                    Alg::HS512 => decode(Hs512, &jwk.key, &untrusted_token),
+                    Alg::ES256 => decode(Es256, &jwk.key, &untrusted_token),
+                    Alg::RS256 => decode(Rsa::rs256(), &jwk.key, &untrusted_token),
+                    Alg::RS384 => decode(Rsa::rs384(), &jwk.key, &untrusted_token),
+                    Alg::RS512 => decode(Rsa::rs512(), &jwk.key, &untrusted_token),
+                    Alg::PS256 => decode(Rsa::ps256(), &jwk.key, &untrusted_token),
+                    Alg::PS384 => decode(Rsa::ps384(), &jwk.key, &untrusted_token),
+                    Alg::PS512 => decode(Rsa::ps512(), &jwk.key, &untrusted_token),
+                    Alg::EdDSA => decode(Ed25519, &jwk.key, &untrusted_token),
+                };
+
+                if let Some(token) = decode_result {
+                    let claims = token.claims();
+
+                    let time_valid = claims.validate_expiration(&time_options).is_ok()
+                        && (claims.not_before.is_none() || claims.validate_maturity(&time_options).is_ok());
+
+                    let issuer_valid = self.validate_issuer(&claims.custom);
+                    let audience_valid = self.validate_audience(&claims.custom);
+
+                    validation_results.push((kid_matches, time_valid, issuer_valid, audience_valid, token));
                 }
+            }
+        }
 
-                if claims.not_before.is_some() && claims.validate_maturity(&time_options).is_err() {
-                    return false;
-                }
-
-                if !self.validate_issuer(&claims.custom) {
-                    return false;
-                }
-
-                self.validate_audience(&claims.custom)
+        // Find the first valid token that matches all criteria
+        validation_results
+            .into_iter()
+            .find(|(kid_matches, time_valid, issuer_valid, audience_valid, _)| {
+                *kid_matches && *time_valid && *issuer_valid && *audience_valid
             })
+            .map(|(_, _, _, _, token)| token)
     }
 
     fn validate_issuer(&self, claims: &CustomClaims) -> bool {
@@ -124,18 +131,15 @@ impl JwtAuth {
 
         match claims.get_issuer() {
             Some(issuer) if issuer == expected_issuer => {
-                log::debug!("Token issuer validation passed: {issuer}");
-
+                log::debug!("Token issuer validation passed");
                 true
             }
-            Some(issuer) => {
-                log::debug!("Token rejected: invalid issuer '{issuer}', expected '{expected_issuer}'");
-
+            Some(_) => {
+                log::debug!("Token rejected: invalid issuer");
                 false
             }
             None => {
-                log::debug!("Token rejected: missing issuer claim, expected '{expected_issuer}'");
-
+                log::debug!("Token rejected: missing issuer claim");
                 false
             }
         }
@@ -148,13 +152,10 @@ impl JwtAuth {
         };
 
         if claims.has_audience(expected_audience) {
-            log::debug!("Token audience validation passed for: {expected_audience}");
-
+            log::debug!("Token audience validation passed");
             true
         } else {
-            let audiences = claims.get_audiences();
-            log::debug!("Token rejected: audience '{expected_audience}' not found in token audiences: {audiences:?}");
-
+            log::debug!("Token rejected: audience validation failed");
             false
         }
     }
