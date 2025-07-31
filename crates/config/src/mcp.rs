@@ -98,34 +98,6 @@ impl Default for McpConfig {
 ///
 /// STDIO servers are spawned as child processes and communicate via standard input/output
 /// using JSON-RPC messages over the MCP protocol.
-///
-/// # Stdout/Stderr Configuration
-///
-/// - `stdout` must always be "pipe" for MCP JSON-RPC communication
-/// - `stderr` can be configured to control subprocess logging behavior
-///
-/// **Note**: Due to limitations in the rmcp library's `TokioChildProcess` implementation,
-/// stderr file redirection may not work as expected. The configuration is processed but
-/// the rmcp transport layer may override these settings. This is a known limitation.
-///
-/// # Example Configuration
-/// ```toml
-/// [mcp.servers.python_server]
-/// cmd = ["python", "-m", "mcp_server", "--port", "3000"]
-/// env = { PYTHONPATH = "/opt/mcp", DEBUG = "1" }
-/// cwd = "/tmp/mcp"
-/// # stdout defaults to "pipe" (required for MCP)
-/// stderr = "null"  # Discard logs (default)
-///
-/// [mcp.servers.debug_server]
-/// cmd = ["node", "debug-server.js"]
-/// stderr = "inherit"  # Show logs in console for debugging
-///
-/// [mcp.servers.logged_server]
-/// cmd = ["./production-server"]
-/// stderr = { file = "/var/log/mcp/server.log" }  # Attempt file logging
-/// # Note: File logging may not work due to rmcp library limitations
-/// ```
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StdioConfig {
@@ -145,11 +117,6 @@ pub struct StdioConfig {
     /// If not specified, the child process will inherit the parent's working directory.
     #[serde(default)]
     pub cwd: Option<PathBuf>,
-
-    /// Configuration for stdout handling.
-    /// If not specified, defaults to "pipe" for MCP communication.
-    #[serde(default)]
-    pub stdout: StdioTarget,
 
     /// Configuration for stderr handling.
     /// If not specified, defaults to "null" to discard subprocess logs.

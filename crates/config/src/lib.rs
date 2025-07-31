@@ -263,9 +263,6 @@ mod tests {
                     ],
                     env: {},
                     cwd: None,
-                    stdout: Simple(
-                        Pipe,
-                    ),
                     stderr: Simple(
                         Null,
                     ),
@@ -303,9 +300,6 @@ mod tests {
                     },
                     cwd: Some(
                         "/tmp/mcp",
-                    ),
-                    stdout: Simple(
-                        Pipe,
                     ),
                     stderr: Simple(
                         Null,
@@ -351,9 +345,6 @@ mod tests {
                     ],
                     env: {},
                     cwd: None,
-                    stdout: Simple(
-                        Pipe,
-                    ),
                     stderr: Simple(
                         Null,
                     ),
@@ -381,9 +372,6 @@ mod tests {
                     ],
                     env: {},
                     cwd: None,
-                    stdout: Simple(
-                        Pipe,
-                    ),
                     stderr: Simple(
                         Null,
                     ),
@@ -440,9 +428,6 @@ mod tests {
                     ],
                     env: {},
                     cwd: None,
-                    stdout: Simple(
-                        Pipe,
-                    ),
                     stderr: Simple(
                         Null,
                     ),
@@ -453,11 +438,10 @@ mod tests {
     }
 
     #[test]
-    fn mcp_stdio_server_with_stdout_stderr_config() {
+    fn mcp_stdio_server_with_stderr_config() {
         let config = indoc! {r#"
             [mcp.servers.configured_stdio]
             cmd = ["python", "server.py"]
-            stdout = "pipe"
             stderr = "inherit"
 
             [mcp.servers.file_logging_stdio]
@@ -477,9 +461,6 @@ mod tests {
                     ],
                     env: {},
                     cwd: None,
-                    stdout: Simple(
-                        Pipe,
-                    ),
                     stderr: Simple(
                         Inherit,
                     ),
@@ -493,9 +474,6 @@ mod tests {
                     ],
                     env: {},
                     cwd: None,
-                    stdout: Simple(
-                        Pipe,
-                    ),
                     stderr: File {
                         file: "/tmp/server.log",
                     },
@@ -524,9 +502,6 @@ mod tests {
                     ],
                     env: {},
                     cwd: None,
-                    stdout: Simple(
-                        Pipe,
-                    ),
                     stderr: Simple(
                         Null,
                     ),
@@ -709,9 +684,6 @@ mod tests {
                         ],
                         env: {},
                         cwd: None,
-                        stdout: Simple(
-                            Pipe,
-                        ),
                         stderr: Simple(
                             Null,
                         ),
@@ -725,9 +697,6 @@ mod tests {
                         ],
                         env: {},
                         cwd: None,
-                        stdout: Simple(
-                            Pipe,
-                        ),
                         stderr: Simple(
                             Null,
                         ),
