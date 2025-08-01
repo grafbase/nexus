@@ -7,7 +7,10 @@ use reqwest::{
 };
 use rmcp::{
     RoleClient, ServiceError, ServiceExt,
-    model::{CallToolRequestParam, CallToolResult, Tool},
+    model::{
+        CallToolRequestParam, CallToolResult, GetPromptRequestParam, GetPromptResult, Prompt, ReadResourceRequestParam,
+        ReadResourceResult, Resource, Tool,
+    },
     service::RunningService,
     transport::{
         SseClientTransport, StreamableHttpClientTransport, TokioChildProcess, common::client_side_sse::FixedInterval,
@@ -52,7 +55,6 @@ impl DownstreamClient {
             command.current_dir(cwd);
         }
 
-        // Configure stderr based on configuration
         let stderr_stdio = stdio_target(&config.stderr)?;
         log::debug!("stdio configuration for {name}: stderr={:?}", config.stderr);
 
@@ -72,6 +74,7 @@ impl DownstreamClient {
     }
 
     pub async fn new_http(name: &str, config: &HttpConfig) -> anyhow::Result<Self> {
+        log::debug!("creating http downstream service for {name}");
         let service = http_service(config).await?;
 
         Ok(Self {
@@ -90,7 +93,32 @@ impl DownstreamClient {
 
     /// Calls a tool on the downstream MCP server.
     pub async fn call_tool(&self, params: CallToolRequestParam) -> Result<CallToolResult, ServiceError> {
+        log::debug!("calling tool {} for {}", params.name, self.name());
         self.inner.service.call_tool(params).await
+    }
+
+    /// Lists all prompts available from the downstream MCP server.
+    pub async fn list_prompts(&self) -> Result<Vec<Prompt>, ServiceError> {
+        log::debug!("listing prompts for {}", self.name());
+        Ok(self.inner.service.list_prompts(Default::default()).await?.prompts)
+    }
+
+    /// Gets a prompt from the downstream MCP server.
+    pub async fn get_prompt(&self, params: GetPromptRequestParam) -> Result<GetPromptResult, ServiceError> {
+        log::debug!("getting prompt {} for {}", params.name, self.name());
+        self.inner.service.get_prompt(params).await
+    }
+
+    /// Lists all resources available from the downstream MCP server.
+    pub async fn list_resources(&self) -> Result<Vec<Resource>, ServiceError> {
+        log::debug!("listing resources for {}", self.name());
+        Ok(self.inner.service.list_resources(Default::default()).await?.resources)
+    }
+
+    /// Reads a resource from the downstream MCP server.
+    pub async fn read_resource(&self, params: ReadResourceRequestParam) -> Result<ReadResourceResult, ServiceError> {
+        log::debug!("reading resource {} for {}", params.uri, self.name());
+        self.inner.service.read_resource(params).await
     }
 
     /// Returns the name of the downstream MCP server.

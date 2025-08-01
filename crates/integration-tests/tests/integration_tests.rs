@@ -1,6 +1,7 @@
 mod cors;
 mod csrf;
 mod oauth2;
+mod prompts_resources;
 mod sse;
 mod stdio;
 mod streamable_http;
@@ -267,14 +268,14 @@ async fn server_info_with_downstream_servers() {
 
     // Create multiple downstream servers with different tools
     let mut math_server = TestService::sse("math_server".to_string());
-    math_server.add_tool(AdderTool).await;
-    math_server.add_tool(CalculatorTool).await;
+    math_server.add_tool(AdderTool);
+    math_server.add_tool(CalculatorTool);
 
     let mut text_server = TestService::streamable_http("text_server".to_string());
-    text_server.add_tool(TextProcessorTool).await;
+    text_server.add_tool(TextProcessorTool);
 
     let mut fs_server = TestService::sse_autodetect("filesystem_server".to_string());
-    fs_server.add_tool(FileSystemTool).await;
+    fs_server.add_tool(FileSystemTool);
 
     // Build nexus server with multiple downstream servers
     let mut builder = TestServer::builder();

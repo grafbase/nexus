@@ -6,6 +6,7 @@ use axum::{
     response::Response,
 };
 use core::fmt;
+use dashmap::DashMap;
 use rmcp::{
     handler::server::ServerHandler,
     model::*,
@@ -17,8 +18,8 @@ use rmcp::{
         },
     },
 };
-use std::{collections::BTreeMap, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
-use tokio::{net::TcpListener, sync::Mutex};
+use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
+use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
 use std::future::Future;
@@ -52,7 +53,9 @@ pub struct TestService {
     name: String,
     r#type: ServiceType,
     autodetect: bool,
-    tools: Arc<Mutex<BTreeMap<String, Box<dyn TestTool>>>>,
+    tools: Arc<DashMap<String, Box<dyn TestTool>>>,
+    prompts: Arc<DashMap<String, Prompt>>,
+    resources: Arc<DashMap<String, Resource>>,
     tls_config: Option<TlsConfig>,
     auth_token: Option<String>,
     require_auth: bool,
@@ -88,7 +91,9 @@ impl TestService {
             name,
             r#type,
             autodetect,
-            tools: Arc::new(Mutex::new(BTreeMap::new())),
+            tools: Arc::new(DashMap::new()),
+            prompts: Arc::new(DashMap::new()),
+            resources: Arc::new(DashMap::new()),
             tls_config: None,
             auth_token: None,
             require_auth: false,
@@ -105,11 +110,17 @@ impl TestService {
         self.autodetect
     }
 
-    pub async fn add_tool(&mut self, tool: impl TestTool) {
-        let mut tools = self.tools.lock().await;
+    pub fn add_tool(&mut self, tool: impl TestTool) {
         let name = tool.tool_definition().name.to_string();
+        self.tools.insert(name, Box::new(tool));
+    }
 
-        tools.insert(name, Box::new(tool));
+    pub fn add_prompt(&mut self, prompt: Prompt) {
+        self.prompts.insert(prompt.name.to_string(), prompt);
+    }
+
+    pub fn add_resource(&mut self, resource: Resource) {
+        self.resources.insert(resource.uri.to_string(), resource);
     }
 
     pub fn name(&self) -> &str {
@@ -325,13 +336,7 @@ impl ServerHandler for TestService {
         _: Option<PaginatedRequestParam>,
         _: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, ErrorData> {
-        let tools = self
-            .tools
-            .lock()
-            .await
-            .values()
-            .map(|tool| tool.tool_definition())
-            .collect();
+        let tools = self.tools.iter().map(|refer| refer.value().tool_definition()).collect();
 
         Ok(ListToolsResult {
             tools,
@@ -344,15 +349,79 @@ impl ServerHandler for TestService {
         params: CallToolRequestParam,
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        let tools = self.tools.lock().await;
-
-        let tool = tools.get(params.name.as_ref()).ok_or_else(|| ErrorData {
+        let tool = self.tools.get(params.name.as_ref()).ok_or_else(|| ErrorData {
             code: ErrorCode(-32601),
             message: format!("Tool '{}' not found", params.name).into(),
             data: None,
         })?;
 
         tool.call(params).await
+    }
+
+    async fn list_prompts(
+        &self,
+        _: Option<PaginatedRequestParam>,
+        _: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, ErrorData> {
+        let prompts = self.prompts.iter().map(|refer| refer.value().clone()).collect();
+        Ok(ListPromptsResult {
+            prompts,
+            next_cursor: None,
+        })
+    }
+
+    async fn get_prompt(
+        &self,
+        params: GetPromptRequestParam,
+        _: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResult, ErrorData> {
+        let prompts = &self.prompts;
+        let _prompt = prompts.get(params.name.as_str()).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32601),
+            message: format!("Prompt '{}' not found", params.name).into(),
+            data: None,
+        })?;
+
+        // Return a simple prompt result
+        Ok(GetPromptResult {
+            description: Some(format!("Test prompt: {}", params.name)),
+            messages: vec![PromptMessage {
+                role: PromptMessageRole::User,
+                content: PromptMessageContent::Text {
+                    text: format!("This is a test prompt named {}", params.name),
+                },
+            }],
+        })
+    }
+
+    async fn list_resources(
+        &self,
+        _: Option<PaginatedRequestParam>,
+        _: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, ErrorData> {
+        let resources = self.resources.iter().map(|r| r.value().clone()).collect();
+        Ok(ListResourcesResult {
+            resources,
+            next_cursor: None,
+        })
+    }
+
+    async fn read_resource(
+        &self,
+        params: ReadResourceRequestParam,
+        _: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResult, ErrorData> {
+        let resources = &self.resources;
+        let _resource = resources.get(params.uri.as_str()).ok_or_else(|| ErrorData {
+            code: ErrorCode(-32601),
+            message: format!("Resource '{}' not found", params.uri).into(),
+            data: None,
+        })?;
+
+        // Return simple resource content
+        Ok(ReadResourceResult {
+            contents: vec![], // For now, return empty contents to get compilation working
+        })
     }
 }
 

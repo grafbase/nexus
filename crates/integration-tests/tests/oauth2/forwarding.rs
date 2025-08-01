@@ -134,8 +134,8 @@ async fn single_downstream_token_forwarding() {
         .with_forward_auth();
 
     let token_tracker = TokenTrackingTool::new();
-    dynamic_service.add_tool(AdderTool).await;
-    dynamic_service.add_tool(token_tracker.clone()).await;
+    dynamic_service.add_tool(AdderTool);
+    dynamic_service.add_tool(token_tracker.clone());
 
     let mut server_builder = TestServer::builder();
     server_builder.spawn_service(dynamic_service).await;
@@ -303,7 +303,7 @@ async fn token_actually_reaches_downstream() {
         .with_required_auth_token(access_token.clone())
         .with_forward_auth();
 
-    dynamic_service.add_tool(AdderTool).await;
+    dynamic_service.add_tool(AdderTool);
 
     let mut server_builder = TestServer::builder();
     server_builder.spawn_service(dynamic_service).await;
@@ -360,7 +360,7 @@ async fn no_forwarding_without_token() {
     let mut dynamic_service = TestService::streamable_http("dynamic_server".to_string())
         .with_required_auth_token("expected-token".to_string())
         .with_forward_auth();
-    dynamic_service.add_tool(AdderTool).await;
+    dynamic_service.add_tool(AdderTool);
 
     let mut server_builder = TestServer::builder();
     server_builder.spawn_service(dynamic_service).await;
@@ -397,13 +397,13 @@ async fn multiple_downstream_servers() {
     let mut dynamic_service1 = TestService::streamable_http("dynamic_server1".to_string())
         .with_required_auth_token(access_token.clone())
         .with_forward_auth();
-    dynamic_service1.add_tool(AdderTool).await;
+    dynamic_service1.add_tool(AdderTool);
 
     // Create second dynamic server
     let mut dynamic_service2 = TestService::streamable_http("dynamic_server2".to_string())
         .with_required_auth_token(access_token.clone())
         .with_forward_auth();
-    dynamic_service2.add_tool(CalculatorTool).await;
+    dynamic_service2.add_tool(CalculatorTool);
 
     let mut server_builder = TestServer::builder();
     server_builder.spawn_service(dynamic_service1).await;
@@ -473,11 +473,11 @@ async fn mixed_static_dynamic_servers() {
     let mut dynamic_service = TestService::streamable_http("dynamic_server".to_string())
         .with_required_auth_token(access_token.clone())
         .with_forward_auth();
-    dynamic_service.add_tool(AdderTool).await;
+    dynamic_service.add_tool(AdderTool);
 
     // Create static server (no auth required)
     let mut static_service = TestService::streamable_http("static_server".to_string());
-    static_service.add_tool(TextProcessorTool).await;
+    static_service.add_tool(TextProcessorTool);
 
     let mut server_builder = TestServer::builder();
     server_builder.spawn_service(dynamic_service).await;
@@ -546,7 +546,7 @@ async fn hydra_dual_instance_forwarding() {
     let mut dynamic_service = TestService::streamable_http("dynamic_server".to_string())
         .with_required_auth_token(access_token.clone())
         .with_forward_auth();
-    dynamic_service.add_tool(AdderTool).await;
+    dynamic_service.add_tool(AdderTool);
 
     let mut server_builder = TestServer::builder();
     server_builder.spawn_service(dynamic_service).await;
@@ -589,13 +589,13 @@ async fn token_forwarding_with_search() {
     let mut math_server = TestService::streamable_http("math_server".to_string())
         .with_required_auth_token(access_token.clone())
         .with_forward_auth();
-    math_server.add_tool(AdderTool).await;
-    math_server.add_tool(CalculatorTool).await;
+    math_server.add_tool(AdderTool);
+    math_server.add_tool(CalculatorTool);
 
     let mut text_server = TestService::streamable_http("text_server".to_string())
         .with_required_auth_token(access_token.clone())
         .with_forward_auth();
-    text_server.add_tool(TextProcessorTool).await;
+    text_server.add_tool(TextProcessorTool);
 
     let mut server_builder = TestServer::builder();
     server_builder.spawn_service(math_server).await;
@@ -717,11 +717,11 @@ async fn search_behavior_without_auth() {
     let mut dynamic_service = TestService::streamable_http("dynamic_server".to_string())
         .with_required_auth_token("required-token".to_string())
         .with_forward_auth();
-    dynamic_service.add_tool(AdderTool).await;
+    dynamic_service.add_tool(AdderTool);
 
     // Create static server that doesn't require auth
     let mut static_service = TestService::streamable_http("static_server".to_string());
-    static_service.add_tool(TextProcessorTool).await;
+    static_service.add_tool(TextProcessorTool);
 
     let mut server_builder = TestServer::builder();
     server_builder.spawn_service(dynamic_service).await;
@@ -785,8 +785,8 @@ async fn concurrent_requests_different_tokens() {
             .with_required_auth_token(token.clone())
             .with_forward_auth();
 
-        service.add_tool(AdderTool).await;
-        service.add_tool(TextProcessorTool).await;
+        service.add_tool(AdderTool);
+        service.add_tool(TextProcessorTool);
 
         server_builder.spawn_service(service).await;
     }
@@ -890,12 +890,12 @@ async fn token_not_leaked_between_requests() {
     let mut server1 = TestService::streamable_http("server1".to_string())
         .with_required_auth_token(token1.clone())
         .with_forward_auth();
-    server1.add_tool(AdderTool).await;
+    server1.add_tool(AdderTool);
 
     let mut server2 = TestService::streamable_http("server2".to_string())
         .with_required_auth_token(token2.clone())
         .with_forward_auth();
-    server2.add_tool(CalculatorTool).await;
+    server2.add_tool(CalculatorTool);
 
     let mut server_builder = TestServer::builder();
     server_builder.spawn_service(server1).await;
@@ -970,7 +970,7 @@ async fn dynamic_server_isolation() {
 
     // Create a dynamic server that accepts any valid token
     let mut dynamic_server = TestService::streamable_http("dynamic_server".to_string()).with_forward_auth();
-    dynamic_server.add_tool(AdderTool).await;
+    dynamic_server.add_tool(AdderTool);
 
     let mut server_builder = TestServer::builder();
     server_builder.spawn_service(dynamic_server).await;
@@ -1079,7 +1079,7 @@ async fn dynamic_server_caching_per_token() {
     let mut dynamic_service = TestService::streamable_http("dynamic_server".to_string())
         .with_required_auth_token(access_token.clone())
         .with_forward_auth();
-    dynamic_service.add_tool(AdderTool).await;
+    dynamic_service.add_tool(AdderTool);
 
     let mut server_builder = TestServer::builder();
     server_builder.spawn_service(dynamic_service).await;
@@ -1144,11 +1144,11 @@ async fn token_forwarding_error_handling() {
     let mut auth_server = TestService::streamable_http("auth_server".to_string())
         .with_required_auth_token(access_token.clone())
         .with_forward_auth();
-    auth_server.add_tool(AdderTool).await;
+    auth_server.add_tool(AdderTool);
 
     // Create a server with no auth requirements
     let mut public_server = TestService::streamable_http("public_server".to_string());
-    public_server.add_tool(TextProcessorTool).await;
+    public_server.add_tool(TextProcessorTool);
 
     let mut server_builder = TestServer::builder();
     server_builder.spawn_service(auth_server).await;
@@ -1190,7 +1190,7 @@ async fn invalid_token_handling() {
     let mut dynamic_service = TestService::streamable_http("dynamic_server".to_string())
         .with_required_auth_token("valid-token".to_string())
         .with_forward_auth();
-    dynamic_service.add_tool(AdderTool).await;
+    dynamic_service.add_tool(AdderTool);
 
     let mut server_builder = TestServer::builder();
     server_builder.spawn_service(dynamic_service).await;
@@ -1234,21 +1234,21 @@ async fn mixed_success_failure_scenarios() {
 
     // Create static server that doesn't require auth
     let mut static_service = TestService::streamable_http("static_server".to_string());
-    static_service.add_tool(TextProcessorTool).await;
+    static_service.add_tool(TextProcessorTool);
 
     // Create working dynamic server that matches the auth token
     let mut working_service = TestService::streamable_http("working_server".to_string())
         .with_required_auth_token(access_token.clone())
         .with_forward_auth();
 
-    working_service.add_tool(AdderTool).await;
+    working_service.add_tool(AdderTool);
 
     // Create broken dynamic server that does not match the auth token
     let mut broken_service = TestService::streamable_http("broken_server".to_string())
         .with_required_auth_token(String::from("kekw"))
         .with_forward_auth();
 
-    broken_service.add_tool(CalculatorTool).await;
+    broken_service.add_tool(CalculatorTool);
 
     let mut server_builder = TestServer::builder();
     server_builder.spawn_service(static_service).await;
@@ -1365,7 +1365,7 @@ async fn forwarding_fails_without_nexus_oauth2() {
     let mut dynamic_service = TestService::streamable_http("dynamic_server".to_string())
         .with_required_auth_token("test-token".to_string())
         .with_forward_auth();
-    dynamic_service.add_tool(AdderTool).await;
+    dynamic_service.add_tool(AdderTool);
 
     let mut server_builder = TestServer::builder();
     server_builder.spawn_service(dynamic_service).await;
@@ -1450,7 +1450,7 @@ async fn dynamic_tool_execution_failures() {
 
     // Create static server that doesn't require auth
     let mut static_service = TestService::streamable_http("static_server".to_string());
-    static_service.add_tool(TextProcessorTool).await;
+    static_service.add_tool(TextProcessorTool);
 
     let mut server_builder = TestServer::builder();
     server_builder.spawn_service(static_service).await;
@@ -1461,6 +1461,7 @@ async fn dynamic_tool_execution_failures() {
         enabled = true
     "#}
     .to_string();
+
     let test_server = server_builder.build(&config).await;
 
     // Create MCP client (no auth needed since Nexus OAuth2 is disabled)

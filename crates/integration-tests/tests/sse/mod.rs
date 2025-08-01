@@ -12,7 +12,7 @@ async fn list_single_tool() {
     "#};
 
     let mut test_service = TestService::sse("sse_math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -90,7 +90,7 @@ async fn call_tool_success() {
     "#};
 
     let mut test_service = TestService::sse("sse_math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -126,7 +126,7 @@ async fn autodetected_call_tool_success() {
     "#};
 
     let mut test_service = TestService::sse_autodetect("sse_math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -163,11 +163,11 @@ async fn mixed_sse_and_streaming_services() {
 
     // Create HTTP service
     let mut http_service = TestService::streamable_http("http_service".to_string());
-    http_service.add_tool(AdderTool).await;
+    http_service.add_tool(AdderTool);
 
     // Create SSE service
     let mut sse_service = TestService::sse("sse_service".to_string());
-    sse_service.add_tool(FailingTool).await;
+    sse_service.add_tool(FailingTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(http_service).await;
@@ -270,7 +270,7 @@ async fn tls_downstream_service() {
 
     let (cert_path, key_path) = get_test_cert_paths();
     let mut test_service = TestService::sse("tls_sse_service".to_string()).with_tls(cert_path, key_path);
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;

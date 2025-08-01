@@ -11,7 +11,7 @@ async fn list_tools() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -88,7 +88,7 @@ async fn call_tool_success_autodetect() {
     "#};
 
     let mut test_service = TestService::streamable_http_autodetect("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -123,7 +123,7 @@ async fn call_tool_with_decimals() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -158,7 +158,7 @@ async fn call_nonexistent_tool() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -180,7 +180,7 @@ async fn call_tool_wrong_server_prefix() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -205,7 +205,7 @@ async fn call_tool_invalid_arguments() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -234,7 +234,7 @@ async fn call_tool_no_arguments() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -257,10 +257,10 @@ async fn multiple_services_multiple_tools() {
     "#};
 
     let mut math_service = TestService::streamable_http("math_service".to_string());
-    math_service.add_tool(AdderTool).await;
+    math_service.add_tool(AdderTool);
 
     let mut error_service = TestService::streamable_http("error_service".to_string());
-    error_service.add_tool(FailingTool).await;
+    error_service.add_tool(FailingTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(math_service).await;
@@ -362,7 +362,7 @@ async fn custom_mcp_path_with_tools() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -460,7 +460,7 @@ async fn tools_with_tls() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -553,7 +553,7 @@ async fn tls_downstream_service() {
 
     let (cert_path, key_path) = get_test_cert_paths();
     let mut test_service = TestService::streamable_http("tls_http_service".to_string()).with_tls(cert_path, key_path);
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -645,7 +645,7 @@ async fn search_exact_matching() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -693,7 +693,7 @@ async fn search_fuzzy_matching() {
     "#};
 
     let mut test_service = TestService::streamable_http("text_service".to_string());
-    test_service.add_tool(TextProcessorTool).await;
+    test_service.add_tool(TextProcessorTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -747,7 +747,7 @@ async fn search_multiple_keywords() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -795,8 +795,8 @@ async fn search_two() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
-    test_service.add_tool(FailingTool).await;
+    test_service.add_tool(AdderTool);
+    test_service.add_tool(FailingTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -853,7 +853,7 @@ async fn search_case_insensitive() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -901,7 +901,7 @@ async fn search_by_description() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -949,7 +949,7 @@ async fn search_by_server_name() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -997,7 +997,7 @@ async fn search_no_results() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -1020,10 +1020,10 @@ async fn search_multiple_tools_ranking() {
     "#};
 
     let mut math_service = TestService::streamable_http("math_service".to_string());
-    math_service.add_tool(AdderTool).await;
+    math_service.add_tool(AdderTool);
 
     let mut error_service = TestService::streamable_http("error_service".to_string());
-    error_service.add_tool(FailingTool).await;
+    error_service.add_tool(FailingTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(math_service).await;
@@ -1060,7 +1060,7 @@ async fn search_parameter_fields() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -1108,7 +1108,7 @@ async fn search_empty_query() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -1131,7 +1131,7 @@ async fn search_whitespace_handling() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -1179,7 +1179,7 @@ async fn search_tool_annotations() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(CalculatorTool).await;
+    test_service.add_tool(CalculatorTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -1238,11 +1238,11 @@ async fn search_relevance_scoring_with_different_tools() {
     "#};
 
     let mut math_service = TestService::streamable_http("math_service".to_string());
-    math_service.add_tool(CalculatorTool).await;
-    math_service.add_tool(AdderTool).await;
+    math_service.add_tool(CalculatorTool);
+    math_service.add_tool(AdderTool);
 
     let mut text_service = TestService::streamable_http("text_service".to_string());
-    text_service.add_tool(TextProcessorTool).await;
+    text_service.add_tool(TextProcessorTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(math_service).await;
@@ -1298,7 +1298,7 @@ async fn search_partial_word_matching() {
     "#};
 
     let mut test_service = TestService::streamable_http("text_service".to_string());
-    test_service.add_tool(TextProcessorTool).await;
+    test_service.add_tool(TextProcessorTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -1352,7 +1352,7 @@ async fn search_compound_words() {
     "#};
 
     let mut test_service = TestService::streamable_http("file_service".to_string());
-    test_service.add_tool(FileSystemTool).await;
+    test_service.add_tool(FileSystemTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -1406,7 +1406,7 @@ async fn search_enum_values() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(CalculatorTool).await;
+    test_service.add_tool(CalculatorTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;
@@ -1464,7 +1464,7 @@ async fn search_deduplication_test() {
     "#};
 
     let mut test_service = TestService::streamable_http("math_service".to_string());
-    test_service.add_tool(AdderTool).await;
+    test_service.add_tool(AdderTool);
 
     let mut builder = TestServer::builder();
     builder.spawn_service(test_service).await;

@@ -10,8 +10,10 @@ use itertools::Itertools;
 use rmcp::{
     RoleServer, ServerHandler,
     model::{
-        CallToolRequestMethod, CallToolRequestParam, CallToolResult, Content, ErrorCode, ErrorData, Implementation,
-        ListToolsResult, PaginatedRequestParam, ServerCapabilities, ServerInfo,
+        CallToolRequestMethod, CallToolRequestParam, CallToolResult, Content, ErrorCode, ErrorData,
+        GetPromptRequestParam, GetPromptResult, Implementation, ListPromptsResult, ListResourcesResult,
+        ListToolsResult, PaginatedRequestParam, ReadResourceRequestParam, ReadResourceResult, ServerCapabilities,
+        ServerInfo,
     },
     service::RequestContext,
 };
@@ -87,7 +89,11 @@ impl McpServer {
         let inner = McpServerInner {
             info: ServerInfo {
                 protocol_version: crate::PROTOCOL_VERSION,
-                capabilities: ServerCapabilities::builder().enable_tools().build(),
+                capabilities: ServerCapabilities::builder()
+                    .enable_tools()
+                    .enable_prompts()
+                    .enable_resources()
+                    .build(),
                 server_info,
                 instructions: Some(generate_instructions(&config.mcp)),
             },
@@ -181,6 +187,30 @@ impl McpServer {
             downstream.execute(params).await
         }
     }
+
+    /// Get the appropriate downstream instance for the given token
+    async fn get_downstream(&self, token: Option<&SecretString>) -> Result<Arc<Downstream>, ErrorData> {
+        match token {
+            Some(token) if !self.dynamic_server_names.is_empty() => {
+                log::debug!("getting the combined downstream");
+
+                // Dynamic case - get from cache
+                let cached =
+                    self.cache.get_or_create(token).await.map_err(|e| {
+                        ErrorData::internal_error(format!("Failed to load dynamic downstream: {e}"), None)
+                    })?;
+
+                Ok(Arc::new(cached.downstream.clone()))
+            }
+            _ => {
+                log::debug!("getting the static downstream");
+
+                self.static_downstream
+                    .clone()
+                    .ok_or_else(|| ErrorData::internal_error("No servers configured".to_string(), None))
+            }
+        }
+    }
 }
 
 impl ServerHandler for McpServer {
@@ -263,6 +293,84 @@ impl ServerHandler for McpServer {
                 Err(ErrorData::method_not_found::<CallToolRequestMethod>())
             }
         }
+    }
+
+    async fn list_prompts(
+        &self,
+        _: Option<PaginatedRequestParam>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, ErrorData> {
+        log::debug!("McpServer::list_prompts called");
+
+        // Extract token from request extensions
+        let token = ctx
+            .extensions
+            .get::<Parts>()
+            .and_then(|parts| parts.extensions.get::<SecretString>());
+
+        let downstream = self.get_downstream(token).await?;
+        let prompts = downstream.list_prompts().cloned().collect();
+
+        Ok(ListPromptsResult {
+            prompts,
+            next_cursor: None,
+        })
+    }
+
+    async fn get_prompt(
+        &self,
+        params: GetPromptRequestParam,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResult, ErrorData> {
+        log::debug!("McpServer::get_prompt called with prompt: {}", params.name);
+
+        // Extract token from request extensions
+        let token = ctx
+            .extensions
+            .get::<Parts>()
+            .and_then(|parts| parts.extensions.get::<SecretString>());
+
+        let downstream = self.get_downstream(token).await?;
+        downstream.get_prompt(params).await
+    }
+
+    async fn list_resources(
+        &self,
+        _: Option<PaginatedRequestParam>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, ErrorData> {
+        log::debug!("McpServer::list_resources called");
+
+        // Extract token from request extensions
+        let token = ctx
+            .extensions
+            .get::<Parts>()
+            .and_then(|parts| parts.extensions.get::<SecretString>());
+
+        let downstream = self.get_downstream(token).await?;
+        let resources = downstream.list_resources().cloned().collect();
+
+        Ok(ListResourcesResult {
+            resources,
+            next_cursor: None,
+        })
+    }
+
+    async fn read_resource(
+        &self,
+        params: ReadResourceRequestParam,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResult, ErrorData> {
+        log::debug!("McpServer::read_resource called with resource: {}", params.uri);
+
+        // Extract token from request extensions
+        let token = ctx
+            .extensions
+            .get::<Parts>()
+            .and_then(|parts| parts.extensions.get::<SecretString>());
+
+        let downstream = self.get_downstream(token).await?;
+        downstream.read_resource(params).await
     }
 }
 

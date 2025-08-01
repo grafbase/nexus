@@ -655,8 +655,6 @@ async fn stdio_unicode_in_command_args() {
 
 #[tokio::test]
 async fn stdio_stderr_file_configuration() {
-    // Test stderr file configuration - note: due to rmcp limitations,
-    // the file may be created but stderr content is managed by rmcp
     use tempfile::tempdir;
 
     let temp_dir = tempdir().unwrap();
@@ -696,15 +694,12 @@ async fn stdio_stderr_file_configuration() {
     }
     "#);
 
-    // Verify the log file was created (even though rmcp may not write to it)
-    assert!(log_file.exists(), "Log file should be created");
-
     let content = std::fs::read_to_string(log_file).unwrap();
 
     insta::assert_snapshot!(content, @r###"
-    SimpleMcpServer: Starting server initialization
-    SimpleMcpServer: Server initialization complete
-    SimpleMcpServer: Starting main server loop
-    SimpleMcpServer: Handling initialize request
+        SimpleMcpServer: Starting server initialization
+        SimpleMcpServer: Server initialization complete
+        SimpleMcpServer: Starting main server loop
+        SimpleMcpServer: Handling initialize request
     "###);
 }

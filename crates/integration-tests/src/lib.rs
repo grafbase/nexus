@@ -232,6 +232,39 @@ impl McpTestClient {
             .unwrap_err()
     }
 
+    /// List available prompts
+    pub async fn list_prompts(&self) -> rmcp::model::ListPromptsResult {
+        self.service.list_prompts(Default::default()).await.unwrap()
+    }
+
+    /// Get a prompt by name
+    pub async fn get_prompt(
+        &self,
+        name: &str,
+        arguments: Option<serde_json::Map<String, serde_json::Value>>,
+    ) -> rmcp::model::GetPromptResult {
+        self.service
+            .get_prompt(rmcp::model::GetPromptRequestParam {
+                name: name.to_string(),
+                arguments,
+            })
+            .await
+            .unwrap()
+    }
+
+    /// List available resources
+    pub async fn list_resources(&self) -> rmcp::model::ListResourcesResult {
+        self.service.list_resources(Default::default()).await.unwrap()
+    }
+
+    /// Read a resource by URI
+    pub async fn read_resource(&self, uri: &str) -> rmcp::model::ReadResourceResult {
+        self.service
+            .read_resource(rmcp::model::ReadResourceRequestParam { uri: uri.to_string() })
+            .await
+            .unwrap()
+    }
+
     /// Disconnect the client
     pub async fn disconnect(self) {
         self.service.cancel().await.unwrap();
