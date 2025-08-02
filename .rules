@@ -317,9 +317,4 @@ tokio = { workspace = true, features = ["macros", "rt"] }
 - Enable only required features in individual crates
 - Group related features logically (e.g., `["derive", "serde"]`)
 
-### Creating a version bump
-- Bump the versions with `cargo make bump X.Y.Z`
-- Check the changes since last release with `git diff X.Y.Y..HEAD`
-- Create a changelog into a file in `changelog/X.Y.Z.md`
-
 Remember: This codebase values **correctness and maintainability** over premature optimization. Write clear, safe code that properly handles errors and follows Rust best practices.
