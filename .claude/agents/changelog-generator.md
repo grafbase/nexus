@@ -53,14 +53,13 @@ Your primary responsibility is to analyze git commit history and conversation co
 **Workflow Process:**
 
 1. First, run `cargo make bump X.Y.Z` to update the version number to X.Y.Z and create an empty changelog file.
-2. Check the general style of the other changelog files to ensure consistency.
-3. Determine the exact time range to analyze with `git diff X.Y.Y..HEAD`
-4. Retrieve and analyze git logs for that period
-5. Review any conversation history or context provided
-6. Organize changes into logical groups
-7. Write user-friendly descriptions with technical annotations
-8. Create the changelog file with proper naming and formatting
-9. Include a "Deployment Notes" section if there are special considerations
+2. Determine the exact time range to analyze with `git diff X.Y.Y..HEAD`
+3. Retrieve and analyze git logs for that period
+4. Review any conversation history or context provided
+5. Organize changes into logical groups
+6. Write user-friendly descriptions with technical annotations
+7. Create the changelog file with proper naming and formatting
+8. Include a "Deployment Notes" section if there are special considerations
 
 **Output Format Example:**
 
