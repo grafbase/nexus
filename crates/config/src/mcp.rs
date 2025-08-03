@@ -7,6 +7,8 @@ use secrecy::SecretString;
 use serde::{Deserialize, Deserializer, de::Error};
 use url::Url;
 
+use crate::RateLimitQuota;
+
 /// Configuration for MCP (Model Context Protocol) settings.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -58,6 +60,14 @@ impl McpServer {
                 Self::Http(config)
             }
             other => other.clone(),
+        }
+    }
+
+    /// Returns the rate limit configuration for this server, if any.
+    pub fn rate_limit(&self) -> Option<&McpServerRateLimit> {
+        match self {
+            McpServer::Stdio(config) => config.rate_limit.as_ref(),
+            McpServer::Http(config) => config.rate_limit.as_ref(),
         }
     }
 }
@@ -124,6 +134,10 @@ pub struct StdioConfig {
     /// Note: Due to rmcp library limitations, file redirection may not work as expected.
     #[serde(default = "default_stderr_target")]
     pub stderr: StdioTarget,
+
+    /// Rate limit configuration for this MCP server.
+    #[serde(default)]
+    pub rate_limit: Option<McpServerRateLimit>,
 }
 
 impl StdioConfig {
@@ -222,6 +236,9 @@ pub struct HttpConfig {
     /// Optional authentication configuration.
     #[serde(default)]
     pub auth: Option<ClientAuthConfig>,
+    /// Rate limit configuration for this MCP server.
+    #[serde(default)]
+    pub rate_limit: Option<McpServerRateLimit>,
 }
 
 impl HttpConfig {
@@ -308,4 +325,18 @@ pub enum ClientAuthConfig {
 pub enum ForwardType {
     /// Forward authentication from the incoming request.
     Forward,
+}
+
+/// Rate limit configuration for an MCP server.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpServerRateLimit {
+    /// The maximum number of requests allowed in the duration window.
+    pub limit: u32,
+    /// The duration window for the rate limit.
+    #[serde(deserialize_with = "deserialize_duration")]
+    pub duration: Duration,
+    /// Optional per-tool rate limit overrides.
+    #[serde(default)]
+    pub tools: BTreeMap<String, RateLimitQuota>,
 }

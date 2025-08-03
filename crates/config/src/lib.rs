@@ -5,6 +5,7 @@
 mod cors;
 mod loader;
 mod mcp;
+mod rate_limit;
 
 use std::{
     borrow::Cow,
@@ -16,9 +17,10 @@ use std::{
 pub use cors::*;
 use duration_str::deserialize_option_duration;
 pub use mcp::{
-    ClientAuthConfig, HttpConfig, HttpProtocol, McpConfig, McpServer, StdioConfig, StdioTarget, StdioTargetType,
-    TlsClientConfig,
+    ClientAuthConfig, HttpConfig, HttpProtocol, McpConfig, McpServer, McpServerRateLimit, StdioConfig, StdioTarget, 
+    StdioTargetType, TlsClientConfig,
 };
+pub use rate_limit::*;
 use serde::Deserialize;
 use url::Url;
 
@@ -59,6 +61,9 @@ pub struct ServerConfig {
     pub csrf: CsrfConfig,
     /// OAuth2 configuration
     pub oauth: Option<OauthConfig>,
+    /// Rate limiting configuration
+    #[serde(default)]
+    pub rate_limit: RateLimitConfig,
 }
 
 impl ServerConfig {
@@ -196,6 +201,11 @@ mod tests {
                     header_name: "X-Nexus-CSRF-Protection",
                 },
                 oauth: None,
+                rate_limit: RateLimitConfig {
+                    enabled: false,
+                    global: None,
+                    per_ip: None,
+                },
             },
             mcp: McpConfig {
                 enabled: false,
@@ -230,6 +240,11 @@ mod tests {
                     header_name: "X-Nexus-CSRF-Protection",
                 },
                 oauth: None,
+                rate_limit: RateLimitConfig {
+                    enabled: false,
+                    global: None,
+                    per_ip: None,
+                },
             },
             mcp: McpConfig {
                 enabled: true,
@@ -266,6 +281,7 @@ mod tests {
                     stderr: Simple(
                         Null,
                     ),
+                    rate_limit: None,
                 },
             ),
         }
@@ -304,6 +320,7 @@ mod tests {
                     stderr: Simple(
                         Null,
                     ),
+                    rate_limit: None,
                 },
             ),
         }
@@ -348,6 +365,7 @@ mod tests {
                     stderr: Simple(
                         Null,
                     ),
+                    rate_limit: None,
                 },
             ),
         }
@@ -375,6 +393,7 @@ mod tests {
                     stderr: Simple(
                         Null,
                     ),
+                    rate_limit: None,
                 },
             ),
         }
@@ -418,6 +437,7 @@ mod tests {
                     tls: None,
                     message_url: None,
                     auth: None,
+                    rate_limit: None,
                 },
             ),
             "stdio_server": Stdio(
@@ -431,6 +451,7 @@ mod tests {
                     stderr: Simple(
                         Null,
                     ),
+                    rate_limit: None,
                 },
             ),
         }
@@ -464,6 +485,7 @@ mod tests {
                     stderr: Simple(
                         Inherit,
                     ),
+                    rate_limit: None,
                 },
             ),
             "file_logging_stdio": Stdio(
@@ -477,6 +499,7 @@ mod tests {
                     stderr: File {
                         file: "/tmp/server.log",
                     },
+                    rate_limit: None,
                 },
             ),
         }
@@ -505,6 +528,7 @@ mod tests {
                     stderr: Simple(
                         Null,
                     ),
+                    rate_limit: None,
                 },
             ),
         }
@@ -575,6 +599,7 @@ mod tests {
                         },
                     ),
                     auth: None,
+                    rate_limit: None,
                 },
             ),
         }
@@ -630,6 +655,7 @@ mod tests {
                     ),
                     message_url: None,
                     auth: None,
+                    rate_limit: None,
                 },
             ),
         }
@@ -687,6 +713,7 @@ mod tests {
                         stderr: Simple(
                             Null,
                         ),
+                        rate_limit: None,
                     },
                 ),
                 "local_code_interpreter": Stdio(
@@ -700,6 +727,7 @@ mod tests {
                         stderr: Simple(
                             Null,
                         ),
+                        rate_limit: None,
                     },
                 ),
                 "sse_api": Http(
@@ -727,6 +755,7 @@ mod tests {
                         tls: None,
                         message_url: None,
                         auth: None,
+                        rate_limit: None,
                     },
                 ),
                 "sse_api2": Http(
@@ -770,6 +799,7 @@ mod tests {
                             },
                         ),
                         auth: None,
+                        rate_limit: None,
                     },
                 ),
                 "streaming_api": Http(
@@ -797,6 +827,7 @@ mod tests {
                         tls: None,
                         message_url: None,
                         auth: None,
+                        rate_limit: None,
                     },
                 ),
             },
@@ -1139,6 +1170,7 @@ mod tests {
                             token: SecretBox<str>([REDACTED]),
                         },
                     ),
+                    rate_limit: None,
                 },
             ),
         }
@@ -1187,6 +1219,7 @@ mod tests {
                             type: Forward,
                         },
                     ),
+                    rate_limit: None,
                 },
             ),
         }
@@ -1653,5 +1686,140 @@ mod tests {
 
         let result: Result<Config, _> = toml::from_str(config);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn rate_limit_default_config() {
+        let config: Config = toml::from_str("").unwrap();
+        
+        insta::assert_debug_snapshot!(&config.server.rate_limit, @r#"
+        RateLimitConfig {
+            enabled: false,
+            global: None,
+            per_ip: None,
+        }
+        "#);
+    }
+
+    #[test]
+    fn rate_limit_full_config() {
+        let config = indoc! {r#"
+            [server.rate_limit]
+            enabled = true
+
+            [server.rate_limit.global]
+            limit = 10000
+            duration = "60s"
+
+            [server.rate_limit.per_ip]
+            limit = 60
+            duration = "60s"
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+        
+        insta::assert_debug_snapshot!(&config.server.rate_limit, @r#"
+        RateLimitConfig {
+            enabled: true,
+            global: Some(
+                RateLimitQuota {
+                    limit: 10000,
+                    duration: 60s,
+                },
+            ),
+            per_ip: Some(
+                RateLimitQuota {
+                    limit: 60,
+                    duration: 60s,
+                },
+            ),
+        }
+        "#);
+    }
+
+    #[test]
+    fn mcp_server_rate_limits() {
+        let config = indoc! {r#"
+            [mcp.servers.github_api]
+            url = "https://api.github.com/mcp"
+            [mcp.servers.github_api.rate_limit]
+            limit = 30
+            duration = "60s"
+            [mcp.servers.github_api.rate_limit.tools]
+            search = { limit = 60, duration = "60s" }
+            create_issue = { limit = 10, duration = "60s" }
+
+            [mcp.servers.local_tool]
+            cmd = ["python", "server.py"]
+            [mcp.servers.local_tool.rate_limit]
+            limit = 100
+            duration = "60s"
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+        
+        insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
+        {
+            "github_api": Http(
+                HttpConfig {
+                    protocol: None,
+                    url: Url {
+                        scheme: "https",
+                        cannot_be_a_base: false,
+                        username: "",
+                        password: None,
+                        host: Some(
+                            Domain(
+                                "api.github.com",
+                            ),
+                        ),
+                        port: None,
+                        path: "/mcp",
+                        query: None,
+                        fragment: None,
+                    },
+                    tls: None,
+                    message_url: None,
+                    auth: None,
+                    rate_limit: Some(
+                        McpServerRateLimit {
+                            limit: 30,
+                            duration: 60s,
+                            tools: {
+                                "create_issue": RateLimitQuota {
+                                    limit: 10,
+                                    duration: 60s,
+                                },
+                                "search": RateLimitQuota {
+                                    limit: 60,
+                                    duration: 60s,
+                                },
+                            },
+                        },
+                    ),
+                },
+            ),
+            "local_tool": Stdio(
+                StdioConfig {
+                    cmd: [
+                        "python",
+                        "server.py",
+                    ],
+                    env: {},
+                    cwd: None,
+                    stderr: Simple(
+                        Null,
+                    ),
+                    rate_limit: Some(
+                        McpServerRateLimit {
+                            limit: 100,
+                            duration: 60s,
+                            tools: {},
+                        },
+                    ),
+                },
+            ),
+        }
+        "#);
     }
 }
