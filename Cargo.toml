@@ -34,10 +34,12 @@ insta = "1.43.1"
 itertools = "0.14.0"
 jiff = "0.2.13"
 jwt-compact = "0.8.0"
+libc = "0.2"
 log = "0.4.27"
 logforth = "0.26.1"
 mcp = { version = "0.1.0", path = "crates/mcp" }
 mini-moka = "0.10"
+rate-limit = { version = "0.1.0", path = "crates/rate-limit" }
 regex = "1.11.1"
 reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls-webpki-roots",

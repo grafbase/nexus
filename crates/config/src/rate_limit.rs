@@ -5,28 +5,15 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 /// Rate limiting configuration for the server.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct RateLimitConfig {
     /// Whether rate limiting is enabled.
-    #[serde(default)]
     pub enabled: bool,
     /// Global rate limit applied to all requests.
-    #[serde(default)]
     pub global: Option<RateLimitQuota>,
     /// Rate limit per IP address.
-    #[serde(default)]
     pub per_ip: Option<RateLimitQuota>,
-}
-
-impl Default for RateLimitConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            global: None,
-            per_ip: None,
-        }
-    }
 }
 
 /// Configuration for a rate limit quota.
@@ -48,4 +35,3 @@ impl Default for RateLimitQuota {
         }
     }
 }
-

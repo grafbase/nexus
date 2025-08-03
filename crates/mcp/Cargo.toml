@@ -18,6 +18,7 @@ indoc.workspace = true
 itertools.workspace = true
 log = { workspace = true, features = ["kv"] }
 mini-moka.workspace = true
+rate-limit.workspace = true
 reqwest.workspace = true
 rmcp = { workspace = true, features = [
     "client",

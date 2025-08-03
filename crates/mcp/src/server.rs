@@ -1,7 +1,7 @@
 pub mod execute;
 pub mod search;
 
-use crate::cache::DynamicDownstreamCache;
+use crate::{cache::DynamicDownstreamCache, server_builder::McpServerBuilder};
 use config::McpConfig;
 use execute::ExecuteParameters;
 use http::request::Parts;
@@ -39,6 +39,8 @@ pub(crate) struct McpServerInner {
     dynamic_server_names: HashSet<String>,
     // Cache for dynamic downstream instances
     cache: Arc<DynamicDownstreamCache>,
+    // Rate limit manager for server/tool limits
+    rate_limit_manager: Option<Arc<rate_limit::RateLimitManager>>,
 }
 
 impl Deref for McpServer {
@@ -50,7 +52,17 @@ impl Deref for McpServer {
 }
 
 impl McpServer {
-    pub(crate) async fn new(config: &config::Config) -> anyhow::Result<Self> {
+    /// Create a new MCP server builder.
+    pub fn builder(config: config::Config) -> crate::server_builder::McpServerBuilder {
+        crate::server_builder::McpServerBuilder::new(config)
+    }
+
+    pub(crate) async fn new(
+        McpServerBuilder {
+            config,
+            rate_limit_manager,
+        }: McpServerBuilder,
+    ) -> anyhow::Result<Self> {
         // Identify which servers need dynamic initialization
         let mut dynamic_server_names = HashSet::new();
         let mut static_config = config.mcp.clone();
@@ -101,6 +113,7 @@ impl McpServer {
             static_search_tool,
             dynamic_server_names,
             cache,
+            rate_limit_manager,
         };
 
         Ok(Self {
@@ -154,10 +167,29 @@ impl McpServer {
         })?;
 
         // Extract server name from tool name
-        let (server_name, _) = params
+        let (server_name, tool_name) = params
             .name
             .split_once("__")
             .ok_or_else(|| ErrorData::invalid_params("Invalid tool name format", None))?;
+        
+        log::debug!("Extracted from tool name '{}': server_name='{server_name}', tool_name='{tool_name}'", 
+            params.name);
+
+        // Check rate limits for the specific server/tool
+        if let Some(manager) = &self.rate_limit_manager {
+            log::debug!("Checking rate limits for server={server_name}, tool={tool_name}");
+            let rate_limit_request = rate_limit::RateLimitRequest::builder()
+                .server_tool(server_name, tool_name)
+                .build();
+
+            if let Err(e) = manager.check_request(&rate_limit_request).await {
+                log::debug!("Rate limit exceeded for tool {}: {e:?}", params.name);
+                return Err(ErrorData::internal_error("Rate limit exceeded", None));
+            }
+            log::debug!("Rate limit check passed for tool {}", params.name);
+        } else {
+            log::debug!("No rate limit manager - skipping rate limit check");
+        }
 
         // Route to appropriate downstream
         if self.dynamic_server_names.contains(server_name) {

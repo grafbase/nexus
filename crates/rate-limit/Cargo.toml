@@ -1,0 +1,15 @@
+[package]
+name = "rate-limit"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+config.workspace = true
+governor.workspace = true
+log.workspace = true
+mini-moka.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
