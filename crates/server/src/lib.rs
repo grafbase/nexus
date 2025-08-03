@@ -87,10 +87,19 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
         );
     }
 
-    // Merge protected routes into main app
+    // Apply rate limiting HTTP middleware only if server-level rate limiting is enabled
+    // (global and IP-based limits only - MCP limits are handled in the MCP layer)
+    if config.server.rate_limit.enabled {
+        if let Some(manager) = &rate_limit_manager {
+            log::debug!("Applying HTTP rate limiting middleware");
+            protected_router = protected_router.layer(RateLimitLayer::new(manager.clone()));
+        }
+    }
+
+    // Merge protected routes (with rate limiting) into main app
     app = app.merge(protected_router);
 
-    // Add health endpoint (unprotected)
+    // Add health endpoint (unprotected - added AFTER rate limiting)
     if config.server.health.enabled {
         if let Some(listen) = config.server.health.listen {
             tokio::spawn(health::bind_health_endpoint(
@@ -103,15 +112,6 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
                 .route(&config.server.health.path, get(health::health))
                 .layer(cors.clone());
             app = app.merge(health_router);
-        }
-    }
-
-    // Apply rate limiting HTTP middleware only if server-level rate limiting is enabled
-    // (global and IP-based limits only - MCP limits are handled in the MCP layer)
-    if config.server.rate_limit.enabled {
-        if let Some(manager) = &rate_limit_manager {
-            log::debug!("Applying HTTP rate limiting middleware");
-            app = app.layer(RateLimitLayer::new(manager.clone()));
         }
     }
     

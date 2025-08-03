@@ -2,11 +2,40 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use deadpool_redis::{Pool, Runtime};
-use redis::RedisError;
+use redis::Script;
 
 use super::{RateLimitResult, RateLimitStorage, StorageError};
-use config::{RedisConfig, RedisPoolConfig};
+use super::redis_pool::{Pool, create_pool};
+use config::RedisConfig;
+
+/// Lua script for atomic rate limit check and increment.
+/// This script implements the averaging fixed window algorithm atomically.
+const RATE_LIMIT_SCRIPT: &str = r#"
+    local current_key = KEYS[1]
+    local previous_key = KEYS[2]
+    local limit = tonumber(ARGV[1])
+    local current_window = tonumber(ARGV[2])
+    local expire_time = tonumber(ARGV[3])
+    local bucket_percentage = tonumber(ARGV[4])
+    
+    -- Get counts from both windows
+    local current_count = tonumber(redis.call('GET', current_key) or '0')
+    local previous_count = tonumber(redis.call('GET', previous_key) or '0')
+    
+    -- Calculate weighted count
+    local weighted_count = previous_count * (1.0 - bucket_percentage) + current_count
+    
+    -- Check if limit would be exceeded
+    if weighted_count >= limit then
+        return {0, current_count, previous_count}  -- Not allowed
+    end
+    
+    -- Increment current window
+    current_count = redis.call('INCR', current_key)
+    redis.call('EXPIRE', current_key, expire_time)
+    
+    return {1, current_count, previous_count}  -- Allowed
+"#;
 
 /// Redis-based rate limit storage implementation.
 pub struct RedisStorage {
@@ -22,20 +51,8 @@ pub struct RedisStorage {
 impl RedisStorage {
     /// Create a new Redis storage instance.
     pub async fn new(config: &RedisConfig) -> Result<Self, StorageError> {
-        // Parse Redis URL
-        let mut redis_config = deadpool_redis::Config {
-            url: Some(config.url.clone()),
-            ..Default::default()
-        };
-
-        // Apply pool configuration if provided
-        if let Some(pool_config) = build_pool_config(&config.pool) {
-            redis_config.pool = Some(pool_config);
-        }
-
         // Create the connection pool
-        let pool = redis_config
-            .create_pool(Some(Runtime::Tokio1))
+        let pool = create_pool(config)
             .map_err(|e| StorageError::Connection(format!("Failed to create Redis connection pool: {e}")))?;
 
         // Test the connection
@@ -45,7 +62,7 @@ impl RedisStorage {
             .map_err(|e| StorageError::Connection(format!("Failed to get Redis connection from pool: {e}")))?;
 
         let _: String = redis::cmd("PING")
-            .query_async(&mut conn)
+            .query_async(&mut *conn)
             .await
             .map_err(|e| StorageError::Connection(format!("Failed to ping Redis server: {e}")))?;
 
@@ -73,8 +90,8 @@ impl RedisStorage {
         // Calculate how far we are into the current window (0.0 to 1.0)
         let bucket_percentage = (now % window_size) as f64 / window_size as f64;
 
-        let current_key = format!("{}{}:{}", self.key_prefix, key, current_bucket);
-        let previous_key = format!("{}{}:{}", self.key_prefix, key, previous_bucket);
+        let current_key = format!("{}{}:{current_bucket}", self.key_prefix, key);
+        let previous_key = format!("{}{}:{previous_bucket}", self.key_prefix, key);
 
         (current_key, previous_key, window_size, bucket_percentage)
     }
@@ -96,25 +113,29 @@ impl RateLimitStorage for RedisStorage {
             .await
             .map_err(|e| StorageError::Connection(e.to_string()))?;
 
-        // Pipeline the queries for efficiency - atomic ensures both commands execute together
-        let mut pipe = redis::pipe();
-
-        pipe.atomic();
-        pipe.cmd("GET").arg(&previous_key);
-        pipe.cmd("GET").arg(&current_key);
-
-        let (previous_count, current_count): (Option<u32>, Option<u32>) = pipe
-            .query_async(&mut conn)
+        // Use Lua script for atomic check-and-increment
+        let script = Script::new(RATE_LIMIT_SCRIPT);
+        let expire_time = window_size * 2; // Keep keys for 2 windows
+        
+        let result: Vec<i64> = script
+            .key(&current_key)
+            .key(&previous_key)
+            .arg(limit)
+            .arg(window_size)
+            .arg(expire_time)
+            .arg(bucket_percentage)
+            .invoke_async(&mut *conn)
             .await
-            .map_err(|e: RedisError| StorageError::Query(e.to_string()))?;
+            .map_err(|e| StorageError::Query(format!("Rate limit script failed: {e}")))?;
 
-        let previous_count = previous_count.unwrap_or(0) as f64;
-        let current_count = current_count.unwrap_or(0) as f64;
-
-        // Calculate the weighted count using the averaging fixed window algorithm
-        let weighted_count = previous_count * (1.0 - bucket_percentage) + current_count;
-
-        if weighted_count >= limit as f64 {
+        let allowed = result[0] == 1;
+        
+        if allowed {
+            Ok(RateLimitResult {
+                allowed: true,
+                retry_after: None,
+            })
+        } else {
             // Calculate retry_after based on when the current window ends
             let now_secs = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -122,68 +143,12 @@ impl RateLimitStorage for RedisStorage {
                 .as_secs();
             let window_end = ((now_secs / window_size) + 1) * window_size;
             let retry_after = Duration::from_secs(window_end - now_secs);
-
-            return Ok(RateLimitResult {
+            
+            Ok(RateLimitResult {
                 allowed: false,
                 retry_after: Some(retry_after),
-            });
+            })
         }
-
-        // Increment the counter in a separate task to avoid blocking
-        let pool = self.pool.clone();
-        let current_key = current_key.clone();
-        let expire_time = window_size * 2; // Keep keys for 2 windows
-
-        tokio::spawn(async move {
-            if let Ok(mut conn) = pool.get().await {
-                let mut pipe = redis::pipe();
-
-                pipe.atomic();
-                pipe.cmd("INCR").arg(&current_key);
-                pipe.cmd("EXPIRE").arg(&current_key).arg(expire_time as i64);
-
-                let _: Result<(), RedisError> = pipe.query_async(&mut conn).await;
-            }
-        });
-
-        Ok(RateLimitResult {
-            allowed: true,
-            retry_after: None,
-        })
     }
 }
 
-/// Build deadpool configuration from our config.
-fn build_pool_config(config: &RedisPoolConfig) -> Option<deadpool_redis::PoolConfig> {
-    use deadpool_redis::{PoolConfig, Timeouts};
-
-    let mut pool_config = PoolConfig::default();
-
-    if let Some(max_size) = config.max_size {
-        pool_config.max_size = max_size;
-    }
-
-    let mut has_timeouts = false;
-    let mut timeouts = Timeouts::default();
-
-    if let Some(timeout_create) = config.timeout_create {
-        timeouts.create = Some(timeout_create);
-        has_timeouts = true;
-    }
-
-    if let Some(timeout_wait) = config.timeout_wait {
-        timeouts.wait = Some(timeout_wait);
-        has_timeouts = true;
-    }
-
-    if let Some(timeout_recycle) = config.timeout_recycle {
-        timeouts.recycle = Some(timeout_recycle);
-        has_timeouts = true;
-    }
-
-    if has_timeouts {
-        pool_config.timeouts = timeouts;
-    }
-
-    Some(pool_config)
-}

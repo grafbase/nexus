@@ -203,6 +203,7 @@ mod tests {
                 oauth: None,
                 rate_limit: RateLimitConfig {
                     enabled: false,
+                    storage: Memory,
                     global: None,
                     per_ip: None,
                 },
@@ -242,6 +243,7 @@ mod tests {
                 oauth: None,
                 rate_limit: RateLimitConfig {
                     enabled: false,
+                    storage: Memory,
                     global: None,
                     per_ip: None,
                 },
@@ -1692,13 +1694,14 @@ mod tests {
     fn rate_limit_default_config() {
         let config: Config = toml::from_str("").unwrap();
         
-        insta::assert_debug_snapshot!(&config.server.rate_limit, @r#"
+        insta::assert_debug_snapshot!(&config.server.rate_limit, @r"
         RateLimitConfig {
             enabled: false,
+            storage: Memory,
             global: None,
             per_ip: None,
         }
-        "#);
+        ");
     }
 
     #[test]
@@ -1721,6 +1724,7 @@ mod tests {
         insta::assert_debug_snapshot!(&config.server.rate_limit, @r#"
         RateLimitConfig {
             enabled: true,
+            storage: Memory,
             global: Some(
                 RateLimitQuota {
                     limit: 10000,

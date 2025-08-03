@@ -4,6 +4,7 @@ use std::time::Duration;
 
 pub mod memory;
 pub mod redis;
+pub mod redis_pool;
 
 pub use memory::InMemoryStorage;
 

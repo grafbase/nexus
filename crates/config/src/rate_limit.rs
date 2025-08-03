@@ -11,6 +11,7 @@ pub struct RateLimitConfig {
     /// Whether rate limiting is enabled.
     pub enabled: bool,
     /// Storage backend configuration.
+    #[serde(default)]
     pub storage: StorageConfig,
     /// Global rate limit applied to all requests.
     pub global: Option<RateLimitQuota>,

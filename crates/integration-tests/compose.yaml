@@ -93,10 +93,72 @@ services:
       HYDRA_PUBLIC_URL: "http://hydra-2:4454"
     restart: on-failure
 
+  # Redis without TLS for basic testing
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - redis
+    restart: unless-stopped
+
+  # Redis with TLS for secure connection testing
+  redis-tls:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    command: >
+      sh -c "
+      cp -r /tls-mount/* /tls/ 2>/dev/null || true &&
+      chmod 644 /tls/*.crt &&
+      chmod 600 /tls/*.key &&
+      redis-server
+      --tls-port 6379
+      --port 0
+      --tls-cert-file /tls/server.crt
+      --tls-key-file /tls/server.key
+      --tls-ca-cert-file /tls/ca.crt
+      --tls-auth-clients no
+      "
+    volumes:
+      - ./docker/redis/tls:/tls-mount:ro,z
+      - redis-tls-certs:/tls
+    networks:
+      - redis
+    restart: unless-stopped
+
+  # Redis with mutual TLS (requires client certificates)
+  redis-mtls:
+    image: redis:7-alpine
+    ports:
+      - "6381:6379"
+    command: >
+      sh -c "
+      cp -r /tls-mount/* /tls/ 2>/dev/null || true &&
+      chmod 644 /tls/*.crt &&
+      chmod 600 /tls/*.key &&
+      redis-server
+      --tls-port 6379
+      --port 0
+      --tls-cert-file /tls/server.crt
+      --tls-key-file /tls/server.key
+      --tls-ca-cert-file /tls/ca.crt
+      --tls-auth-clients yes
+      "
+    volumes:
+      - ./docker/redis/tls:/tls-mount:ro,z
+      - redis-mtls-certs:/tls
+    networks:
+      - redis
+    restart: unless-stopped
+
 networks:
   hydra:
   hydra-2:
+  redis:
 
 volumes:
   hydra-sqlite:
   hydra-2-sqlite:
+  redis-tls-certs:
+  redis-mtls-certs:
