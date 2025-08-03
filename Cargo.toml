@@ -21,6 +21,7 @@ config = { path = "crates/config" }
 convert_case = "0.8.0"
 ctor = "0.4.2"
 dashmap = "6.1.0"
+deadpool-redis = { version = "0.18", default-features = false, features = ["rt_tokio_1"] }
 duration-str = "0.17"
 fast-glob = "1.0.0"
 fastrace = "0.7.14"
@@ -40,6 +41,7 @@ logforth = "0.26.1"
 mcp = { version = "0.1.0", path = "crates/mcp" }
 mini-moka = "0.10"
 rate-limit = { version = "0.1.0", path = "crates/rate-limit" }
+redis = { version = "0.27", default-features = false, features = ["tokio-comp", "connection-manager"] }
 regex = "1.11.1"
 reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls-webpki-roots",
@@ -49,6 +51,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 ] }
 rmcp = "0.3.0"
 rustls = { version = "0.23", features = ["aws-lc-rs"] }
+rustls-pemfile = { version = "2.2", default-features = false }
 schemars = "1.0"
 secrecy = "0.10.3"
 serde = "1.0.219"
