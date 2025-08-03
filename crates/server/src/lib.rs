@@ -54,7 +54,7 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
         Some(Arc::new(::rate_limit::RateLimitManager::new(
             config.server.rate_limit.clone(),
             config.mcp.clone(),
-        )))
+        ).await?))
     } else {
         log::debug!("No rate limit manager created");
         None
