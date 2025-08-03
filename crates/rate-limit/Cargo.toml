@@ -5,11 +5,15 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 config.workspace = true
+deadpool-redis.workspace = true
 governor.workspace = true
 log.workspace = true
 mini-moka.workspace = true
+redis.workspace = true
 thiserror.workspace = true
+tokio.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "test-util"] }

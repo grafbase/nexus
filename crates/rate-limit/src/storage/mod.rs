@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 pub mod memory;
+pub mod redis;
 
 pub use memory::InMemoryStorage;
 
@@ -32,4 +33,10 @@ pub enum StorageError {
     /// Internal storage error.
     #[error("Storage error: {0}")]
     Internal(String),
+    /// Connection error.
+    #[error("Connection error: {0}")]
+    Connection(String),
+    /// Query error.
+    #[error("Query error: {0}")]
+    Query(String),
 }
