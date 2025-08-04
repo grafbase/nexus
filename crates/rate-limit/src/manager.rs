@@ -19,11 +19,11 @@ impl Storage {
         &self,
         key: &str,
         limit: u32,
-        duration: std::time::Duration,
+        interval: std::time::Duration,
     ) -> Result<RateLimitResult, StorageError> {
         match self {
-            Storage::Memory(storage) => storage.check_and_consume(key, limit, duration).await,
-            Storage::Redis(storage) => storage.check_and_consume(key, limit, duration).await,
+            Storage::Memory(storage) => storage.check_and_consume(key, limit, interval).await,
+            Storage::Redis(storage) => storage.check_and_consume(key, limit, interval).await,
         }
     }
 }
@@ -84,7 +84,7 @@ impl RateLimitManager {
         let result = self
             .inner
             .storage
-            .check_and_consume("global", quota.limit, quota.duration)
+            .check_and_consume("global", quota.limit, quota.interval)
             .await?;
 
         if !result.allowed {
@@ -110,7 +110,7 @@ impl RateLimitManager {
         let result = self
             .inner
             .storage
-            .check_and_consume(&key, quota.limit, quota.duration)
+            .check_and_consume(&key, quota.limit, quota.interval)
             .await?;
 
         if !result.allowed {
@@ -141,26 +141,26 @@ impl RateLimitManager {
         log::debug!(
             "Found rate limit configuration for server '{server_name}': {}/{:?}",
             rate_limit.limit,
-            rate_limit.duration
+            rate_limit.interval
         );
 
         // Determine which limit to use
-        let (limit, duration, key) = match &request.tool_name {
+        let (limit, interval, key) = match &request.tool_name {
             Some(tool_name) => {
                 let quota = rate_limit
                     .tools
                     .get(tool_name)
-                    .map(|q| (q.limit, q.duration))
-                    .unwrap_or((rate_limit.limit, rate_limit.duration));
+                    .map(|q| (q.limit, q.interval))
+                    .unwrap_or((rate_limit.limit, rate_limit.interval));
 
                 (quota.0, quota.1, format!("server:{server_name}:tool:{tool_name}"))
             }
-            None => (rate_limit.limit, rate_limit.duration, format!("server:{server_name}")),
+            None => (rate_limit.limit, rate_limit.interval, format!("server:{server_name}")),
         };
 
-        log::debug!("Evaluating rate limit: key='{key}', quota={limit} requests per {duration:?}");
+        log::debug!("Evaluating rate limit: key='{key}', quota={limit} requests per {interval:?}");
 
-        let result = self.inner.storage.check_and_consume(&key, limit, duration).await?;
+        let result = self.inner.storage.check_and_consume(&key, limit, interval).await?;
 
         log::debug!(
             "Rate limit decision: {} (retry after: {:?})",

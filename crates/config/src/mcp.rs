@@ -331,11 +331,11 @@ pub enum ForwardType {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct McpServerRateLimit {
-    /// The maximum number of requests allowed in the duration window.
+    /// The maximum number of requests allowed in the interval window.
     pub limit: u32,
-    /// The duration window for the rate limit.
+    /// The interval window for the rate limit.
     #[serde(deserialize_with = "deserialize_duration")]
-    pub duration: Duration,
+    pub interval: Duration,
     /// Optional per-tool rate limit overrides.
     #[serde(default)]
     pub tools: BTreeMap<String, RateLimitQuota>,

@@ -214,28 +214,28 @@ type = "memory"  # or "redis" for distributed rate limiting
 # Global rate limit (applies to all requests)
 [server.rate_limits.global]
 limit = 1000
-duration = "60s"
+interval = "60s"
 
 # Per-IP rate limit
 [server.rate_limits.per_ip]
 limit = 100
-duration = "60s"
+interval = "60s"
 
 # Per-MCP server rate limits
 [mcp.servers.my_server.rate_limits]
 limit = 50
-duration = "60s"
+interval = "60s"
 
 # Tool-specific rate limits (override server defaults)
 [mcp.servers.my_server.rate_limits.tools]
-expensive_tool = { limit = 10, duration = "60s" }
-cheap_tool = { limit = 100, duration = "60s" }
+expensive_tool = { limit = 10, interval = "60s" }
+cheap_tool = { limit = 100, interval = "60s" }
 ```
 
 **Rate Limiting Features:**
 - **Multiple levels**: Global, per-IP, per-server, and per-tool limits
 - **Storage backends**: In-memory (single instance) or Redis (distributed)
-- **Flexible durations**: Configure time windows for each limit
+- **Flexible intervals**: Configure time windows for each limit
 - **Tool-specific overrides**: Set different limits for expensive operations
 
 **Redis Backend Configuration:**

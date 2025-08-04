@@ -1712,11 +1712,11 @@ mod tests {
 
             [server.rate_limits.global]
             limit = 10000
-            duration = "60s"
+            interval = "60s"
 
             [server.rate_limits.per_ip]
             limit = 60
-            duration = "60s"
+            interval = "60s"
         "#};
 
         let config: Config = toml::from_str(config).unwrap();
@@ -1728,13 +1728,13 @@ mod tests {
             global: Some(
                 RateLimitQuota {
                     limit: 10000,
-                    duration: 60s,
+                    interval: 60s,
                 },
             ),
             per_ip: Some(
                 RateLimitQuota {
                     limit: 60,
-                    duration: 60s,
+                    interval: 60s,
                 },
             ),
         }
@@ -1748,16 +1748,16 @@ mod tests {
             url = "https://api.github.com/mcp"
             [mcp.servers.github_api.rate_limits]
             limit = 30
-            duration = "60s"
+            interval = "60s"
             [mcp.servers.github_api.rate_limits.tools]
-            search = { limit = 60, duration = "60s" }
-            create_issue = { limit = 10, duration = "60s" }
+            search = { limit = 60, interval = "60s" }
+            create_issue = { limit = 10, interval = "60s" }
 
             [mcp.servers.local_tool]
             cmd = ["python", "server.py"]
             [mcp.servers.local_tool.rate_limits]
             limit = 100
-            duration = "60s"
+            interval = "60s"
         "#};
 
         let config: Config = toml::from_str(config).unwrap();
@@ -1788,15 +1788,15 @@ mod tests {
                     rate_limits: Some(
                         McpServerRateLimit {
                             limit: 30,
-                            duration: 60s,
+                            interval: 60s,
                             tools: {
                                 "create_issue": RateLimitQuota {
                                     limit: 10,
-                                    duration: 60s,
+                                    interval: 60s,
                                 },
                                 "search": RateLimitQuota {
                                     limit: 60,
-                                    duration: 60s,
+                                    interval: 60s,
                                 },
                             },
                         },
@@ -1817,7 +1817,7 @@ mod tests {
                     rate_limits: Some(
                         McpServerRateLimit {
                             limit: 100,
-                            duration: 60s,
+                            interval: 60s,
                             tools: {},
                         },
                     ),

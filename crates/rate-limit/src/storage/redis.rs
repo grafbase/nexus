@@ -77,13 +77,13 @@ impl RedisStorage {
     }
 
     /// Generate Redis keys for the current and previous time windows.
-    fn generate_keys(&self, key: &str, duration: Duration) -> (String, String, u64, f64) {
+    fn generate_keys(&self, key: &str, interval: Duration) -> (String, String, u64, f64) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
 
-        let window_size = duration.as_secs();
+        let window_size = interval.as_secs();
         let current_bucket = now / window_size;
         let previous_bucket = current_bucket - 1;
 
@@ -102,9 +102,9 @@ impl RateLimitStorage for RedisStorage {
         &self,
         key: &str,
         limit: u32,
-        duration: Duration,
+        interval: Duration,
     ) -> Result<RateLimitResult, StorageError> {
-        let (current_key, previous_key, window_size, bucket_percentage) = self.generate_keys(key, duration);
+        let (current_key, previous_key, window_size, bucket_percentage) = self.generate_keys(key, interval);
 
         // Get connection from pool
         let mut conn = self

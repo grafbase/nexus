@@ -24,7 +24,7 @@ pub trait RateLimitStorage: Send + Sync {
         &self,
         key: &str,
         limit: u32,
-        duration: Duration,
+        interval: Duration,
     ) -> Result<RateLimitResult, StorageError>;
 }
 

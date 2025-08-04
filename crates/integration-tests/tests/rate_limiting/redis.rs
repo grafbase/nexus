@@ -25,7 +25,7 @@ async fn basic_redis_rate_limiting() {
 
         [server.rate_limits.global]
         limit = 5
-        duration = "60s"
+        interval = "60s"
     "#};
 
     let server = TestServer::builder().build(&config).await;
@@ -92,7 +92,7 @@ async fn redis_per_server_rate_limiting() {
 
         [mcp.servers.limited_server.rate_limits]
         limit = 2
-        duration = "30s"
+        interval = "30s"
     "#};
 
     let server = builder.build(&config).await;
@@ -143,7 +143,7 @@ async fn redis_tls_rate_limiting() {
 
         [server.rate_limits.global]
         limit = 5
-        duration = "60s"
+        interval = "60s"
     "#};
 
     let server = TestServer::builder().build(&config).await;
@@ -202,7 +202,7 @@ async fn redis_pool_configuration() {
 
         [server.rate_limits.per_ip]
         limit = 2
-        duration = "30s"
+        interval = "30s"
     "#};
 
     let server = TestServer::builder().build(config).await;
@@ -237,7 +237,7 @@ async fn redis_connection_failure() {
 
         [server.rate_limits.global]
         limit = 5
-        duration = "60s"
+        interval = "60s"
     "#};
 
     // Should panic due to Redis connection error
@@ -262,7 +262,7 @@ async fn redis_window_expiry() {
 
         [server.rate_limits.global]
         limit = 5
-        duration = "2s"  # Short duration for testing
+        interval = "2s"  # Short interval for testing
     "#};
 
     let server = TestServer::builder().build(&config).await;
@@ -364,7 +364,7 @@ async fn redis_tls_with_client_certs() {
 
         [server.rate_limits.global]
         limit = 3
-        duration = "60s"
+        interval = "60s"
     "#};
 
     let server = TestServer::builder().build(&config).await;
@@ -420,7 +420,7 @@ async fn concurrent_redis_rate_limiting() {
 
        [server.rate_limits.global]
        limit = 10
-       duration = "5s"
+       interval = "5s"
     "#};
 
     let server = Arc::new(TestServer::builder().build(&config).await);

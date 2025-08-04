@@ -49,20 +49,20 @@ impl RateLimitStorage for InMemoryStorage {
         &self,
         key: &str,
         limit: u32,
-        duration: Duration,
+        interval: Duration,
     ) -> Result<RateLimitResult, StorageError> {
-        // Create a cache key based on limit and duration configuration.
-        // We cache rate limiters by their configuration (limit + duration) rather than by the
+        // Create a cache key based on limit and interval configuration.
+        // We cache rate limiters by their configuration (limit + interval) rather than by the
         // actual key for efficiency. This allows multiple keys with the same rate limit
         // configuration to share a single rate limiter instance, reducing memory usage.
         //
         // The governor crate's keyed rate limiter internally tracks separate rate limit states
         // for each key, so sharing the rate limiter instance doesn't affect the per-key
         // rate limiting behavior. Each key still gets its own independent rate limit tracking.
-        let duration_millis = duration.as_millis();
-        let cache_key = format!("{limit}-{duration_millis}ms");
+        let interval_millis = interval.as_millis();
+        let cache_key = format!("{limit}-{interval_millis}ms");
 
-        log::debug!("Checking rate limit for key '{key}': {limit} requests allowed per {duration:?}");
+        log::debug!("Checking rate limit for key '{key}': {limit} requests allowed per {interval:?}");
 
         // Get or create the rate limiter for this configuration
         // First, try to get an existing limiter
@@ -94,7 +94,7 @@ impl RateLimitStorage for InMemoryStorage {
         }
 
         // Create the rate limiter
-        let quota = quota_from_config(limit, duration)?;
+        let quota = quota_from_config(limit, interval)?;
         let limiter = Arc::new(RateLimiter::keyed(quota));
 
         // Insert into cache
@@ -132,16 +132,16 @@ impl InMemoryStorage {
     }
 }
 
-fn quota_from_config(limit: u32, duration: Duration) -> Result<Quota, StorageError> {
+fn quota_from_config(limit: u32, interval: Duration) -> Result<Quota, StorageError> {
     // Convert to per-second rate
-    let per_second_f64 = (limit as f64 / duration.as_secs_f64()).max(1.0);
+    let per_second_f64 = (limit as f64 / interval.as_secs_f64()).max(1.0);
     let per_second = per_second_f64 as u32;
 
     // Calculate burst capacity (10% of limit or minimum 5)
     let burst = (limit / 10).max(5).min(limit);
 
     log::debug!(
-        "Calculating rate limit quota: {limit} requests per {duration:?}, converted to {per_second}/second with burst capacity of {burst}"
+        "Calculating rate limit quota: {limit} requests per {interval:?}, converted to {per_second}/second with burst capacity of {burst}"
     );
 
     let per_second = per_second

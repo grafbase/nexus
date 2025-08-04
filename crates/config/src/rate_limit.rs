@@ -23,18 +23,18 @@ pub struct RateLimitConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RateLimitQuota {
-    /// Maximum number of requests allowed within the duration window.
+    /// Maximum number of requests allowed within the interval window.
     pub limit: u32,
     /// Time window for the rate limit.
     #[serde(deserialize_with = "deserialize_duration")]
-    pub duration: Duration,
+    pub interval: Duration,
 }
 
 impl Default for RateLimitQuota {
     fn default() -> Self {
         Self {
             limit: 60,
-            duration: Duration::from_secs(60),
+            interval: Duration::from_secs(60),
         }
     }
 }
@@ -308,11 +308,11 @@ mod tests {
 
             [global]
             limit = 1000
-            duration = "60s"
+            interval = "60s"
 
             [per_ip]
             limit = 100
-            duration = "60s"
+            interval = "60s"
         "#;
         let config: RateLimitConfig = toml::from_str(toml).unwrap();
         insta::assert_debug_snapshot!(config, @r#"
@@ -353,13 +353,13 @@ mod tests {
             global: Some(
                 RateLimitQuota {
                     limit: 1000,
-                    duration: 60s,
+                    interval: 60s,
                 },
             ),
             per_ip: Some(
                 RateLimitQuota {
                     limit: 100,
-                    duration: 60s,
+                    interval: 60s,
                 },
             ),
         }

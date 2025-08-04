@@ -14,7 +14,7 @@ async fn global_rate_limit_basic() {
 
         [server.rate_limits.global]
         limit = 3
-        duration = "10s"
+        interval = "10s"
     "#};
 
     let server = TestServer::builder().build(config).await;
@@ -69,7 +69,7 @@ async fn per_ip_rate_limit_basic() {
 
         [server.rate_limits.per_ip]
         limit = 2
-        duration = "10s"
+        interval = "10s"
 
         [mcp]
         enabled = true
@@ -193,7 +193,7 @@ async fn mcp_server_rate_limit() {
 
         [mcp.servers.test_server.rate_limits]
         limit = 2
-        duration = "10s"
+        interval = "10s"
     "#};
 
     let server = builder.build(config).await;
@@ -268,10 +268,10 @@ async fn mcp_tool_specific_rate_limit() {
 
         [mcp.servers.test_server.rate_limits]
         limit = 10
-        duration = "10s"
+        interval = "10s"
 
         [mcp.servers.test_server.rate_limits.tools]
-        adder = { limit = 2, duration = "10s" }
+        adder = { limit = 2, interval = "10s" }
     "#};
 
     let server = builder.build(config).await;
@@ -343,7 +343,7 @@ async fn mcp_only_rate_limits_no_http_middleware() {
 
         [mcp.servers.test_server.rate_limits]
         limit = 1
-        duration = "10s"
+        interval = "10s"
     "#};
 
     let server = builder.build(config).await;
@@ -450,11 +450,11 @@ async fn mixed_rate_limits() {
 
         [server.rate_limits.global]
         limit = 10
-        duration = "10s"
+        interval = "10s"
 
         [server.rate_limits.per_ip]
         limit = 5
-        duration = "10s"
+        interval = "10s"
     "#};
 
     let server = TestServer::builder().build(config).await;
@@ -539,7 +539,7 @@ async fn concurrent_memory_rate_limiting() {
 
         [server.rate_limits.global]
         limit = 10
-        duration = "5s"
+        interval = "5s"
     "#};
 
     let server = Arc::new(TestServer::builder().build(config).await);
