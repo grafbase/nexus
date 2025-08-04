@@ -63,7 +63,7 @@ pub struct ServerConfig {
     pub oauth: Option<OauthConfig>,
     /// Rate limiting configuration
     #[serde(default)]
-    pub rate_limit: RateLimitConfig,
+    pub rate_limits: RateLimitConfig,
 }
 
 impl ServerConfig {
@@ -201,7 +201,7 @@ mod tests {
                     header_name: "X-Nexus-CSRF-Protection",
                 },
                 oauth: None,
-                rate_limit: RateLimitConfig {
+                rate_limits: RateLimitConfig {
                     enabled: false,
                     storage: Memory,
                     global: None,
@@ -241,7 +241,7 @@ mod tests {
                     header_name: "X-Nexus-CSRF-Protection",
                 },
                 oauth: None,
-                rate_limit: RateLimitConfig {
+                rate_limits: RateLimitConfig {
                     enabled: false,
                     storage: Memory,
                     global: None,
@@ -283,7 +283,7 @@ mod tests {
                     stderr: Simple(
                         Null,
                     ),
-                    rate_limit: None,
+                    rate_limits: None,
                 },
             ),
         }
@@ -322,7 +322,7 @@ mod tests {
                     stderr: Simple(
                         Null,
                     ),
-                    rate_limit: None,
+                    rate_limits: None,
                 },
             ),
         }
@@ -367,7 +367,7 @@ mod tests {
                     stderr: Simple(
                         Null,
                     ),
-                    rate_limit: None,
+                    rate_limits: None,
                 },
             ),
         }
@@ -395,7 +395,7 @@ mod tests {
                     stderr: Simple(
                         Null,
                     ),
-                    rate_limit: None,
+                    rate_limits: None,
                 },
             ),
         }
@@ -439,7 +439,7 @@ mod tests {
                     tls: None,
                     message_url: None,
                     auth: None,
-                    rate_limit: None,
+                    rate_limits: None,
                 },
             ),
             "stdio_server": Stdio(
@@ -453,7 +453,7 @@ mod tests {
                     stderr: Simple(
                         Null,
                     ),
-                    rate_limit: None,
+                    rate_limits: None,
                 },
             ),
         }
@@ -487,7 +487,7 @@ mod tests {
                     stderr: Simple(
                         Inherit,
                     ),
-                    rate_limit: None,
+                    rate_limits: None,
                 },
             ),
             "file_logging_stdio": Stdio(
@@ -501,7 +501,7 @@ mod tests {
                     stderr: File {
                         file: "/tmp/server.log",
                     },
-                    rate_limit: None,
+                    rate_limits: None,
                 },
             ),
         }
@@ -530,7 +530,7 @@ mod tests {
                     stderr: Simple(
                         Null,
                     ),
-                    rate_limit: None,
+                    rate_limits: None,
                 },
             ),
         }
@@ -601,7 +601,7 @@ mod tests {
                         },
                     ),
                     auth: None,
-                    rate_limit: None,
+                    rate_limits: None,
                 },
             ),
         }
@@ -657,7 +657,7 @@ mod tests {
                     ),
                     message_url: None,
                     auth: None,
-                    rate_limit: None,
+                    rate_limits: None,
                 },
             ),
         }
@@ -715,7 +715,7 @@ mod tests {
                         stderr: Simple(
                             Null,
                         ),
-                        rate_limit: None,
+                        rate_limits: None,
                     },
                 ),
                 "local_code_interpreter": Stdio(
@@ -729,7 +729,7 @@ mod tests {
                         stderr: Simple(
                             Null,
                         ),
-                        rate_limit: None,
+                        rate_limits: None,
                     },
                 ),
                 "sse_api": Http(
@@ -757,7 +757,7 @@ mod tests {
                         tls: None,
                         message_url: None,
                         auth: None,
-                        rate_limit: None,
+                        rate_limits: None,
                     },
                 ),
                 "sse_api2": Http(
@@ -801,7 +801,7 @@ mod tests {
                             },
                         ),
                         auth: None,
-                        rate_limit: None,
+                        rate_limits: None,
                     },
                 ),
                 "streaming_api": Http(
@@ -829,7 +829,7 @@ mod tests {
                         tls: None,
                         message_url: None,
                         auth: None,
-                        rate_limit: None,
+                        rate_limits: None,
                     },
                 ),
             },
@@ -1172,7 +1172,7 @@ mod tests {
                             token: SecretBox<str>([REDACTED]),
                         },
                     ),
-                    rate_limit: None,
+                    rate_limits: None,
                 },
             ),
         }
@@ -1221,7 +1221,7 @@ mod tests {
                             type: Forward,
                         },
                     ),
-                    rate_limit: None,
+                    rate_limits: None,
                 },
             ),
         }
@@ -1694,7 +1694,7 @@ mod tests {
     fn rate_limit_default_config() {
         let config: Config = toml::from_str("").unwrap();
 
-        insta::assert_debug_snapshot!(&config.server.rate_limit, @r"
+        insta::assert_debug_snapshot!(&config.server.rate_limits, @r"
         RateLimitConfig {
             enabled: false,
             storage: Memory,
@@ -1707,21 +1707,21 @@ mod tests {
     #[test]
     fn rate_limit_full_config() {
         let config = indoc! {r#"
-            [server.rate_limit]
+            [server.rate_limits]
             enabled = true
 
-            [server.rate_limit.global]
+            [server.rate_limits.global]
             limit = 10000
             duration = "60s"
 
-            [server.rate_limit.per_ip]
+            [server.rate_limits.per_ip]
             limit = 60
             duration = "60s"
         "#};
 
         let config: Config = toml::from_str(config).unwrap();
 
-        insta::assert_debug_snapshot!(&config.server.rate_limit, @r#"
+        insta::assert_debug_snapshot!(&config.server.rate_limits, @r#"
         RateLimitConfig {
             enabled: true,
             storage: Memory,
@@ -1746,16 +1746,16 @@ mod tests {
         let config = indoc! {r#"
             [mcp.servers.github_api]
             url = "https://api.github.com/mcp"
-            [mcp.servers.github_api.rate_limit]
+            [mcp.servers.github_api.rate_limits]
             limit = 30
             duration = "60s"
-            [mcp.servers.github_api.rate_limit.tools]
+            [mcp.servers.github_api.rate_limits.tools]
             search = { limit = 60, duration = "60s" }
             create_issue = { limit = 10, duration = "60s" }
 
             [mcp.servers.local_tool]
             cmd = ["python", "server.py"]
-            [mcp.servers.local_tool.rate_limit]
+            [mcp.servers.local_tool.rate_limits]
             limit = 100
             duration = "60s"
         "#};
@@ -1785,7 +1785,7 @@ mod tests {
                     tls: None,
                     message_url: None,
                     auth: None,
-                    rate_limit: Some(
+                    rate_limits: Some(
                         McpServerRateLimit {
                             limit: 30,
                             duration: 60s,
@@ -1814,7 +1814,7 @@ mod tests {
                     stderr: Simple(
                         Null,
                     ),
-                    rate_limit: Some(
+                    rate_limits: Some(
                         McpServerRateLimit {
                             limit: 100,
                             duration: 60s,

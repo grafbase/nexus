@@ -133,7 +133,7 @@ impl RateLimitManager {
             return Ok(());
         };
 
-        let Some(rate_limit) = server.rate_limit() else {
+        let Some(rate_limit) = server.rate_limits() else {
             log::debug!("Rate limiting not configured for server '{server_name}' - allowing request");
             return Ok(());
         };

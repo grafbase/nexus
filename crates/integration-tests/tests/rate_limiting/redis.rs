@@ -15,15 +15,15 @@ async fn basic_redis_rate_limiting() {
         .as_millis();
 
     let config = indoc::formatdoc! {r#"
-        [server.rate_limit]
+        [server.rate_limits]
         enabled = true
 
-        [server.rate_limit.storage]
+        [server.rate_limits.storage]
         type = "redis"
         url = "redis://localhost:6379/0"
         key_prefix = "test_basic_redis_{timestamp}:"
 
-        [server.rate_limit.global]
+        [server.rate_limits.global]
         limit = 5
         duration = "60s"
     "#};
@@ -82,15 +82,15 @@ async fn redis_per_server_rate_limiting() {
         .as_millis();
 
     let config = indoc::formatdoc! {r#"
-        [server.rate_limit]
+        [server.rate_limits]
         enabled = true
 
-        [server.rate_limit.storage]
+        [server.rate_limits.storage]
         type = "redis"
         url = "redis://localhost:6379/1"
         key_prefix = "nexus_test_{timestamp}:"
 
-        [mcp.servers.limited_server.rate_limit]
+        [mcp.servers.limited_server.rate_limits]
         limit = 2
         duration = "30s"
     "#};
@@ -128,20 +128,20 @@ async fn redis_tls_rate_limiting() {
         .as_millis();
 
     let config = indoc::formatdoc! {r#"
-        [server.rate_limit]
+        [server.rate_limits]
         enabled = true
 
-        [server.rate_limit.storage]
+        [server.rate_limits.storage]
         type = "redis"
         url = "rediss://localhost:6380/0"
         key_prefix = "test_tls_{timestamp}:"
 
-        [server.rate_limit.storage.tls]
+        [server.rate_limits.storage.tls]
         enabled = true
         insecure = true
         ca_cert_path = "./docker/redis/tls/ca.crt"
 
-        [server.rate_limit.global]
+        [server.rate_limits.global]
         limit = 5
         duration = "60s"
     "#};
@@ -183,24 +183,24 @@ async fn redis_tls_rate_limiting() {
 #[tokio::test]
 async fn redis_pool_configuration() {
     let config = indoc! {r#"
-        [server.rate_limit]
+        [server.rate_limits]
         enabled = true
 
-        [server.rate_limit.storage]
+        [server.rate_limits.storage]
         type = "redis"
         url = "redis://localhost:6379/2"
         key_prefix = "nexus_pool_test:"
         response_timeout = "1s"
         connection_timeout = "5s"
         
-        [server.rate_limit.storage.pool]
+        [server.rate_limits.storage.pool]
         max_size = 10
         min_idle = 2
         timeout_create = "5s"
         timeout_wait = "2s"
         timeout_recycle = "300s"
 
-        [server.rate_limit.per_ip]
+        [server.rate_limits.per_ip]
         limit = 2
         duration = "30s"
     "#};
@@ -227,15 +227,15 @@ async fn redis_pool_configuration() {
 #[should_panic(expected = "Failed to get Redis connection from pool")]
 async fn redis_connection_failure() {
     let config = indoc! {r#"
-        [server.rate_limit]
+        [server.rate_limits]
         enabled = true
 
-        [server.rate_limit.storage]
+        [server.rate_limits.storage]
         type = "redis"
         url = "redis://localhost:9999/0"  # Non-existent Redis server
         connection_timeout = "1s"
 
-        [server.rate_limit.global]
+        [server.rate_limits.global]
         limit = 5
         duration = "60s"
     "#};
@@ -252,15 +252,15 @@ async fn redis_window_expiry() {
         .as_millis();
 
     let config = indoc::formatdoc! {r#"
-        [server.rate_limit]
+        [server.rate_limits]
         enabled = true
 
-        [server.rate_limit.storage]
+        [server.rate_limits.storage]
         type = "redis"
         url = "redis://localhost:6379/3"
         key_prefix = "test_window_expiry_{timestamp}:"
 
-        [server.rate_limit.global]
+        [server.rate_limits.global]
         limit = 5
         duration = "2s"  # Short duration for testing
     "#};
@@ -348,21 +348,21 @@ async fn redis_tls_with_client_certs() {
         .as_millis();
 
     let config = indoc::formatdoc! {r#"
-        [server.rate_limit]
+        [server.rate_limits]
         enabled = true
 
-        [server.rate_limit.storage]
+        [server.rate_limits.storage]
         type = "redis"
         url = "rediss://localhost:6381/0"
         key_prefix = "test_mtls_{timestamp}:"
 
-        [server.rate_limit.storage.tls]
+        [server.rate_limits.storage.tls]
         enabled = true
         ca_cert_path = "./docker/redis/tls/ca.crt"
         client_cert_path = "./docker/redis/tls/client.crt"
         client_key_path = "./docker/redis/tls/client.key"
 
-        [server.rate_limit.global]
+        [server.rate_limits.global]
         limit = 3
         duration = "60s"
     "#};
@@ -410,15 +410,15 @@ async fn concurrent_redis_rate_limiting() {
         .as_millis();
 
     let config = indoc::formatdoc! {r#"
-       [server.rate_limit]
+       [server.rate_limits]
        enabled = true
 
-       [server.rate_limit.storage]
+       [server.rate_limits.storage]
        type = "redis"
        url = "redis://localhost:6379/5"
        key_prefix = "test_concurrent_{timestamp}:"
 
-       [server.rate_limit.global]
+       [server.rate_limits.global]
        limit = 10
        duration = "5s"
     "#};

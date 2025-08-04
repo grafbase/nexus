@@ -9,10 +9,10 @@ use serde_json::json;
 #[tokio::test]
 async fn global_rate_limit_basic() {
     let config = indoc! {r#"
-        [server.rate_limit]
+        [server.rate_limits]
         enabled = true
 
-        [server.rate_limit.global]
+        [server.rate_limits.global]
         limit = 3
         duration = "10s"
     "#};
@@ -64,10 +64,10 @@ async fn global_rate_limit_basic() {
 #[tokio::test]
 async fn per_ip_rate_limit_basic() {
     let config = indoc! {r#"
-        [server.rate_limit]
+        [server.rate_limits]
         enabled = true
 
-        [server.rate_limit.per_ip]
+        [server.rate_limits.per_ip]
         limit = 2
         duration = "10s"
 
@@ -188,10 +188,10 @@ async fn mcp_server_rate_limit() {
     builder.spawn_service(service).await;
 
     let config = indoc! {r#"
-        [server.rate_limit]
+        [server.rate_limits]
         enabled = true
 
-        [mcp.servers.test_server.rate_limit]
+        [mcp.servers.test_server.rate_limits]
         limit = 2
         duration = "10s"
     "#};
@@ -263,14 +263,14 @@ async fn mcp_tool_specific_rate_limit() {
     builder.spawn_service(service).await;
 
     let config = indoc! {r#"
-        [server.rate_limit]
+        [server.rate_limits]
         enabled = true
 
-        [mcp.servers.test_server.rate_limit]
+        [mcp.servers.test_server.rate_limits]
         limit = 10
         duration = "10s"
 
-        [mcp.servers.test_server.rate_limit.tools]
+        [mcp.servers.test_server.rate_limits.tools]
         adder = { limit = 2, duration = "10s" }
     "#};
 
@@ -338,10 +338,10 @@ async fn mcp_only_rate_limits_no_http_middleware() {
     builder.spawn_service(service).await;
 
     let config = indoc! {r#"
-        [server.rate_limit]
+        [server.rate_limits]
         enabled = true
 
-        [mcp.servers.test_server.rate_limit]
+        [mcp.servers.test_server.rate_limits]
         limit = 1
         duration = "10s"
     "#};
@@ -400,7 +400,7 @@ async fn mcp_only_rate_limits_no_http_middleware() {
 #[tokio::test]
 async fn rate_limiting_disabled() {
     let config = indoc! {r#"
-        [server.rate_limit]
+        [server.rate_limits]
         enabled = false
     "#};
 
@@ -442,17 +442,17 @@ async fn rate_limiting_disabled() {
 #[tokio::test]
 async fn mixed_rate_limits() {
     let config = indoc! {r#"
-        [server.rate_limit]
+        [server.rate_limits]
         enabled = true
 
-        [server.rate_limit.storage]
+        [server.rate_limits.storage]
         type = "memory"
 
-        [server.rate_limit.global]
+        [server.rate_limits.global]
         limit = 10
         duration = "10s"
 
-        [server.rate_limit.per_ip]
+        [server.rate_limits.per_ip]
         limit = 5
         duration = "10s"
     "#};
@@ -531,13 +531,13 @@ async fn mixed_rate_limits() {
 #[tokio::test]
 async fn concurrent_memory_rate_limiting() {
     let config = indoc! {r#"
-        [server.rate_limit]
+        [server.rate_limits]
         enabled = true
 
-        [server.rate_limit.storage]
+        [server.rate_limits.storage]
         type = "memory"
 
-        [server.rate_limit.global]
+        [server.rate_limits.global]
         limit = 10
         duration = "5s"
     "#};

@@ -48,8 +48,8 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
     let cors = cors::generate(&config.server.cors);
 
     // 3. Initialize rate limit manager if enabled
-    let rate_limit_manager = if config.server.rate_limit.enabled {
-        Some(Arc::new(RateLimitManager::new(config.server.rate_limit.clone(), config.mcp.clone()).await?))
+    let rate_limit_manager = if config.server.rate_limits.enabled {
+        Some(Arc::new(RateLimitManager::new(config.server.rate_limits.clone(), config.mcp.clone()).await?))
     } else {
         None
     };
@@ -254,7 +254,7 @@ The server applies rate limiting at the HTTP middleware level:
 // Rate limiting is applied after authentication but before route handlers
 // This ensures we know the user identity for better rate limiting decisions
 
-if config.server.rate_limit.enabled {
+if config.server.rate_limits.enabled {
     // Global and per-IP limits are enforced at the HTTP layer
     protected_router = protected_router.layer(RateLimitLayer::new(manager));
 }

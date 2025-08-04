@@ -201,33 +201,33 @@ Nexus supports comprehensive rate limiting to prevent abuse and ensure fair reso
 
 ```toml
 # Global rate limiting configuration
-[server.rate_limit]
+[server.rate_limits]
 enabled = true
 
 # Storage backend configuration
-[server.rate_limit.storage]
+[server.rate_limits.storage]
 type = "memory"  # or "redis" for distributed rate limiting
 # For Redis backend:
 # url = "redis://localhost:6379"
 # key_prefix = "nexus:rate_limit:"
 
 # Global rate limit (applies to all requests)
-[server.rate_limit.global]
+[server.rate_limits.global]
 limit = 1000
 duration = "60s"
 
 # Per-IP rate limit
-[server.rate_limit.per_ip]
+[server.rate_limits.per_ip]
 limit = 100
 duration = "60s"
 
 # Per-MCP server rate limits
-[mcp.servers.my_server.rate_limit]
+[mcp.servers.my_server.rate_limits]
 limit = 50
 duration = "60s"
 
 # Tool-specific rate limits (override server defaults)
-[mcp.servers.my_server.rate_limit.tools]
+[mcp.servers.my_server.rate_limits.tools]
 expensive_tool = { limit = 10, duration = "60s" }
 cheap_tool = { limit = 100, duration = "60s" }
 ```
@@ -240,7 +240,7 @@ cheap_tool = { limit = 100, duration = "60s" }
 
 **Redis Backend Configuration:**
 ```toml
-[server.rate_limit.storage]
+[server.rate_limits.storage]
 type = "redis"
 url = "redis://localhost:6379"
 key_prefix = "nexus:rate_limit:"
@@ -248,7 +248,7 @@ response_timeout = "1s"
 connection_timeout = "5s"
 
 # Connection pool settings
-[server.rate_limit.storage.pool]
+[server.rate_limits.storage.pool]
 max_size = 16
 min_idle = 0
 timeout_create = "5s"
@@ -256,7 +256,7 @@ timeout_wait = "5s"
 timeout_recycle = "300s"
 
 # TLS configuration for Redis (optional)
-[server.rate_limit.storage.tls]
+[server.rate_limits.storage.tls]
 enabled = true
 ca_cert_path = "/path/to/ca.crt"
 client_cert_path = "/path/to/client.crt"  # For mutual TLS

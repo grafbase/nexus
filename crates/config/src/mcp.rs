@@ -64,10 +64,10 @@ impl McpServer {
     }
 
     /// Returns the rate limit configuration for this server, if any.
-    pub fn rate_limit(&self) -> Option<&McpServerRateLimit> {
+    pub fn rate_limits(&self) -> Option<&McpServerRateLimit> {
         match self {
-            McpServer::Stdio(config) => config.rate_limit.as_ref(),
-            McpServer::Http(config) => config.rate_limit.as_ref(),
+            McpServer::Stdio(config) => config.rate_limits.as_ref(),
+            McpServer::Http(config) => config.rate_limits.as_ref(),
         }
     }
 }
@@ -137,7 +137,7 @@ pub struct StdioConfig {
 
     /// Rate limit configuration for this MCP server.
     #[serde(default)]
-    pub rate_limit: Option<McpServerRateLimit>,
+    pub rate_limits: Option<McpServerRateLimit>,
 }
 
 impl StdioConfig {
@@ -238,7 +238,7 @@ pub struct HttpConfig {
     pub auth: Option<ClientAuthConfig>,
     /// Rate limit configuration for this MCP server.
     #[serde(default)]
-    pub rate_limit: Option<McpServerRateLimit>,
+    pub rate_limits: Option<McpServerRateLimit>,
 }
 
 impl HttpConfig {
