@@ -95,7 +95,7 @@ services:
 
   # Redis without TLS for basic testing
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     ports:
       - "6379:6379"
     networks:
@@ -104,7 +104,7 @@ services:
 
   # Redis with TLS for secure connection testing
   redis-tls:
-    image: redis:7-alpine
+    image: redis:8-alpine
     ports:
       - "6380:6379"
     command: >
@@ -129,7 +129,7 @@ services:
 
   # Redis with mutual TLS (requires client certificates)
   redis-mtls:
-    image: redis:7-alpine
+    image: redis:8-alpine
     ports:
       - "6381:6379"
     command: >
