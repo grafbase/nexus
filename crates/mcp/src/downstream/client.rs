@@ -40,7 +40,7 @@ impl DownstreamClient {
     ///
     /// This function spawns a child process and establishes STDIO communication with it.
     pub async fn new_stdio(name: &str, config: &config::StdioConfig) -> anyhow::Result<Self> {
-        log::debug!("creating stdio downstream service for {name}");
+        log::debug!("Creating STDIO downstream service for server '{name}'");
 
         let mut command = Command::new(config.executable());
         command.args(config.args());
@@ -56,7 +56,7 @@ impl DownstreamClient {
         }
 
         let stderr_stdio = stdio_target(&config.stderr)?;
-        log::debug!("stdio configuration for {name}: stderr={:?}", config.stderr);
+        log::debug!("STDIO configuration for '{name}': stderr output directed to {:?}", config.stderr);
 
         let transport = TokioChildProcess::builder(command)
             .stderr(stderr_stdio)
@@ -74,7 +74,7 @@ impl DownstreamClient {
     }
 
     pub async fn new_http(name: &str, config: &HttpConfig) -> anyhow::Result<Self> {
-        log::debug!("creating http downstream service for {name}");
+        log::debug!("Creating HTTP downstream service for server '{name}'");
         let service = http_service(config).await?;
 
         Ok(Self {
@@ -87,37 +87,37 @@ impl DownstreamClient {
 
     /// Lists all tools available from the downstream MCP server.
     pub async fn list_tools(&self) -> Result<Vec<Tool>, ServiceError> {
-        log::debug!("listing tools for {}", self.name());
+        log::debug!("Requesting tool list from downstream server '{}'", self.name());
         Ok(self.inner.service.list_tools(Default::default()).await?.tools)
     }
 
     /// Calls a tool on the downstream MCP server.
     pub async fn call_tool(&self, params: CallToolRequestParam) -> Result<CallToolResult, ServiceError> {
-        log::debug!("calling tool {} for {}", params.name, self.name());
+        log::debug!("Invoking tool '{}' on downstream server '{}'", params.name, self.name());
         self.inner.service.call_tool(params).await
     }
 
     /// Lists all prompts available from the downstream MCP server.
     pub async fn list_prompts(&self) -> Result<Vec<Prompt>, ServiceError> {
-        log::debug!("listing prompts for {}", self.name());
+        log::debug!("Requesting prompt list from downstream server '{}'", self.name());
         Ok(self.inner.service.list_prompts(Default::default()).await?.prompts)
     }
 
     /// Gets a prompt from the downstream MCP server.
     pub async fn get_prompt(&self, params: GetPromptRequestParam) -> Result<GetPromptResult, ServiceError> {
-        log::debug!("getting prompt {} for {}", params.name, self.name());
+        log::debug!("Retrieving prompt '{}' from downstream server '{}'", params.name, self.name());
         self.inner.service.get_prompt(params).await
     }
 
     /// Lists all resources available from the downstream MCP server.
     pub async fn list_resources(&self) -> Result<Vec<Resource>, ServiceError> {
-        log::debug!("listing resources for {}", self.name());
+        log::debug!("Requesting resource list from downstream server '{}'", self.name());
         Ok(self.inner.service.list_resources(Default::default()).await?.resources)
     }
 
     /// Reads a resource from the downstream MCP server.
     pub async fn read_resource(&self, params: ReadResourceRequestParam) -> Result<ReadResourceResult, ServiceError> {
-        log::debug!("reading resource {} for {}", params.uri, self.name());
+        log::debug!("Reading resource '{}' from downstream server '{}'", params.uri, self.name());
         self.inner.service.read_resource(params).await
     }
 
@@ -134,20 +134,20 @@ impl DownstreamClient {
 /// Otherwise, it will attempt streamable-http first and fall back to SSE if that fails.
 async fn http_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>> {
     if config.uses_streamable_http() {
-        log::debug!("config explicitly wants streamable-http");
+        log::debug!("Configuration explicitly requests streamable-http protocol");
         return streamable_http_service(config).await;
     }
 
     if config.uses_sse() {
-        log::debug!("config explicitly wants SSE");
+        log::debug!("Configuration explicitly requests SSE protocol");
         return sse_service(config).await;
     }
 
-    log::debug!("detecting protocol, starting with streamable-http");
+    log::debug!("Auto-detecting protocol: attempting streamable-http first");
     match streamable_http_service(config).await {
         Ok(service) => Ok(service),
         Err(_) => {
-            log::warn!("streamable-http failed for url ({}), trying SSE", config.url);
+            log::warn!("Streamable-http connection failed for URL '{}', falling back to SSE protocol", config.url);
             sse_service(config).await
         }
     }
@@ -155,7 +155,7 @@ async fn http_service(config: &HttpConfig) -> anyhow::Result<RunningService<Role
 
 /// Creates a running service for streamable-http protocol.
 async fn streamable_http_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>> {
-    log::debug!("creating a streamable-http downstream service");
+    log::debug!("Initializing streamable-http downstream service");
 
     let client = create_client(config.tls.as_ref(), config.auth.as_ref())?;
     let config = StreamableHttpClientTransportConfig::with_uri(config.url.to_string());
@@ -166,7 +166,7 @@ async fn streamable_http_service(config: &HttpConfig) -> anyhow::Result<RunningS
 
 /// Creates a running service for SSE (Server-Sent Events) protocol.
 async fn sse_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>> {
-    log::debug!("creating an SSE downstream service");
+    log::debug!("Initializing SSE (Server-Sent Events) downstream service");
 
     let client_config = SseClientConfig {
         sse_endpoint: config.url.to_string().into(),
@@ -175,19 +175,19 @@ async fn sse_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleC
     };
 
     log::debug!(
-        "SSE client config: sse_url={}, message_url={:?}",
+        "SSE client configuration: endpoint='{}', message_endpoint={:?}",
         config.url,
         config.message_url
     );
 
     let client = create_client(config.tls.as_ref(), config.auth.as_ref())?;
-    log::debug!("Created HTTP client for SSE transport");
+    log::debug!("Successfully created HTTP client for SSE transport");
 
     let transport = SseClientTransport::start_with_client(client, client_config).await?;
-    log::debug!("SSE transport started successfully");
+    log::debug!("SSE transport connection established successfully");
 
     let service = ().serve(transport).await?;
-    log::debug!("SSE service created and ready");
+    log::debug!("SSE service initialized and ready to handle requests");
 
     Ok(service)
 }

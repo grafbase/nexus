@@ -6,7 +6,7 @@ use config::{McpConfig, RateLimitConfig, StorageConfig};
 
 use crate::error::RateLimitError;
 use crate::request::RateLimitRequest;
-use crate::storage::{InMemoryStorage, RateLimitStorage, RateLimitResult, StorageError};
+use crate::storage::{InMemoryStorage, RateLimitResult, RateLimitStorage, StorageError};
 
 /// Storage backend for rate limiting.
 enum Storage {
@@ -30,12 +30,13 @@ impl Storage {
 
 /// Manager for rate limiting with support for multiple limit types.
 pub struct RateLimitManager {
-    /// Rate limit configuration.
-    config: Arc<RateLimitConfig>,
-    /// MCP configuration for server lookups.
-    mcp_config: Arc<McpConfig>,
-    /// Storage backend.
-    storage: Arc<Storage>,
+    inner: Arc<RateLimitInner>,
+}
+
+pub struct RateLimitInner {
+    config: RateLimitConfig,
+    mcp_config: McpConfig,
+    storage: Storage,
 }
 
 impl RateLimitManager {
@@ -45,32 +46,18 @@ impl RateLimitManager {
             StorageConfig::Memory => Storage::Memory(InMemoryStorage::new()),
             StorageConfig::Redis(redis_config) => {
                 use crate::storage::redis::RedisStorage;
-                let redis_storage = RedisStorage::new(redis_config)
-                    .await
-                    .map_err(RateLimitError::Storage)?;
+                let redis_storage = RedisStorage::new(redis_config).await.map_err(RateLimitError::Storage)?;
                 Storage::Redis(redis_storage)
             }
         };
-        
-        Ok(Self {
-            config: Arc::new(config),
-            mcp_config: Arc::new(mcp_config),
-            storage: Arc::new(storage),
-        })
-    }
 
-    /// Check if rate limiting is enabled (either server-level or MCP-level).
-    pub fn is_enabled(&self) -> bool {
-        // Server-level rate limiting is enabled
-        if self.config.enabled {
-            return true;
-        }
+        let inner = Arc::new(RateLimitInner {
+            config,
+            mcp_config,
+            storage,
+        });
 
-        // Check if any MCP servers have rate limits configured
-        self.mcp_config
-            .servers
-            .values()
-            .any(|server| server.rate_limit().is_some())
+        Ok(Self { inner })
     }
 
     /// Check all applicable rate limits for a request.
@@ -78,7 +65,7 @@ impl RateLimitManager {
     /// This checks in order: global, per-IP, per-server, per-tool.
     /// Returns an error with the first limit that is exceeded.
     pub async fn check_request(&self, request: &RateLimitRequest) -> Result<(), RateLimitError> {
-        if !self.is_enabled() {
+        if !self.inner.config.enabled {
             return Ok(());
         }
 
@@ -90,11 +77,12 @@ impl RateLimitManager {
     }
 
     async fn check_global_limit(&self) -> Result<(), RateLimitError> {
-        let Some(quota) = &self.config.global else {
+        let Some(quota) = &self.inner.config.global else {
             return Ok(());
         };
 
         let result = self
+            .inner
             .storage
             .check_and_consume("global", quota.limit, quota.duration)
             .await?;
@@ -113,12 +101,14 @@ impl RateLimitManager {
             return Ok(());
         };
 
-        let Some(quota) = &self.config.per_ip else {
+        let Some(quota) = &self.inner.config.per_ip else {
             return Ok(());
         };
 
         let key = format!("ip:{ip}");
+
         let result = self
+            .inner
             .storage
             .check_and_consume(&key, quota.limit, quota.duration)
             .await?;
@@ -134,22 +124,22 @@ impl RateLimitManager {
 
     async fn check_server_tool_limit(&self, request: &RateLimitRequest) -> Result<(), RateLimitError> {
         let Some(server_name) = &request.server_name else {
-            log::debug!("No server name in request - skipping server/tool rate limit");
+            log::debug!("No server name provided in request - skipping server-specific rate limits");
             return Ok(());
         };
 
-        let Some(server) = self.mcp_config.servers.get(server_name) else {
-            log::debug!("Server {server_name} not found in config - skipping rate limit");
+        let Some(server) = self.inner.mcp_config.servers.get(server_name) else {
+            log::debug!("Server '{server_name}' not found in configuration - skipping rate limit check");
             return Ok(());
         };
 
         let Some(rate_limit) = server.rate_limit() else {
-            log::debug!("No rate limit configured for server {server_name} - skipping");
+            log::debug!("Rate limiting not configured for server '{server_name}' - allowing request");
             return Ok(());
         };
 
         log::debug!(
-            "Found rate limit config for server {server_name}: limit={}, duration={:?}",
+            "Found rate limit configuration for server '{server_name}': {}/{:?}",
             rate_limit.limit,
             rate_limit.duration
         );
@@ -168,13 +158,13 @@ impl RateLimitManager {
             None => (rate_limit.limit, rate_limit.duration, format!("server:{server_name}")),
         };
 
-        log::debug!("Checking rate limit with key={key}, limit={limit}, duration={duration:?}");
+        log::debug!("Evaluating rate limit: key='{key}', quota={limit} requests per {duration:?}");
 
-        let result = self.storage.check_and_consume(&key, limit, duration).await?;
+        let result = self.inner.storage.check_and_consume(&key, limit, duration).await?;
 
         log::debug!(
-            "Rate limit result: allowed={}, retry_after={:?}",
-            result.allowed,
+            "Rate limit decision: {} (retry after: {:?})",
+            if result.allowed { "ALLOWED" } else { "BLOCKED" },
             result.retry_after
         );
 
@@ -195,4 +185,3 @@ impl RateLimitManager {
         }
     }
 }
-

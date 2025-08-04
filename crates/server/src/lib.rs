@@ -13,6 +13,7 @@ mod well_known;
 
 use std::net::SocketAddr;
 
+use ::rate_limit::RateLimitManager;
 use anyhow::anyhow;
 use auth::AuthLayer;
 use axum::{Router, routing::get};
@@ -41,22 +42,14 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
     } else {
         CorsLayer::permissive()
     };
-    
-    // Create rate limit manager if either server-level or MCP-level rate limiting is configured
-    let has_mcp_rate_limits = config.mcp.servers.values()
-        .any(|server| server.rate_limit().is_some());
-    
-    log::debug!("Rate limiting status: server_enabled={}, has_mcp_limits={}", 
-        config.server.rate_limit.enabled, has_mcp_rate_limits);
-    
-    let rate_limit_manager = if config.server.rate_limit.enabled || has_mcp_rate_limits {
-        log::debug!("Creating rate limit manager");
-        Some(Arc::new(::rate_limit::RateLimitManager::new(
-            config.server.rate_limit.clone(),
-            config.mcp.clone(),
-        ).await?))
+
+    let rate_limit_manager = if config.server.rate_limit.enabled {
+        log::debug!("Initializing rate limit manager with configured limits");
+        let manager = RateLimitManager::new(config.server.rate_limit.clone(), config.mcp.clone()).await?;
+
+        Some(Arc::new(manager))
     } else {
-        log::debug!("No rate limit manager created");
+        log::debug!("Rate limiting disabled - no manager created");
         None
     };
 
@@ -66,11 +59,11 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
     // Apply CORS to MCP router before merging
     if config.mcp.enabled {
         let mut mcp_config_builder = mcp::RouterConfig::builder(config.clone());
-        
+
         if let Some(ref manager) = rate_limit_manager {
             mcp_config_builder = mcp_config_builder.rate_limit_manager(manager.clone());
         }
-        
+
         let mcp_router = mcp::router(mcp_config_builder.build()).await?.layer(cors.clone());
         protected_router = protected_router.merge(mcp_router);
     }
@@ -81,6 +74,7 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
 
         // Add OAuth metadata endpoint (this should be public, not protected)
         let oauth_config_clone = oauth_config.clone();
+
         app = app.route(
             "/.well-known/oauth-protected-resource",
             get(move || well_known::oauth_metadata(oauth_config_clone.clone())),
@@ -90,9 +84,9 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
     // Apply rate limiting HTTP middleware only if server-level rate limiting is enabled
     // (global and IP-based limits only - MCP limits are handled in the MCP layer)
     if config.server.rate_limit.enabled {
-        if let Some(manager) = &rate_limit_manager {
-            log::debug!("Applying HTTP rate limiting middleware");
-            protected_router = protected_router.layer(RateLimitLayer::new(manager.clone()));
+        if let Some(manager) = rate_limit_manager {
+            log::debug!("Applying HTTP rate limiting middleware to protected routes");
+            protected_router = protected_router.layer(RateLimitLayer::new(manager));
         }
     }
 
@@ -111,10 +105,11 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
             let health_router = Router::new()
                 .route(&config.server.health.path, get(health::health))
                 .layer(cors.clone());
+
             app = app.merge(health_router);
         }
     }
-    
+
     // Apply CSRF protection to the entire app if enabled
     if config.server.csrf.enabled {
         app = csrf::inject_layer(app, &config.server.csrf);
@@ -134,9 +129,7 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
                 log::info!("MCP endpoint available at: https://{listen_address}{}", config.mcp.path);
             }
 
-            let std_listener = listener.into_std()?;
-
-            axum_server::from_tcp_rustls(std_listener, rustls_config)
+            axum_server::from_tcp_rustls(listener.into_std()?, rustls_config)
                 .serve(app.into_make_service())
                 .await
                 .map_err(|e| anyhow!("Failed to start HTTPS server: {e}"))?;

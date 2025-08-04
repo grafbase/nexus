@@ -221,7 +221,7 @@ async fn spawn_sse(service: TestService) -> (SocketAddr, CancellationToken) {
     }
 
     let service_ct = sse_server.with_service(move || {
-        log::debug!("with_service closure called - creating service handler");
+        log::debug!("SSE server: initializing service handler for test server");
         service.clone()
     });
 

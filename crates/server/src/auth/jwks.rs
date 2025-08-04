@@ -73,13 +73,13 @@ impl JwksCache {
             .send()
             .await
             .map_err(|e| {
-                log::debug!("failed to fetch JWKS: {e}");
+                log::debug!("Failed to retrieve JWKS from authentication server: {e}");
                 AuthError::Internal
             })?
             .json()
             .await
             .map_err(|e| {
-                log::debug!("failed to fetch JWKS: {e}");
+                log::debug!("Failed to retrieve JWKS from authentication server: {e}");
                 AuthError::Internal
             })?;
 

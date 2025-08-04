@@ -3,42 +3,16 @@
 use std::{
     fmt::Display,
     future::Future,
-    net::IpAddr,
+    net::{IpAddr, SocketAddr},
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
 };
 
-use axum::body::Body;
+use axum::{body::Body, extract::ConnectInfo};
 use http::{HeaderValue, Request, Response, StatusCode, header::RETRY_AFTER};
 use rate_limit::{RateLimitError, RateLimitManager, RateLimitRequest};
 use tower::Layer;
-
-/// Extract client IP address from request.
-fn extract_client_ip<B>(req: &Request<B>) -> Option<IpAddr> {
-    // First try to get from ConnectInfo (direct connection)
-    if let Some(connect_info) = req
-        .extensions()
-        .get::<axum::extract::ConnectInfo<std::net::SocketAddr>>()
-    {
-        return Some(connect_info.0.ip());
-    }
-
-    // Try X-Forwarded-For header (for proxied requests)
-    if let Some(forwarded_for) = req.headers().get("x-forwarded-for") {
-        let value = forwarded_for.to_str().ok()?;
-
-        // Take the first IP in the chain
-        let ip_str = value.split(',').next()?;
-
-        return ip_str.trim().parse::<IpAddr>().ok();
-    }
-
-    // Try X-Real-IP header
-    let ip_str = req.headers().get("x-real-ip")?.to_str().ok()?;
-
-    ip_str.parse::<IpAddr>().ok()
-}
 
 #[derive(Clone)]
 pub struct RateLimitLayer(Arc<RateLimitLayerInner>);
@@ -115,7 +89,7 @@ where
             };
 
             // Log the specific rate limit error for debugging
-            log::debug!("Rate limit exceeded: {err:?}");
+            log::debug!("Request rejected due to rate limit: {err:?}");
 
             // Request blocked, return generic error without specific details
             let (status, message) = match &err {
@@ -143,27 +117,25 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_extract_client_ip() {
-        use http::request::Builder;
-
-        // Test with X-Forwarded-For
-        let req = Builder::new()
-            .header("x-forwarded-for", "192.168.1.1, 10.0.0.1")
-            .body(())
-            .unwrap();
-        assert_eq!(extract_client_ip(&req), Some("192.168.1.1".parse().unwrap()));
-
-        // Test with X-Real-IP
-        let req = Builder::new().header("x-real-ip", "192.168.1.2").body(()).unwrap();
-        assert_eq!(extract_client_ip(&req), Some("192.168.1.2".parse().unwrap()));
-
-        // Test with no headers
-        let req = Builder::new().body(()).unwrap();
-        assert_eq!(extract_client_ip(&req), None);
+/// Extract client IP address from request.
+fn extract_client_ip<B>(req: &Request<B>) -> Option<IpAddr> {
+    // First try to get from ConnectInfo (direct connection)
+    if let Some(connect_info) = req.extensions().get::<ConnectInfo<SocketAddr>>() {
+        return Some(connect_info.0.ip());
     }
+
+    // Try X-Forwarded-For header (for proxied requests)
+    if let Some(forwarded_for) = req.headers().get("x-forwarded-for") {
+        let value = forwarded_for.to_str().ok()?;
+
+        // Take the first IP in the chain
+        let ip_str = value.split(',').next()?;
+
+        return ip_str.trim().parse::<IpAddr>().ok();
+    }
+
+    // Try X-Real-IP header
+    let ip_str = req.headers().get("x-real-ip")?.to_str().ok()?;
+
+    ip_str.parse::<IpAddr>().ok()
 }

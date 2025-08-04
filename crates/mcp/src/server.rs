@@ -79,7 +79,7 @@ impl McpServer {
 
         // Create static downstream if there are any static servers
         let (static_downstream, static_search_tool) = if !static_config.servers.is_empty() {
-            log::debug!("Initializing {} static MCP servers", static_config.servers.len());
+            log::debug!("Initializing {} static MCP server(s) at startup", static_config.servers.len());
 
             let downstream = Downstream::new(&static_config, None).await?;
             let tools = downstream.list_tools().cloned().collect();
@@ -125,7 +125,7 @@ impl McpServer {
     async fn get_search_tool(&self, token: Option<&SecretString>) -> Result<Arc<SearchTool>, ErrorData> {
         match token {
             Some(token) if !self.dynamic_server_names.is_empty() => {
-                log::debug!("getting the combined search tool");
+                log::debug!("Retrieving combined search tool (static + dynamic servers)");
 
                 // Dynamic case - get from cache
                 let cached = self
@@ -137,7 +137,7 @@ impl McpServer {
                 Ok(Arc::new(cached.search_tool.clone()))
             }
             _ => {
-                log::debug!("getting the static search tool");
+                log::debug!("Retrieving static-only search tool");
 
                 if let Some(search_tool) = &self.static_search_tool {
                     Ok(search_tool.clone())
@@ -162,7 +162,7 @@ impl McpServer {
 
         // Use binary search to find the tool
         search_tool.find_exact(&params.name).ok_or_else(|| {
-            log::debug!("Tool not found: {}", params.name);
+            log::debug!("Tool '{}' not found in available tools registry", params.name);
             ErrorData::method_not_found::<CallToolRequestMethod>()
         })?;
 
@@ -172,23 +172,23 @@ impl McpServer {
             .split_once("__")
             .ok_or_else(|| ErrorData::invalid_params("Invalid tool name format", None))?;
         
-        log::debug!("Extracted from tool name '{}': server_name='{server_name}', tool_name='{tool_name}'", 
-            params.name);
+        log::debug!("Parsing tool name '{}': server='{}', tool='{}'", 
+            params.name, server_name, tool_name);
 
         // Check rate limits for the specific server/tool
         if let Some(manager) = &self.rate_limit_manager {
-            log::debug!("Checking rate limits for server={server_name}, tool={tool_name}");
+            log::debug!("Checking rate limits for server '{}', tool '{}'", server_name, tool_name);
             let rate_limit_request = rate_limit::RateLimitRequest::builder()
                 .server_tool(server_name, tool_name)
                 .build();
 
             if let Err(e) = manager.check_request(&rate_limit_request).await {
-                log::debug!("Rate limit exceeded for tool {}: {e:?}", params.name);
+                log::debug!("Rate limit exceeded for tool '{}': {e:?}", params.name);
                 return Err(ErrorData::internal_error("Rate limit exceeded", None));
             }
-            log::debug!("Rate limit check passed for tool {}", params.name);
+            log::debug!("Rate limit check passed for tool '{}'", params.name);
         } else {
-            log::debug!("No rate limit manager - skipping rate limit check");
+            log::debug!("Rate limit manager not configured - skipping rate limit checks");
         }
 
         // Route to appropriate downstream
@@ -224,7 +224,7 @@ impl McpServer {
     async fn get_downstream(&self, token: Option<&SecretString>) -> Result<Arc<Downstream>, ErrorData> {
         match token {
             Some(token) if !self.dynamic_server_names.is_empty() => {
-                log::debug!("getting the combined downstream");
+                log::debug!("Retrieving combined downstream instance (static + dynamic)");
 
                 // Dynamic case - get from cache
                 let cached =
@@ -235,7 +235,7 @@ impl McpServer {
                 Ok(Arc::new(cached.downstream.clone()))
             }
             _ => {
-                log::debug!("getting the static downstream");
+                log::debug!("Retrieving static-only downstream instance");
 
                 self.static_downstream
                     .clone()
@@ -266,7 +266,7 @@ impl ServerHandler for McpServer {
         params: CallToolRequestParam,
         ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        log::debug!("McpServer::call_tool called with tool name: {}", params.name);
+        log::debug!("Processing tool invocation for '{}'", params.name);
 
         // Extract token from request extensions
         let token = ctx
@@ -276,7 +276,7 @@ impl ServerHandler for McpServer {
 
         match params.name.as_ref() {
             "search" => {
-                log::debug!("Handling search tool");
+                log::debug!("Executing search tool to find available MCP tools");
 
                 // Get cached search tool
                 let search_tool = self.get_search_tool(token).await?;
@@ -302,14 +302,14 @@ impl ServerHandler for McpServer {
                 })
             }
             "execute" => {
-                log::debug!("handling execute tool");
+                log::debug!("Executing downstream tool via execute endpoint");
 
                 // Parse execute parameters
                 let exec_params: ExecuteParameters =
                     serde_json::from_value(serde_json::Value::Object(params.arguments.unwrap_or_default()))
                         .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
 
-                log::debug!("execute params - tool name: {}", exec_params.name);
+                log::debug!("Executing downstream tool: '{}'", exec_params.name);
 
                 let params = CallToolRequestParam {
                     name: exec_params.name.clone().into(),
@@ -320,7 +320,7 @@ impl ServerHandler for McpServer {
                 self.execute(params, token).await
             }
             tool_name => {
-                log::debug!("unknown tool requested: {tool_name}");
+                log::debug!("Unknown tool requested: '{}' - returning method not found", tool_name);
 
                 Err(ErrorData::method_not_found::<CallToolRequestMethod>())
             }
@@ -332,7 +332,7 @@ impl ServerHandler for McpServer {
         _: Option<PaginatedRequestParam>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, ErrorData> {
-        log::debug!("McpServer::list_prompts called");
+        log::debug!("Listing all available MCP prompts");
 
         // Extract token from request extensions
         let token = ctx
@@ -354,7 +354,7 @@ impl ServerHandler for McpServer {
         params: GetPromptRequestParam,
         ctx: RequestContext<RoleServer>,
     ) -> Result<GetPromptResult, ErrorData> {
-        log::debug!("McpServer::get_prompt called with prompt: {}", params.name);
+        log::debug!("Retrieving prompt details for '{}'", params.name);
 
         // Extract token from request extensions
         let token = ctx
@@ -371,7 +371,7 @@ impl ServerHandler for McpServer {
         _: Option<PaginatedRequestParam>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, ErrorData> {
-        log::debug!("McpServer::list_resources called");
+        log::debug!("Listing all available MCP resources");
 
         // Extract token from request extensions
         let token = ctx
@@ -393,7 +393,7 @@ impl ServerHandler for McpServer {
         params: ReadResourceRequestParam,
         ctx: RequestContext<RoleServer>,
     ) -> Result<ReadResourceResult, ErrorData> {
-        log::debug!("McpServer::read_resource called with resource: {}", params.uri);
+        log::debug!("Reading resource content for URI: '{}'", params.uri);
 
         // Extract token from request extensions
         let token = ctx

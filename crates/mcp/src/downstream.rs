@@ -70,12 +70,12 @@ impl Downstream {
                                 .map_err(|err| DownstreamError(name.clone(), err.into()))?;
 
                             let prompts = server.list_prompts().await.unwrap_or_else(|err| {
-                                log::debug!("Failed to list prompts from {name}: {err}");
+                                log::debug!("Unable to retrieve prompts from server '{name}': {err}");
                                 Vec::new()
                             });
 
                             let resources = server.list_resources().await.unwrap_or_else(|err| {
-                                log::debug!("Failed to list resources from {name}: {err}");
+                                log::debug!("Unable to retrieve resources from server '{name}': {err}");
                                 Vec::new()
                             });
 
@@ -97,12 +97,12 @@ impl Downstream {
                                 .map_err(|err| DownstreamError(name.clone(), err.into()))?;
 
                             let prompts = server.list_prompts().await.unwrap_or_else(|err| {
-                                log::debug!("Failed to list prompts from {name}: {err}");
+                                log::debug!("Unable to retrieve prompts from server '{name}': {err}");
                                 Vec::new()
                             });
 
                             let resources = server.list_resources().await.unwrap_or_else(|err| {
-                                log::debug!("Failed to list resources from {name}: {err}");
+                                log::debug!("Unable to retrieve resources from server '{name}': {err}");
                                 Vec::new()
                             });
 
@@ -129,7 +129,7 @@ impl Downstream {
                 }
                 Err(err) if token.is_some() => {
                     log::error!(
-                        "failed to connect to server '{}': {}. (is the token valid?)",
+                        "Failed to connect to server '{}': {} (authentication token may be invalid)",
                         err.0,
                         err.1
                     );
@@ -140,19 +140,19 @@ impl Downstream {
             };
 
             for mut tool in server_tools {
-                log::debug!("creating tool {}", tool.name);
+                log::debug!("Registering tool '{}' with prefixed name", tool.name);
                 tool.name = Cow::Owned(format!("{}__{}", server.name(), tool.name));
                 tools.push(tool);
             }
 
             for mut prompt in server_prompts {
-                log::debug!("creating prompt {}", prompt.name);
+                log::debug!("Registering prompt '{}' with prefixed name", prompt.name);
                 prompt.name = format!("{}__{}", server.name(), prompt.name);
                 prompts.push(prompt);
             }
 
             for resource in server_resources {
-                log::debug!("creating resource {}", resource.uri);
+                log::debug!("Registering resource '{}' from server", resource.uri);
 
                 // Check for duplicate resource URIs
                 if let Some(existing_server) = resource_to_server.get(&resource.uri) {
@@ -218,24 +218,24 @@ impl Downstream {
     /// This method will parse the server name, find the appropriate server,
     /// and forward the call with the original tool name.
     pub async fn execute(&self, mut params: CallToolRequestParam) -> Result<CallToolResult, ErrorData> {
-        log::debug!("Downstream::execute called with tool: {}", params.name);
+        log::debug!("Executing downstream tool: '{}'", params.name);
 
         let error_fn = || ErrorData::method_not_found::<CallToolRequestMethod>();
 
         let tool_name_str = params.name.to_string();
         let (server_name, tool_name) = tool_name_str.split_once("__").ok_or_else(|| {
-            log::error!("invalid tool name format (missing '__'): {}", params.name);
+            log::error!("Invalid tool name format '{}': missing server separator '__'", params.name);
             error_fn()
         })?;
 
         let server = self.find_server(server_name).ok_or_else(|| {
-            log::debug!("server not found: {server_name}");
+            log::debug!("Server '{}' not found in downstream registry", server_name);
 
             error_fn()
         })?;
 
         self.find_tool(&params.name).ok_or_else(|| {
-            log::error!("tool not found in index: {}", params.name);
+            log::error!("Tool '{}' not found in tool registry", params.name);
             error_fn()
         })?;
 
@@ -256,7 +256,7 @@ impl Downstream {
     /// This method will parse the server name, find the appropriate server,
     /// and forward the call with the original prompt name.
     pub async fn get_prompt(&self, mut params: GetPromptRequestParam) -> Result<GetPromptResult, ErrorData> {
-        log::debug!("Downstream::get_prompt called with prompt: {}", params.name);
+        log::debug!("Retrieving downstream prompt: '{}'", params.name);
 
         let error_fn = || {
             ErrorData::new(
@@ -268,23 +268,23 @@ impl Downstream {
 
         let prompt_name_str = params.name.to_string();
         let (server_name, prompt_name) = prompt_name_str.split_once("__").ok_or_else(|| {
-            log::error!("Invalid prompt name format (missing '__'): {}", params.name);
+            log::error!("Invalid prompt name format '{}': missing server separator '__'", params.name);
             error_fn()
         })?;
 
         let server = self.find_server(server_name).ok_or_else(|| {
-            log::debug!("Server not found: {server_name}");
+            log::debug!("Server '{}' not found in downstream registry", server_name);
             error_fn()
         })?;
 
         self.find_prompt(&params.name).ok_or_else(|| {
-            log::error!("Prompt not found in index: {}", params.name);
+            log::error!("Prompt '{}' not found in prompt registry", params.name);
             error_fn()
         })?;
 
         params.name = prompt_name.to_string();
 
-        log::debug!("Calling downstream server {server_name} with prompt {prompt_name}");
+        log::debug!("Forwarding prompt request '{}' to server '{}'", prompt_name, server_name);
 
         match server.get_prompt(params).await {
             Ok(result) => Ok(result),
@@ -300,7 +300,7 @@ impl Downstream {
     /// This method uses the resource URI to lookup which downstream server owns the resource,
     /// then forwards the read request to that server with the original URI unchanged.
     pub async fn read_resource(&self, params: ReadResourceRequestParam) -> Result<ReadResourceResult, ErrorData> {
-        log::debug!("Downstream::read_resource called with URI: {}", params.uri);
+        log::debug!("Reading downstream resource: '{}'", params.uri);
 
         let error_fn = || {
             ErrorData::new(
@@ -312,24 +312,24 @@ impl Downstream {
 
         // Find which server owns this resource
         let server_name = self.resource_to_server.get(params.uri.as_str()).ok_or_else(|| {
-            log::error!("Resource URI not found in index: {}", params.uri);
+            log::error!("Resource URI '{}' not found in resource registry", params.uri);
             error_fn()
         })?;
 
         let server = self.find_server(server_name).ok_or_else(|| {
-            log::debug!("Server not found: {server_name}");
+            log::debug!("Server '{}' not found in downstream registry", server_name);
             error_fn()
         })?;
 
         // Verify the resource exists in our index
         self.find_resource(params.uri.as_str()).ok_or_else(|| {
-            log::error!("Resource not found in index: {}", params.uri);
+            log::error!("Resource '{}' not found in resource registry", params.uri);
             error_fn()
         })?;
 
         log::debug!(
-            "Reading resource from downstream server {server_name} with URI {}",
-            params.uri
+            "Forwarding resource request for '{}' to server '{}'",
+            params.uri, server_name
         );
 
         match server.read_resource(params).await {

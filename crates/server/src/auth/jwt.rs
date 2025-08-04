@@ -131,15 +131,15 @@ impl JwtAuth {
 
         match claims.get_issuer() {
             Some(issuer) if issuer == expected_issuer => {
-                log::debug!("Token issuer validation passed");
+                log::debug!("JWT validation successful: issuer claim matches expected value");
                 true
             }
             Some(_) => {
-                log::debug!("Token rejected: invalid issuer");
+                log::debug!("JWT validation failed: issuer claim does not match expected value");
                 false
             }
             None => {
-                log::debug!("Token rejected: missing issuer claim");
+                log::debug!("JWT validation failed: issuer claim is missing from token");
                 false
             }
         }
@@ -152,10 +152,10 @@ impl JwtAuth {
         };
 
         if claims.has_audience(expected_audience) {
-            log::debug!("Token audience validation passed");
+            log::debug!("JWT validation successful: audience claim matches expected value");
             true
         } else {
-            log::debug!("Token rejected: audience validation failed");
+            log::debug!("JWT validation failed: audience claim does not match expected value");
             false
         }
     }

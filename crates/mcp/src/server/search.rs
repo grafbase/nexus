@@ -35,7 +35,7 @@ pub struct SearchTool {
 impl SearchTool {
     /// Creates a new search tool with all available tools pre-indexed
     pub fn new(mut tools: Vec<Tool>) -> anyhow::Result<Self> {
-        log::debug!("creating a search tool with {} tools", tools.len());
+        log::debug!("Initializing search tool with {} available tools", tools.len());
 
         // Sort tools by name for binary search
         tools.sort_by(|a, b| a.name.cmp(&b.name));
@@ -44,7 +44,7 @@ impl SearchTool {
 
         // Index all tools - indices now correspond to sorted positions
         for (id, tool) in tools.iter().enumerate() {
-            log::debug!("indexing tool {}", tool.name);
+            log::debug!("Indexing tool '{}' for search capabilities", tool.name);
             index.add_tool(tool, id.into())?;
         }
 
@@ -66,7 +66,7 @@ impl SearchTool {
 
     /// Find tools by keywords using the index
     pub async fn find_by_keywords(&self, keywords: Vec<String>) -> anyhow::Result<Vec<SearchResult>> {
-        log::debug!("searching for tools with keywords: [{}]", keywords.join(", "));
+        log::debug!("Searching for tools matching keywords: [{}]", keywords.join(", "));
 
         let mut results = Vec::new();
 
@@ -77,7 +77,7 @@ impl SearchTool {
             // Safety check
             if tool_idx >= self.tools.len() {
                 log::error!(
-                    "Tool index {} out of bounds (have {} tools)",
+                    "Tool index {} exceeds bounds (total tools: {})",
                     tool_idx,
                     self.tools.len()
                 );

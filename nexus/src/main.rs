@@ -16,7 +16,7 @@ async fn main() -> anyhow::Result<()> {
     logger::init(&args);
 
     if let Err(e) = server::serve(serve_config(&args, config)).await {
-        log::error!("{e}");
+        log::error!("Server failed to start: {e}");
         std::process::exit(1);
     }
 

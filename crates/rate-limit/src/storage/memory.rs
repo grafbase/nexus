@@ -28,25 +28,30 @@ impl InMemoryStorage {
                 .build(),
         }
     }
-    
+
     fn quota_from_config(limit: u32, duration: Duration) -> Result<Quota, StorageError> {
         // Convert to per-second rate
         let per_second_f64 = (limit as f64 / duration.as_secs_f64()).max(1.0);
         let per_second = per_second_f64 as u32;
-        
+
         // Calculate burst capacity (10% of limit or minimum 5)
         let burst = (limit / 10).max(5).min(limit);
-        
-        log::debug!("quota_from_config: limit={limit}, duration={duration:?}, per_second_f64={per_second_f64}, per_second={per_second}, burst={burst}");
-        
-        let per_second = per_second.try_into()
+
+        log::debug!(
+            "Calculating rate limit quota: {limit} requests per {duration:?}, converted to {per_second}/second with burst capacity of {burst}"
+        );
+
+        let per_second = per_second
+            .try_into()
             .map_err(|_| StorageError::Internal(format!("Invalid per-second rate: {per_second}")))?;
-        let burst = burst.try_into()
+
+        let burst = burst
+            .try_into()
             .map_err(|_| StorageError::Internal(format!("Invalid burst size: {burst}")))?;
-        
+
         let quota = Quota::per_second(per_second).allow_burst(burst);
-        log::debug!("Created quota: {quota:?}");
-        
+        log::debug!("Successfully created rate limit quota configuration: {quota:?}");
+
         Ok(quota)
     }
 }
@@ -64,36 +69,45 @@ impl RateLimitStorage for InMemoryStorage {
         limit: u32,
         duration: Duration,
     ) -> Result<RateLimitResult, StorageError> {
-        // Create a cache key based on limit and duration
-        let duration_secs = duration.as_secs();
-        let cache_key = format!("{limit}-{duration_secs}");
-        
-        log::debug!("check_and_consume: key={key}, limit={limit}, duration={duration:?}, cache_key={cache_key}");
-        
+        // Create a cache key based on limit and duration configuration.
+        // We cache rate limiters by their configuration (limit + duration) rather than by the
+        // actual key for efficiency. This allows multiple keys with the same rate limit
+        // configuration to share a single rate limiter instance, reducing memory usage.
+        //
+        // The governor crate's keyed rate limiter internally tracks separate rate limit states
+        // for each key, so sharing the rate limiter instance doesn't affect the per-key
+        // rate limiting behavior. Each key still gets its own independent rate limit tracking.
+        let duration_millis = duration.as_millis();
+        let cache_key = format!("{limit}-{duration_millis}ms");
+
+        log::debug!("Checking rate limit for key '{key}': {limit} requests allowed per {duration:?}");
+
         // Get or create the rate limiter for this configuration
         let limiter = if let Some(limiter) = self.limiters.get(&cache_key) {
-            log::debug!("Using existing rate limiter for cache_key={cache_key}");
+            log::debug!("Reusing cached rate limiter for configuration: {cache_key}");
             limiter
         } else {
             let quota = Self::quota_from_config(limit, duration)?;
-            log::debug!("Created new rate limiter for cache_key={cache_key}, quota={quota:?}");
+            log::debug!("Created new rate limiter instance for configuration: {cache_key}");
+
             let limiter = Arc::new(RateLimiter::keyed(quota));
             self.limiters.insert(cache_key.clone(), limiter.clone());
+
             limiter
         };
-        
+
         // Check the rate limit
         match limiter.check_key(&key.to_string()) {
             Ok(_) => {
-                log::debug!("Rate limit check ALLOWED for key={key}");
+                log::debug!("Request allowed for key '{key}' - within rate limit");
                 Ok(RateLimitResult {
                     allowed: true,
                     retry_after: None,
                 })
-            },
+            }
             Err(not_until) => {
                 let retry_after = not_until.wait_time_from(DefaultClock::default().now());
-                log::debug!("Rate limit check BLOCKED for key={key}, retry_after={retry_after:?}");
+                log::debug!("Request blocked for key '{key}' - rate limit exceeded, retry after {retry_after:?}");
                 Ok(RateLimitResult {
                     allowed: false,
                     retry_after: Some(retry_after),
@@ -102,4 +116,3 @@ impl RateLimitStorage for InMemoryStorage {
         }
     }
 }
-
