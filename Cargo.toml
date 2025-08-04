@@ -41,7 +41,7 @@ logforth = "0.26.1"
 mcp = { version = "0.1.0", path = "crates/mcp" }
 mini-moka = "0.10"
 rate-limit = { version = "0.1.0", path = "crates/rate-limit" }
-redis = { version = "0.30.0", features = ["tokio-rustls-comp", "connection-manager"] }
+redis = { version = "0.32.0", features = ["tokio-rustls-comp", "connection-manager"] }
 regex = "1.11.1"
 reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls-webpki-roots",
