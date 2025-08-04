@@ -17,7 +17,7 @@ use std::{
 pub use cors::*;
 use duration_str::deserialize_option_duration;
 pub use mcp::{
-    ClientAuthConfig, HttpConfig, HttpProtocol, McpConfig, McpServer, McpServerRateLimit, StdioConfig, StdioTarget, 
+    ClientAuthConfig, HttpConfig, HttpProtocol, McpConfig, McpServer, McpServerRateLimit, StdioConfig, StdioTarget,
     StdioTargetType, TlsClientConfig,
 };
 pub use rate_limit::*;
@@ -1693,7 +1693,7 @@ mod tests {
     #[test]
     fn rate_limit_default_config() {
         let config: Config = toml::from_str("").unwrap();
-        
+
         insta::assert_debug_snapshot!(&config.server.rate_limit, @r"
         RateLimitConfig {
             enabled: false,
@@ -1720,7 +1720,7 @@ mod tests {
         "#};
 
         let config: Config = toml::from_str(config).unwrap();
-        
+
         insta::assert_debug_snapshot!(&config.server.rate_limit, @r#"
         RateLimitConfig {
             enabled: true,
@@ -1761,7 +1761,7 @@ mod tests {
         "#};
 
         let config: Config = toml::from_str(config).unwrap();
-        
+
         insta::assert_debug_snapshot!(&config.mcp.servers, @r#"
         {
             "github_api": Http(

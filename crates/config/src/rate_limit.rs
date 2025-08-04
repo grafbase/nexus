@@ -70,10 +70,16 @@ pub struct RedisConfig {
     #[serde(default = "default_key_prefix")]
     pub key_prefix: Option<String>,
     /// Response timeout for Redis commands.
-    #[serde(default = "default_response_timeout", deserialize_with = "deserialize_option_duration")]
+    #[serde(
+        default = "default_response_timeout",
+        deserialize_with = "deserialize_option_duration"
+    )]
     pub response_timeout: Option<Duration>,
     /// Connection timeout.
-    #[serde(default = "default_connection_timeout", deserialize_with = "deserialize_option_duration")]
+    #[serde(
+        default = "default_connection_timeout",
+        deserialize_with = "deserialize_option_duration"
+    )]
     pub connection_timeout: Option<Duration>,
 }
 

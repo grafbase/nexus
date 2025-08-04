@@ -3,10 +3,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use dashmap::DashMap;
 use governor::clock::{Clock, DefaultClock};
 use governor::state::keyed::DefaultKeyedStateStore;
 use governor::{Quota, RateLimiter};
 use mini_moka::sync::Cache;
+use tokio::sync::Mutex;
 
 use super::{RateLimitResult, RateLimitStorage, StorageError};
 
@@ -16,43 +18,23 @@ type KeyedRateLimiter = RateLimiter<String, DefaultKeyedStateStore<String>, Defa
 pub struct InMemoryStorage {
     /// Cache of rate limiters by quota configuration.
     limiters: Cache<String, Arc<KeyedRateLimiter>>,
+    /// Lock to prevent thundering herd when creating rate limiters.
+    /// Maps cache key to a lock for that specific configuration.
+    creation_locks: DashMap<String, Arc<Mutex<()>>>,
 }
 
 impl InMemoryStorage {
     /// Create a new in-memory storage instance.
     pub fn new() -> Self {
+        let limiters = Cache::builder()
+            .max_capacity(10000)
+            .time_to_idle(Duration::from_secs(3600))
+            .build();
+
         Self {
-            limiters: Cache::builder()
-                .max_capacity(10000)
-                .time_to_idle(Duration::from_secs(3600))
-                .build(),
+            limiters,
+            creation_locks: DashMap::new(),
         }
-    }
-
-    fn quota_from_config(limit: u32, duration: Duration) -> Result<Quota, StorageError> {
-        // Convert to per-second rate
-        let per_second_f64 = (limit as f64 / duration.as_secs_f64()).max(1.0);
-        let per_second = per_second_f64 as u32;
-
-        // Calculate burst capacity (10% of limit or minimum 5)
-        let burst = (limit / 10).max(5).min(limit);
-
-        log::debug!(
-            "Calculating rate limit quota: {limit} requests per {duration:?}, converted to {per_second}/second with burst capacity of {burst}"
-        );
-
-        let per_second = per_second
-            .try_into()
-            .map_err(|_| StorageError::Internal(format!("Invalid per-second rate: {per_second}")))?;
-
-        let burst = burst
-            .try_into()
-            .map_err(|_| StorageError::Internal(format!("Invalid burst size: {burst}")))?;
-
-        let quota = Quota::per_second(per_second).allow_burst(burst);
-        log::debug!("Successfully created rate limit quota configuration: {quota:?}");
-
-        Ok(quota)
     }
 }
 
@@ -83,19 +65,52 @@ impl RateLimitStorage for InMemoryStorage {
         log::debug!("Checking rate limit for key '{key}': {limit} requests allowed per {duration:?}");
 
         // Get or create the rate limiter for this configuration
-        let limiter = if let Some(limiter) = self.limiters.get(&cache_key) {
+        // First, try to get an existing limiter
+        if let Some(limiter) = self.limiters.get(&cache_key) {
             log::debug!("Reusing cached rate limiter for configuration: {cache_key}");
-            limiter
-        } else {
-            let quota = Self::quota_from_config(limit, duration)?;
-            log::debug!("Created new rate limiter instance for configuration: {cache_key}");
+            return self.check_rate_limit(limiter, key);
+        }
 
-            let limiter = Arc::new(RateLimiter::keyed(quota));
-            self.limiters.insert(cache_key.clone(), limiter.clone());
+        // If not found, we need to create one. Get or create a lock for this specific cache key
+        // to prevent multiple threads from creating the same rate limiter
+        let creation_lock = self
+            .creation_locks
+            .entry(cache_key.clone())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone();
 
-            limiter
-        };
+        // Hold the lock while creating the rate limiter
+        let _guard = creation_lock.lock().await;
 
+        // Double-check if another thread created it while we were waiting for the lock
+        if let Some(limiter) = self.limiters.get(&cache_key) {
+            log::debug!("Another thread created the rate limiter while waiting for lock: {cache_key}");
+
+            // Clean up the creation lock
+            drop(_guard);
+
+            self.creation_locks.remove(&cache_key);
+            return self.check_rate_limit(limiter, key);
+        }
+
+        // Create the rate limiter
+        let quota = quota_from_config(limit, duration)?;
+        let limiter = Arc::new(RateLimiter::keyed(quota));
+
+        // Insert into cache
+        self.limiters.insert(cache_key.clone(), limiter.clone());
+        log::debug!("Created new rate limiter instance for configuration: {cache_key}");
+
+        // Clean up the creation lock
+        drop(_guard);
+
+        self.creation_locks.remove(&cache_key);
+        self.check_rate_limit(limiter, key)
+    }
+}
+
+impl InMemoryStorage {
+    fn check_rate_limit(&self, limiter: Arc<KeyedRateLimiter>, key: &str) -> Result<RateLimitResult, StorageError> {
         // Check the rate limit
         match limiter.check_key(&key.to_string()) {
             Ok(_) => {
@@ -115,4 +130,30 @@ impl RateLimitStorage for InMemoryStorage {
             }
         }
     }
+}
+
+fn quota_from_config(limit: u32, duration: Duration) -> Result<Quota, StorageError> {
+    // Convert to per-second rate
+    let per_second_f64 = (limit as f64 / duration.as_secs_f64()).max(1.0);
+    let per_second = per_second_f64 as u32;
+
+    // Calculate burst capacity (10% of limit or minimum 5)
+    let burst = (limit / 10).max(5).min(limit);
+
+    log::debug!(
+        "Calculating rate limit quota: {limit} requests per {duration:?}, converted to {per_second}/second with burst capacity of {burst}"
+    );
+
+    let per_second = per_second
+        .try_into()
+        .map_err(|_| StorageError::Internal(format!("Invalid per-second rate: {per_second}")))?;
+
+    let burst = burst
+        .try_into()
+        .map_err(|_| StorageError::Internal(format!("Invalid burst size: {burst}")))?;
+
+    let quota = Quota::per_second(per_second).allow_burst(burst);
+    log::debug!("Successfully created rate limit quota configuration: {quota:?}");
+
+    Ok(quota)
 }

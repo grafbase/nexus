@@ -85,15 +85,13 @@ impl TestClient {
 
     /// Send a POST request to the given path with JSON body
     pub async fn post<T: serde::Serialize>(&self, path: &str, body: &T) -> reqwest::Result<reqwest::Response> {
-        let mut req = self.client
-            .post(format!("{}{}", self.base_url, path))
-            .json(body);
-            
+        let mut req = self.client.post(format!("{}{}", self.base_url, path)).json(body);
+
         // Add MCP headers if this is an MCP endpoint
         if path == "/mcp" {
             req = req.header("Accept", "application/json, text/event-stream");
         }
-        
+
         req.send().await
     }
 

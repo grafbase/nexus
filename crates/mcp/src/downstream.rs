@@ -224,12 +224,15 @@ impl Downstream {
 
         let tool_name_str = params.name.to_string();
         let (server_name, tool_name) = tool_name_str.split_once("__").ok_or_else(|| {
-            log::error!("Invalid tool name format '{}': missing server separator '__'", params.name);
+            log::error!(
+                "Invalid tool name format '{}': missing server separator '__'",
+                params.name
+            );
             error_fn()
         })?;
 
         let server = self.find_server(server_name).ok_or_else(|| {
-            log::debug!("Server '{}' not found in downstream registry", server_name);
+            log::debug!("Server '{server_name}' not found in downstream registry");
 
             error_fn()
         })?;
@@ -268,12 +271,16 @@ impl Downstream {
 
         let prompt_name_str = params.name.to_string();
         let (server_name, prompt_name) = prompt_name_str.split_once("__").ok_or_else(|| {
-            log::error!("Invalid prompt name format '{}': missing server separator '__'", params.name);
+            log::error!(
+                "Invalid prompt name format '{}': missing server separator '__'",
+                params.name
+            );
+
             error_fn()
         })?;
 
         let server = self.find_server(server_name).ok_or_else(|| {
-            log::debug!("Server '{}' not found in downstream registry", server_name);
+            log::debug!("Server '{server_name}' not found in downstream registry");
             error_fn()
         })?;
 
@@ -284,7 +291,7 @@ impl Downstream {
 
         params.name = prompt_name.to_string();
 
-        log::debug!("Forwarding prompt request '{}' to server '{}'", prompt_name, server_name);
+        log::debug!("Forwarding prompt request '{prompt_name}' to server '{server_name}'");
 
         match server.get_prompt(params).await {
             Ok(result) => Ok(result),
@@ -317,7 +324,7 @@ impl Downstream {
         })?;
 
         let server = self.find_server(server_name).ok_or_else(|| {
-            log::debug!("Server '{}' not found in downstream registry", server_name);
+            log::debug!("Server '{server_name}' not found in downstream registry");
             error_fn()
         })?;
 
@@ -329,7 +336,8 @@ impl Downstream {
 
         log::debug!(
             "Forwarding resource request for '{}' to server '{}'",
-            params.uri, server_name
+            params.uri,
+            server_name
         );
 
         match server.read_resource(params).await {

@@ -24,13 +24,18 @@ pub use router_config::{RouterConfig, RouterConfigBuilder};
 pub(crate) const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V_2025_03_26;
 
 /// Creates an axum router for MCP.
-pub async fn router(RouterConfig { config, rate_limit_manager }: RouterConfig) -> anyhow::Result<Router> {
+pub async fn router(
+    RouterConfig {
+        config,
+        rate_limit_manager,
+    }: RouterConfig,
+) -> anyhow::Result<Router> {
     let mut builder = server::McpServer::builder(config.clone());
-    
+
     if let Some(manager) = rate_limit_manager {
         builder = builder.rate_limit_manager(manager);
     }
-    
+
     let mcp_server = builder.build().await?;
 
     let service = StreamableHttpService::new(

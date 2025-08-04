@@ -56,7 +56,10 @@ impl DownstreamClient {
         }
 
         let stderr_stdio = stdio_target(&config.stderr)?;
-        log::debug!("STDIO configuration for '{name}': stderr output directed to {:?}", config.stderr);
+        log::debug!(
+            "STDIO configuration for '{name}': stderr output directed to {:?}",
+            config.stderr
+        );
 
         let transport = TokioChildProcess::builder(command)
             .stderr(stderr_stdio)
@@ -105,7 +108,11 @@ impl DownstreamClient {
 
     /// Gets a prompt from the downstream MCP server.
     pub async fn get_prompt(&self, params: GetPromptRequestParam) -> Result<GetPromptResult, ServiceError> {
-        log::debug!("Retrieving prompt '{}' from downstream server '{}'", params.name, self.name());
+        log::debug!(
+            "Retrieving prompt '{}' from downstream server '{}'",
+            params.name,
+            self.name()
+        );
         self.inner.service.get_prompt(params).await
     }
 
@@ -117,7 +124,11 @@ impl DownstreamClient {
 
     /// Reads a resource from the downstream MCP server.
     pub async fn read_resource(&self, params: ReadResourceRequestParam) -> Result<ReadResourceResult, ServiceError> {
-        log::debug!("Reading resource '{}' from downstream server '{}'", params.uri, self.name());
+        log::debug!(
+            "Reading resource '{}' from downstream server '{}'",
+            params.uri,
+            self.name()
+        );
         self.inner.service.read_resource(params).await
     }
 
@@ -147,7 +158,10 @@ async fn http_service(config: &HttpConfig) -> anyhow::Result<RunningService<Role
     match streamable_http_service(config).await {
         Ok(service) => Ok(service),
         Err(_) => {
-            log::warn!("Streamable-http connection failed for URL '{}', falling back to SSE protocol", config.url);
+            log::warn!(
+                "Streamable-http connection failed for URL '{}', falling back to SSE protocol",
+                config.url
+            );
             sse_service(config).await
         }
     }

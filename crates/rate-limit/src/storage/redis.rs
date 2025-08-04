@@ -4,8 +4,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use redis::Script;
 
-use super::{RateLimitResult, RateLimitStorage, StorageError};
 use super::redis_pool::{Pool, create_pool};
+use super::{RateLimitResult, RateLimitStorage, StorageError};
 use config::RedisConfig;
 
 /// Lua script for atomic rate limit check and increment.
@@ -116,7 +116,7 @@ impl RateLimitStorage for RedisStorage {
         // Use Lua script for atomic check-and-increment
         let script = Script::new(RATE_LIMIT_SCRIPT);
         let expire_time = window_size * 2; // Keep keys for 2 windows
-        
+
         let result: Vec<i64> = script
             .key(&current_key)
             .key(&previous_key)
@@ -129,7 +129,7 @@ impl RateLimitStorage for RedisStorage {
             .map_err(|e| StorageError::Query(format!("Rate limit script failed: {e}")))?;
 
         let allowed = result[0] == 1;
-        
+
         if allowed {
             Ok(RateLimitResult {
                 allowed: true,
@@ -143,7 +143,7 @@ impl RateLimitStorage for RedisStorage {
                 .as_secs();
             let window_end = ((now_secs / window_size) + 1) * window_size;
             let retry_after = Duration::from_secs(window_end - now_secs);
-            
+
             Ok(RateLimitResult {
                 allowed: false,
                 retry_after: Some(retry_after),
@@ -151,4 +151,3 @@ impl RateLimitStorage for RedisStorage {
         }
     }
 }
-

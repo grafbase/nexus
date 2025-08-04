@@ -18,4 +18,4 @@ mod storage;
 pub use error::RateLimitError;
 pub use manager::RateLimitManager;
 pub use request::{RateLimitRequest, RateLimitRequestBuilder};
-pub use storage::{RateLimitStorage, InMemoryStorage, StorageError};
+pub use storage::{InMemoryStorage, RateLimitStorage, StorageError};

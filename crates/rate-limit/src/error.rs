@@ -1,7 +1,7 @@
 //! Error types for rate limiting.
 
-use std::time::Duration;
 use crate::storage::StorageError;
+use std::time::Duration;
 
 /// Errors that can occur during rate limiting.
 #[derive(Debug, thiserror::Error)]
@@ -12,14 +12,14 @@ pub enum RateLimitError {
         /// Time to wait before retrying.
         retry_after: Duration,
     },
-    
+
     /// IP-specific rate limit exceeded.
     #[error("IP rate limit exceeded")]
     IpLimitExceeded {
         /// Time to wait before retrying.
         retry_after: Duration,
     },
-    
+
     /// Server-specific rate limit exceeded.
     #[error("Rate limit exceeded for server {server}")]
     ServerLimitExceeded {
@@ -28,7 +28,7 @@ pub enum RateLimitError {
         /// Time to wait before retrying.
         retry_after: Duration,
     },
-    
+
     /// Tool-specific rate limit exceeded.
     #[error("Rate limit exceeded for tool {server}::{tool}")]
     ToolLimitExceeded {
@@ -39,7 +39,7 @@ pub enum RateLimitError {
         /// Time to wait before retrying.
         retry_after: Duration,
     },
-    
+
     /// Storage backend error.
     #[error("Storage error: {0}")]
     Storage(#[from] StorageError),

@@ -32,7 +32,7 @@ impl RouterConfigBuilder {
         self.rate_limit_manager = Some(manager);
         self
     }
-    
+
     /// Build the router configuration.
     pub fn build(self) -> RouterConfig {
         RouterConfig {

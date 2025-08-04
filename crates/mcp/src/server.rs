@@ -79,7 +79,10 @@ impl McpServer {
 
         // Create static downstream if there are any static servers
         let (static_downstream, static_search_tool) = if !static_config.servers.is_empty() {
-            log::debug!("Initializing {} static MCP server(s) at startup", static_config.servers.len());
+            log::debug!(
+                "Initializing {} static MCP server(s) at startup",
+                static_config.servers.len()
+            );
 
             let downstream = Downstream::new(&static_config, None).await?;
             let tools = downstream.list_tools().cloned().collect();
@@ -171,13 +174,15 @@ impl McpServer {
             .name
             .split_once("__")
             .ok_or_else(|| ErrorData::invalid_params("Invalid tool name format", None))?;
-        
-        log::debug!("Parsing tool name '{}': server='{}', tool='{}'", 
-            params.name, server_name, tool_name);
+
+        log::debug!(
+            "Parsing tool name '{}': server='{server_name}', tool='{tool_name}'",
+            params.name
+        );
 
         // Check rate limits for the specific server/tool
         if let Some(manager) = &self.rate_limit_manager {
-            log::debug!("Checking rate limits for server '{}', tool '{}'", server_name, tool_name);
+            log::debug!("Checking rate limits for server '{server_name}', tool '{tool_name}'");
             let rate_limit_request = rate_limit::RateLimitRequest::builder()
                 .server_tool(server_name, tool_name)
                 .build();
@@ -320,7 +325,7 @@ impl ServerHandler for McpServer {
                 self.execute(params, token).await
             }
             tool_name => {
-                log::debug!("Unknown tool requested: '{}' - returning method not found", tool_name);
+                log::debug!("Unknown tool requested: '{tool_name}' - returning method not found");
 
                 Err(ErrorData::method_not_found::<CallToolRequestMethod>())
             }

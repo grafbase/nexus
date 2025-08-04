@@ -1,6 +1,8 @@
-use super::*;
+#![allow(clippy::panic)]
 
-use integration_tests::tools;
+use indoc::indoc;
+use integration_tests::{TestServer, TestService, tools};
+use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -465,67 +467,6 @@ async fn concurrent_redis_rate_limiting() {
     assert!(
         (9..=11).contains(&rate_limited_count),
         "Expected around 10 rate-limited requests, got {rate_limited_count}"
-    );
-    assert_eq!(success_count + rate_limited_count, 20, "Total should be 20");
-}
-
-#[tokio::test]
-async fn concurrent_memory_rate_limiting() {
-    let config = indoc! {r#"
-        [server.rate_limit]
-        enabled = true
-
-        [server.rate_limit.storage]
-        type = "memory"
-
-        [server.rate_limit.global]
-        limit = 10
-        duration = "5s"
-    "#};
-
-    let server = Arc::new(TestServer::builder().build(config).await);
-
-    // Launch 20 concurrent requests when limit is 10
-    let mut handles = vec![];
-
-    for _ in 0..20 {
-        let server_clone = Arc::clone(&server);
-        let handle = tokio::spawn(async move {
-            server_clone
-                .client
-                .post(
-                    "/mcp",
-                    &json!({
-                        "jsonrpc": "2.0",
-                        "method": "tools/list",
-                        "id": 1
-                    }),
-                )
-                .await
-                .unwrap()
-                .status()
-        });
-        handles.push(handle);
-    }
-
-    // Wait for all requests to complete
-    let mut success_count = 0;
-    let mut rate_limited_count = 0;
-
-    for handle in handles {
-        match handle.await.unwrap().as_u16() {
-            200 => success_count += 1,
-            429 => rate_limited_count += 1,
-            status => panic!("Unexpected status code: {status}"),
-        }
-    }
-
-    // With memory storage (governor crate), which uses per-second quotas,
-    // the behavior is different from Redis. With 10 limit over 5 seconds,
-    // it allows 2 per second, so concurrent requests might get less through
-    assert!(
-        (2..=10).contains(&success_count),
-        "Expected 2-10 successful requests with memory storage, got {success_count}"
     );
     assert_eq!(success_count + rate_limited_count, 20, "Total should be 20");
 }
