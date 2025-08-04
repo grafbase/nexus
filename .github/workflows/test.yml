@@ -190,8 +190,7 @@ jobs:
         with:
           tool: nextest
 
-      # Start OAuth2 provider containers for integration testing
-      - name: Start Hydra containers for OAuth2 tests
+      - name: Start Docker containers
         shell: bash
         run: |
           cd crates/integration-tests
@@ -220,7 +219,7 @@ jobs:
             exit 1
           }
 
-          echo "Both Hydra containers are ready for OAuth2 testing"
+          echo "All docker containers are ready for tests"
           docker compose ps
 
       - name: Integration Tests
