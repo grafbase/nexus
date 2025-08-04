@@ -9,6 +9,8 @@ The config crate provides:
 - Environment-specific settings management
 - Configuration validation and defaults
 - Serde-based serialization/deserialization
+- Rate limiting configuration for global, per-IP, and per-MCP-server limits
+- Redis and in-memory storage backends for rate limiting
 
 ## Key Principles
 

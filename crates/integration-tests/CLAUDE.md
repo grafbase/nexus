@@ -1,6 +1,6 @@
 # Integration Tests Guidelines
 
-This crate contains end-to-end integration tests for the Nexus AI router system, including OAuth2 authentication flows, MCP server interactions, and various transport protocols.
+This crate contains end-to-end integration tests for the Nexus AI router system, including OAuth2 authentication flows, MCP server interactions, rate limiting, and various transport protocols.
 
 ## Core Requirements
 
@@ -400,10 +400,21 @@ The test environment uses Docker Compose for external services:
 # compose.yaml
 services:
   hydra:
-    image: oryd/hydra:v2.2
+    image: oryd/hydra:v2.3.0
     ports:
       - "4444:4444"  # Public API
       - "4445:4445"  # Admin API
+  
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"  # Redis for rate limiting tests
+  
+  redis-tls:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"  # Redis with TLS for secure rate limiting tests
+    # TLS configuration with certificates
 ```
 
 Start services before running OAuth2 tests:

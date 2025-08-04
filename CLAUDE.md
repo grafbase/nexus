@@ -26,6 +26,10 @@ When editing code in this repository, you are working on **Nexus**, an AI router
 - **Clap**: Command-line argument parsing
 - **Logforth**: Structured logging with tracing support
 - **Docker Compose**: For integration testing with Hydra OAuth2 server
+- **Governor**: Rate limiting with token bucket algorithm
+- **Mini-moka**: In-memory caching for rate limit buckets
+- **Redis**: Redis support for distributed rate limiting
+- **Deadpool**: Redis connection pooling
 
 ## Rust Coding Guidelines
 
@@ -145,6 +149,14 @@ Comprehensive testing setup:
 - Docker Compose configuration with Hydra OAuth2 server
 - End-to-end testing scenarios
 - Authentication flow testing
+
+### Rate Limit (`./crates/rate-limit`)
+Rate limiting functionality for the entire system:
+- **Global Rate Limits**: System-wide request limits
+- **Per-IP Rate Limits**: Individual IP address throttling
+- **MCP Server/Tool Limits**: Per-server and per-tool rate limits
+- **Storage Backends**: In-memory (governor) and Redis (distributed)
+- **Averaging Fixed Window Algorithm**: For Redis-based rate limiting
 
 ## Testing Guidelines
 

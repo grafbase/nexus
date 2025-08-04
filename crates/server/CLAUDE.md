@@ -12,6 +12,7 @@ The server crate provides:
 - Health check endpoints
 - TLS/HTTPS support
 - Well-known endpoint implementations
+- Rate limiting middleware for global and per-IP limits
 
 ## Architecture Overview
 
@@ -28,6 +29,7 @@ server/
 ├── cors.rs          # CORS policy implementation
 ├── csrf.rs          # CSRF protection middleware
 ├── health.rs        # Health check endpoint
+├── rate_limit.rs    # Rate limiting middleware
 └── well_known.rs    # OAuth metadata endpoint
 ```
 
@@ -45,26 +47,38 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
     // 2. Setup CORS first (applies to all routes)
     let cors = cors::generate(&config.server.cors);
 
-    // 3. Create protected router for authenticated routes
+    // 3. Initialize rate limit manager if enabled
+    let rate_limit_manager = if config.server.rate_limit.enabled {
+        Some(Arc::new(RateLimitManager::new(config.server.rate_limit.clone(), config.mcp.clone()).await?))
+    } else {
+        None
+    };
+
+    // 4. Create protected router for authenticated routes
     let mut protected_router = Router::new();
 
-    // 4. Add MCP routes to protected router
+    // 5. Add MCP routes to protected router (with rate limiting)
     if config.mcp.enabled {
         let mcp_router = mcp::router(&config).await?.layer(cors.clone());
         protected_router = protected_router.merge(mcp_router);
     }
 
-    // 5. Apply authentication to protected routes
+    // 6. Apply authentication to protected routes
     if let Some(oauth) = &config.server.oauth {
         protected_router = protected_router.layer(AuthLayer::new(oauth.clone()));
     }
 
-    // 6. Merge protected routes into main app
+    // 7. Apply rate limiting middleware (after auth, before routes)
+    if let Some(manager) = rate_limit_manager {
+        protected_router = protected_router.layer(RateLimitLayer::new(manager));
+    }
+
+    // 8. Merge protected routes into main app
     app = app.merge(protected_router);
 
-    // 7. Add public endpoints (health, OAuth metadata)
-    // 8. Apply CSRF protection if enabled
-    // 9. Start server with or without TLS
+    // 9. Add public endpoints (health, OAuth metadata)
+    // 10. Apply CSRF protection if enabled
+    // 11. Start server with or without TLS
 }
 ```
 
@@ -231,6 +245,27 @@ Implement reasonable limits to prevent DoS:
 // - Header size limits
 // - Connection limits
 ```
+
+### Rate Limiting
+
+The server applies rate limiting at the HTTP middleware level:
+
+```rust
+// Rate limiting is applied after authentication but before route handlers
+// This ensures we know the user identity for better rate limiting decisions
+
+if config.server.rate_limit.enabled {
+    // Global and per-IP limits are enforced at the HTTP layer
+    protected_router = protected_router.layer(RateLimitLayer::new(manager));
+}
+
+// MCP-specific rate limits (per-server, per-tool) are handled in the MCP layer
+```
+
+Rate limiting responses follow RFC 6585:
+- `429 Too Many Requests` status code
+- `Retry-After` header with seconds until retry
+- JSON error body with details
 
 ## Logging
 

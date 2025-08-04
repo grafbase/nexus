@@ -10,6 +10,7 @@ The MCP crate provides:
 - Full-text search indexing with Tantivy
 - Support for static and dynamic (auth-forwarding) servers
 - Protocol translation between different MCP transports
+- Per-MCP-server and per-tool rate limiting
 
 ## Architecture Overview
 
