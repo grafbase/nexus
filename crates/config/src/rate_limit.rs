@@ -62,7 +62,7 @@ pub struct RedisConfig {
     /// Redis connection URL (redis:// or rediss:// for TLS).
     pub url: String,
     /// Connection pool configuration.
-    #[serde(flatten, default)]
+    #[serde(default)]
     pub pool: RedisPoolConfig,
     /// TLS configuration.
     pub tls: Option<RedisTlsConfig>,
@@ -190,11 +190,21 @@ mod tests {
             RedisConfig {
                 url: "redis://localhost:6379/0",
                 pool: RedisPoolConfig {
-                    max_size: None,
-                    min_idle: None,
-                    timeout_create: None,
-                    timeout_wait: None,
-                    timeout_recycle: None,
+                    max_size: Some(
+                        16,
+                    ),
+                    min_idle: Some(
+                        0,
+                    ),
+                    timeout_create: Some(
+                        5s,
+                    ),
+                    timeout_wait: Some(
+                        5s,
+                    ),
+                    timeout_recycle: Some(
+                        300s,
+                    ),
                 },
                 tls: None,
                 key_prefix: Some(
@@ -216,15 +226,17 @@ mod tests {
         let toml = r#"
             type = "redis"
             url = "rediss://localhost:6380/0"
+            key_prefix = "my_app:"
+            response_timeout = "2s"
+            connection_timeout = "10s"
+
+            [pool]
             max_size = 32
             min_idle = 4
             timeout_create = "10s"
             timeout_wait = "2s"
             timeout_recycle = "600s"
-            key_prefix = "my_app:"
-            response_timeout = "2s"
-            connection_timeout = "10s"
-            
+
             [tls]
             enabled = true
             insecure = false
@@ -289,15 +301,15 @@ mod tests {
     fn rate_limit_config_with_storage() {
         let toml = r#"
             enabled = true
-            
+
             [storage]
             type = "redis"
             url = "redis://localhost:6379"
-            
+
             [global]
             limit = 1000
             duration = "60s"
-            
+
             [per_ip]
             limit = 100
             duration = "60s"
@@ -310,11 +322,21 @@ mod tests {
                 RedisConfig {
                     url: "redis://localhost:6379",
                     pool: RedisPoolConfig {
-                        max_size: None,
-                        min_idle: None,
-                        timeout_create: None,
-                        timeout_wait: None,
-                        timeout_recycle: None,
+                        max_size: Some(
+                            16,
+                        ),
+                        min_idle: Some(
+                            0,
+                        ),
+                        timeout_create: Some(
+                            5s,
+                        ),
+                        timeout_wait: Some(
+                            5s,
+                        ),
+                        timeout_recycle: Some(
+                            300s,
+                        ),
                     },
                     tls: None,
                     key_prefix: Some(

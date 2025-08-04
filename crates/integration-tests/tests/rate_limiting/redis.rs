@@ -192,7 +192,8 @@ async fn redis_pool_configuration() {
         key_prefix = "nexus_pool_test:"
         response_timeout = "1s"
         connection_timeout = "5s"
-        # Pool configuration is flattened
+        
+        [server.rate_limit.storage.pool]
         max_size = 10
         min_idle = 2
         timeout_create = "5s"
