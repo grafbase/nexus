@@ -17,7 +17,8 @@
 - **Context-Aware Tool Search**: Intelligent fuzzy search across all connected tools using natural language queries
 - **Protocol Support**: Supports STDIO (subprocess), SSE (Server-Sent Events), and streamable HTTP MCP servers
 - **Flexible Configuration**: TOML-based configuration with environment variable substitution
-- **Security**: Built-in CORS, CSRF protection, OAuth2, and TLS support.
+- **Security**: Built-in CORS, CSRF protection, OAuth2, and TLS support
+- **Rate Limiting**: Multi-level rate limiting with in-memory or Redis backends
 - **Docker Ready**: Available as a container image with minimal configuration needed
 
 ## Installation
@@ -193,6 +194,77 @@ OAuth2 configuration options:
 - `protected_resource.authorization_servers`: List of authorization server URLs
 
 When OAuth2 is enabled, all endpoints except `/health` and `/.well-known/oauth-protected-resource` require valid JWT tokens in the `Authorization: Bearer <token>` header.
+
+#### Rate Limiting
+
+Nexus supports comprehensive rate limiting to prevent abuse and ensure fair resource usage:
+
+```toml
+# Global rate limiting configuration
+[server.rate_limit]
+enabled = true
+
+# Storage backend configuration
+[server.rate_limit.storage]
+type = "memory"  # or "redis" for distributed rate limiting
+# For Redis backend:
+# url = "redis://localhost:6379"
+# key_prefix = "nexus:rate_limit:"
+
+# Global rate limit (applies to all requests)
+[server.rate_limit.global]
+limit = 1000
+duration = "60s"
+
+# Per-IP rate limit
+[server.rate_limit.per_ip]
+limit = 100
+duration = "60s"
+
+# Per-MCP server rate limits
+[mcp.servers.my_server.rate_limit]
+limit = 50
+duration = "60s"
+
+# Tool-specific rate limits (override server defaults)
+[mcp.servers.my_server.rate_limit.tools]
+expensive_tool = { limit = 10, duration = "60s" }
+cheap_tool = { limit = 100, duration = "60s" }
+```
+
+**Rate Limiting Features:**
+- **Multiple levels**: Global, per-IP, per-server, and per-tool limits
+- **Storage backends**: In-memory (single instance) or Redis (distributed)
+- **Flexible durations**: Configure time windows for each limit
+- **Tool-specific overrides**: Set different limits for expensive operations
+
+**Redis Backend Configuration:**
+```toml
+[server.rate_limit.storage]
+type = "redis"
+url = "redis://localhost:6379"
+key_prefix = "nexus:rate_limit:"
+response_timeout = "1s"
+connection_timeout = "5s"
+
+# Connection pool settings
+[server.rate_limit.storage.pool]
+max_size = 16
+min_idle = 0
+timeout_create = "5s"
+timeout_wait = "5s"
+timeout_recycle = "300s"
+
+# TLS configuration for Redis (optional)
+[server.rate_limit.storage.tls]
+enabled = true
+ca_cert_path = "/path/to/ca.crt"
+client_cert_path = "/path/to/client.crt"  # For mutual TLS
+client_key_path = "/path/to/client.key"
+# insecure = true  # WARNING: Only for development/testing, skips certificate validation
+```
+
+**Note**: When configuring tool-specific rate limits, Nexus will warn if you reference tools that don't exist.
 
 #### TLS Configuration
 

@@ -1,6 +1,9 @@
 //! Redis connection pool implementation based on Grafbase's approach.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{
+    fs,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use deadpool::managed::{self, Metrics};
 use redis::{Client, RedisError, RedisResult, aio::MultiplexedConnection};
@@ -68,15 +71,26 @@ impl managed::Manager for Manager {
 fn build_tls_certificates(config: &RedisTlsConfig) -> RedisResult<redis::TlsCertificates> {
     use redis::ClientTlsConfig;
 
-    // For insecure mode, we'll use the CA cert from the container
+    // WARNING: insecure mode should only be used for development/testing
+    // In production, always provide proper certificates
     if config.insecure.unwrap_or(false) {
-        // Try to load the CA cert for self-signed certificates
-        let ca_path = config
-            .ca_cert_path
-            .as_deref()
-            .unwrap_or("./crates/integration-tests/docker/redis/tls/ca.crt");
+        // In insecure mode, we don't validate certificates at all
+        // Only load CA cert if explicitly provided
+        let root_cert = if let Some(ca_path) = &config.ca_cert_path {
+            let cert = fs::read(ca_path).map_err(|e| {
+                RedisError::from((
+                    redis::ErrorKind::IoError,
+                    "Failed to read CA certificate",
+                    e.to_string(),
+                ))
+            })?;
 
-        let root_cert = std::fs::read(ca_path).ok();
+            Some(cert)
+        } else {
+            // In insecure mode with no CA cert, use empty certificates
+            // This tells Redis to skip certificate validation
+            None
+        };
 
         return Ok(redis::TlsCertificates {
             client_tls: None,
@@ -89,14 +103,14 @@ fn build_tls_certificates(config: &RedisTlsConfig) -> RedisResult<redis::TlsCert
 
     // Load client certificate and key if provided
     if let (Some(cert_path), Some(key_path)) = (&config.client_cert_path, &config.client_key_path) {
-        let cert = std::fs::read(cert_path).map_err(|e| {
+        let cert = fs::read(cert_path).map_err(|e| {
             RedisError::from((
                 redis::ErrorKind::IoError,
                 "Failed to read client certificate",
                 e.to_string(),
             ))
         })?;
-        let key = std::fs::read(key_path)
+        let key = fs::read(key_path)
             .map_err(|e| RedisError::from((redis::ErrorKind::IoError, "Failed to read client key", e.to_string())))?;
 
         client_tls = Some(ClientTlsConfig {
@@ -107,7 +121,7 @@ fn build_tls_certificates(config: &RedisTlsConfig) -> RedisResult<redis::TlsCert
 
     // Load CA certificate if provided
     if let Some(ca_path) = &config.ca_cert_path {
-        root_cert = Some(std::fs::read(ca_path).map_err(|e| {
+        root_cert = Some(fs::read(ca_path).map_err(|e| {
             RedisError::from((
                 redis::ErrorKind::IoError,
                 "Failed to read CA certificate",
