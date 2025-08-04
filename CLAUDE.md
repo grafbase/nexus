@@ -97,6 +97,53 @@ let info = format!("User: {name}", name = user.name);
 
 And so on. You will find many places where these rules apply, not only for format! or log macros.
 
+### Control Flow and Readability
+Avoid nested if-lets and matches. Use let-else with early return to reduce indentation. Horizontal space is sacred and nested structures are hard to read:
+
+```rust
+// Good: Early return with let-else
+let Some(user) = get_user() else {
+    return Err(anyhow!("User not found"));
+};
+
+let Some(profile) = user.profile() else {
+    return Ok(Response::default());
+};
+
+process_profile(profile);
+
+// Bad: Nested if-let
+if let Some(user) = get_user() {
+    if let Some(profile) = user.profile() {
+        process_profile(profile);
+    }
+}
+
+// Good: Flat match with early returns
+let config = match load_config() {
+    Ok(cfg) => cfg,
+    Err(e) => return Err(e.into()),
+};
+
+let parsed = match config.parse() {
+    Some(p) => p,
+    None => return Ok(Default::default()),
+};
+
+// Bad: Nested matches
+match load_config() {
+    Ok(cfg) => {
+        match cfg.parse() {
+            Some(p) => {
+                // deeply nested logic
+            }
+            None => { /* ... */ }
+        }
+    }
+    Err(e) => { /* ... */ }
+}
+```
+
 ### Tools
 
 The Nexus server will always return two tools when listed: `search` and `execute`. If you want to find tools in tests you created, you have to search for them.
