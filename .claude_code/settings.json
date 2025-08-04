@@ -1,0 +1,9 @@
+{
+  "hooks": {
+    "PostToolUse": {
+      "Edit": "if [[ \"$FILE_PATH\" == *.rs ]]; then cargo fmt --all; fi",
+      "MultiEdit": "if [[ \"$FILE_PATH\" == *.rs ]]; then cargo fmt --all; fi",
+      "Write": "if [[ \"$FILE_PATH\" == *.rs ]]; then cargo fmt --all; fi"
+    }
+  }
+}
