@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 
 mod cors;
+mod llm;
 mod loader;
 mod mcp;
 mod rate_limit;
@@ -16,6 +17,7 @@ use std::{
 
 pub use cors::*;
 use duration_str::deserialize_option_duration;
+pub use llm::{AnthropicConfig, GoogleConfig, LlmConfig, LlmProvider, OpenAiConfig};
 pub use mcp::{
     ClientAuthConfig, HttpConfig, HttpProtocol, McpConfig, McpServer, McpServerRateLimit, StdioConfig, StdioTarget,
     StdioTargetType, TlsClientConfig,
@@ -34,6 +36,9 @@ pub struct Config {
     /// Model Context Protocol configuration settings.
     #[serde(default)]
     pub mcp: McpConfig,
+    /// LLM configuration settings.
+    #[serde(default)]
+    pub llm: LlmConfig,
 }
 
 impl Config {
@@ -217,6 +222,11 @@ mod tests {
                 },
                 servers: {},
             },
+            llm: LlmConfig {
+                enabled: true,
+                path: "/llm",
+                providers: {},
+            },
         }
         "#);
     }
@@ -256,6 +266,11 @@ mod tests {
                     idle_timeout: 600s,
                 },
                 servers: {},
+            },
+            llm: LlmConfig {
+                enabled: true,
+                path: "/llm",
+                providers: {},
             },
         }
         "#);
@@ -1737,6 +1752,44 @@ mod tests {
                     interval: 60s,
                 },
             ),
+        }
+        "#);
+    }
+
+    #[test]
+    fn llm_config_with_providers() {
+        let config = indoc! {r#"
+            [llm]
+            enabled = true
+            path = "/ai"
+
+            [llm.providers.openai]
+            type = "openai"
+            api_key = "${OPENAI_API_KEY}"
+
+            [llm.providers.anthropic]
+            type = "anthropic"
+            api_key = "{{ env.ANTHROPIC_API_KEY }}"
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+
+        insta::assert_debug_snapshot!(&config.llm, @r#"
+        LlmConfig {
+            enabled: true,
+            path: "/ai",
+            providers: {
+                "anthropic": Anthropic(
+                    AnthropicConfig {
+                        api_key: SecretBox<str>([REDACTED]),
+                    },
+                ),
+                "openai": Openai(
+                    OpenAiConfig {
+                        api_key: SecretBox<str>([REDACTED]),
+                    },
+                ),
+            },
         }
         "#);
     }

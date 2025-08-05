@@ -3,9 +3,9 @@
 #![deny(missing_docs)]
 
 mod cache;
+mod config;
 mod downstream;
 mod index;
-mod router_config;
 mod server;
 mod server_builder;
 
@@ -19,7 +19,7 @@ use rmcp::{
     },
 };
 
-pub use router_config::{RouterConfig, RouterConfigBuilder};
+pub use config::{RouterConfig, RouterConfigBuilder};
 
 pub(crate) const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V_2025_03_26;
 
