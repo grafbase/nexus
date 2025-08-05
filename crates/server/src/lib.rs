@@ -68,6 +68,12 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
         protected_router = protected_router.merge(mcp_router);
     }
 
+    // Apply CORS to LLM router before merging
+    if config.llm.enabled {
+        let llm_router = llm::router(config.llm.clone()).await?;
+        protected_router = protected_router.merge(llm_router.layer(cors.clone()));
+    }
+
     // Apply OAuth authentication to protected routes
     if let Some(ref oauth_config) = config.server.oauth {
         protected_router = protected_router.layer(AuthLayer::new(oauth_config.clone()));
@@ -129,6 +135,10 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
                 log::info!("MCP endpoint available at: https://{listen_address}{}", config.mcp.path);
             }
 
+            if config.llm.enabled {
+                log::info!("AI endpoint available at: https://{listen_address}{}", config.llm.path);
+            }
+
             axum_server::from_tcp_rustls(listener.into_std()?, rustls_config)
                 .serve(app.into_make_service())
                 .await
@@ -137,6 +147,10 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
         None => {
             if config.mcp.enabled {
                 log::info!("MCP endpoint available at: http://{listen_address}{}", config.mcp.path);
+            }
+
+            if config.llm.enabled {
+                log::info!("AI endpoint available at: http://{listen_address}{}", config.llm.path);
             }
 
             axum::serve(listener, app)

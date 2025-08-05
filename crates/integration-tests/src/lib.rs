@@ -59,6 +59,7 @@ fn init_logger() {
 }
 
 /// Test client for making HTTP requests to the test server
+#[derive(Clone)]
 pub struct TestClient {
     base_url: String,
     client: reqwest::Client,
@@ -123,6 +124,12 @@ impl TestClient {
 /// MCP client for testing MCP protocol functionality
 pub struct McpTestClient {
     service: RunningService<rmcp::RoleClient, ()>,
+}
+
+/// LLM client for testing LLM API functionality
+pub struct LlmTestClient {
+    client: TestClient,
+    base_path: String,
 }
 
 impl McpTestClient {
@@ -274,6 +281,48 @@ impl McpTestClient {
     }
 }
 
+impl LlmTestClient {
+    /// Create a new LLM test client
+    pub fn new(client: TestClient, base_path: String) -> Self {
+        Self { client, base_path }
+    }
+
+    /// List available models
+    pub async fn list_models(&self) -> serde_json::Value {
+        let response = self.client.get(&format!("{}/v1/models", self.base_path)).await;
+
+        assert_eq!(response.status(), 200);
+        response.json().await.unwrap()
+    }
+
+    /// Send a chat completion request
+    pub async fn completions(&self, request: serde_json::Value) -> serde_json::Value {
+        let response = self
+            .client
+            .post(&format!("{}/v1/chat/completions", self.base_path), &request)
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), 200);
+        response.json().await.unwrap()
+    }
+
+    /// Send a chat completion request with a simple message
+    pub async fn simple_completion(&self, model: &str, message: &str) -> serde_json::Value {
+        let request = json!({
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": message
+                }
+            ]
+        });
+
+        self.completions(request).await
+    }
+}
+
 /// Test server that manages the lifecycle of a server instance
 pub struct TestServer {
     pub client: TestClient,
@@ -408,6 +457,11 @@ impl TestServer {
         let mcp_url = format!("{protocol}://{}{}", self.address, path);
 
         McpTestClient::new_with_auth(mcp_url, Some(auth_token)).await
+    }
+
+    /// Create an LLM client for testing LLM API endpoints
+    pub fn llm_client(&self, base_path: &str) -> LlmTestClient {
+        LlmTestClient::new(self.client.clone(), base_path.to_string())
     }
 }
 

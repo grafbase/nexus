@@ -3091,6 +3091,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "241eaef5fd12c88705a01fc1066c48c4b36e0dd4377dcdc7ec3942cea7a69956"
 
 [[package]]
+name = "llm"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "config",
+ "reqwest",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4990,6 +5005,7 @@ dependencies = [
  "http",
  "http-body",
  "jwt-compact",
+ "llm",
  "log",
  "mcp",
  "rate-limit",

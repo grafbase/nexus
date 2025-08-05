@@ -16,6 +16,7 @@ fast-glob.workspace = true
 http.workspace = true
 http-body.workspace = true
 jwt-compact = { workspace = true, features = ["clock", "rsa", "ed25519-compact", "p256"] }
+llm.workspace = true
 log = { workspace = true, features = ["kv"] }
 mcp.workspace = true
 rate-limit.workspace = true
