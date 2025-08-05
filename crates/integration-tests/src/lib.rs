@@ -185,6 +185,7 @@ impl McpTestClient {
         self.call_tool("search", json!({ "keywords": keywords }))
             .await
             .content
+            .unwrap_or_default()
             .into_iter()
             .filter_map(|content| match content.raw.as_text() {
                 Some(content) => serde_json::from_str(&content.text).ok(),

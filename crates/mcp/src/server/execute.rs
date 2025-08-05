@@ -34,6 +34,7 @@ pub fn rmcp_tool() -> Tool {
         name: "execute".into(),
         description: Some(description.into()),
         input_schema: Arc::new(execute_schema),
+        output_schema: None,
         annotations: Some(ToolAnnotations::new().destructive(true).open_world(true)),
     }
 }

@@ -302,7 +302,8 @@ impl ServerHandler for McpServer {
                 }
 
                 Ok(CallToolResult {
-                    content,
+                    content: Some(content),
+                    structured_content: None,
                     is_error: None,
                 })
             }

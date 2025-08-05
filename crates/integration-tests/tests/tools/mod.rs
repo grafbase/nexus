@@ -31,6 +31,7 @@ impl TestTool for AdderTool {
             name: "adder".into(),
             description: Some("Adds two numbers together".into()),
             input_schema: std::sync::Arc::new(schema),
+            output_schema: None,
             annotations: None,
         }
     }
@@ -86,6 +87,7 @@ impl TestTool for FailingTool {
             name: "failing_tool".into(),
             description: Some("A tool that always fails for testing error handling".into()),
             input_schema: std::sync::Arc::new(schema),
+            output_schema: None,
             annotations: None,
         }
     }
@@ -139,6 +141,7 @@ impl TestTool for CalculatorTool {
                     .into(),
             ),
             input_schema: std::sync::Arc::new(schema),
+            output_schema: None,
             annotations: Some(rmcp::model::ToolAnnotations {
                 title: Some("Scientific Calculator".into()),
                 ..Default::default()
@@ -237,6 +240,7 @@ impl TestTool for TextProcessorTool {
                 "Processes text with various string manipulation operations like case conversion and reversal".into(),
             ),
             input_schema: std::sync::Arc::new(schema),
+            output_schema: None,
             annotations: Some(rmcp::model::ToolAnnotations {
                 title: Some("Text Processor".into()),
                 ..Default::default()
@@ -316,6 +320,7 @@ impl TestTool for FileSystemTool {
                 "Manages files and directories with operations like listing, creating, and deleting".into(),
             ),
             input_schema: std::sync::Arc::new(schema),
+            output_schema: None,
             annotations: Some(rmcp::model::ToolAnnotations {
                 title: Some("File System Manager".into()),
                 ..Default::default()

@@ -122,6 +122,7 @@ pub fn rmcp_tool() -> Tool {
         name: "search".into(),
         description: Some(description.into()),
         input_schema: Arc::new(search_schema),
+        output_schema: None,
         annotations: Some(ToolAnnotations::new().read_only(true)),
     }
 }

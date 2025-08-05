@@ -103,7 +103,14 @@ async fn redis_per_server_rate_limiting() {
         let response = mcp_client
             .execute("limited_server__adder", json!({"a": 1, "b": 2}))
             .await;
-        assert_eq!(response.content[0].raw.as_text().unwrap().text, "1 + 2 = 3");
+        let text = response
+            .content
+            .as_ref()
+            .and_then(|c| c.first())
+            .and_then(|c| c.raw.as_text())
+            .map(|t| t.text.as_str())
+            .unwrap_or("");
+        assert_eq!(text, "1 + 2 = 3");
     }
 
     // 3rd request to limited-server should fail
@@ -117,7 +124,14 @@ async fn redis_per_server_rate_limiting() {
     let response = mcp_client
         .execute("unlimited_server__adder", json!({"a": 1, "b": 2}))
         .await;
-    assert_eq!(response.content[0].raw.as_text().unwrap().text, "1 + 2 = 3");
+    let text = response
+        .content
+        .as_ref()
+        .and_then(|c| c.first())
+        .and_then(|c| c.raw.as_text())
+        .map(|t| t.text.as_str())
+        .unwrap_or("");
+    assert_eq!(text, "1 + 2 = 3");
 }
 
 #[tokio::test]

@@ -63,6 +63,7 @@ impl TestTool for TokenTrackingTool {
             name: "token_tracker".into(),
             description: Some("Tracks when it's called, proving token forwarding worked successfully".into()),
             input_schema: std::sync::Arc::new(schema),
+            output_schema: None,
             annotations: None,
         }
     }

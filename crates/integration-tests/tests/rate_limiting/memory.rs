@@ -208,8 +208,8 @@ async fn mcp_server_rate_limit() {
         results.push(json!({
             "request": i,
             "success": true,
-            "content_count": call_result.content.len(),
-            "result": call_result.content[0].raw.as_text().unwrap().text
+            "content_count": call_result.content.as_ref().map(|c| c.len()).unwrap_or(0),
+            "result": call_result.content.as_ref().and_then(|c| c.first()).and_then(|c| c.raw.as_text()).map(|t| t.text.clone()).unwrap_or_else(String::new)
         }));
     }
 
@@ -286,7 +286,7 @@ async fn mcp_tool_specific_rate_limit() {
         results.push(json!({
             "request": i,
             "success": true,
-            "result": call_result.content[0].raw.as_text().unwrap().text
+            "result": call_result.content.as_ref().and_then(|c| c.first()).and_then(|c| c.raw.as_text()).map(|t| t.text.clone()).unwrap_or_else(String::new)
         }));
     }
 
@@ -382,7 +382,7 @@ async fn mcp_only_rate_limits_no_http_middleware() {
         "http_requests_successful": http_success_count,
         "http_all_succeeded": http_success_count == 10,
         "mcp_first_request_success": true,
-        "mcp_first_result": first_result.content[0].raw.as_text().unwrap().text,
+        "mcp_first_result": first_result.content.as_ref().and_then(|c| c.first()).and_then(|c| c.raw.as_text()).map(|t| t.text.clone()).unwrap_or_else(String::new),
         "mcp_second_request_failed": true,
         "mcp_second_error": format!("{second_error:?}")
     }), @r#"
