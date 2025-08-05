@@ -29,7 +29,7 @@ When editing code in this repository, you are working on **Nexus**, an AI router
 - **Governor**: Rate limiting with token bucket algorithm
 - **Mini-moka**: In-memory caching for rate limit buckets
 - **Redis**: Redis support for distributed rate limiting
-- **Deadpool**: Redis connection pooling
+- **Deadpool**: Connection pooling
 
 ## Rust Coding Guidelines
 
@@ -159,7 +159,7 @@ Prefer flat module structure:
 ### Code Quality Principles
 
 - **Prioritize correctness and clarity** over speed and efficiency unless explicitly required
-- **Minimal comments**: Only explain "why" something is done, not "what" is being done
+- **Minimal comments**: Do not write comments just describing the code. Only write comments describing _why_ that code is written in a certain way, or to point out non-obvious details or caveats. Or to help break up long blocks of code into logical chunks.
 - **Prefer existing files**: Add functionality to existing files unless creating a new logical component
 - **Debug logging**: Use debug level for most logging; avoid info/warn/error unless absolutely necessary
 
