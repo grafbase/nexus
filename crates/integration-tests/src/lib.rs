@@ -182,16 +182,25 @@ impl McpTestClient {
     }
 
     pub async fn search(&self, keywords: &[&str]) -> Vec<serde_json::Value> {
-        self.call_tool("search", json!({ "keywords": keywords }))
-            .await
-            .content
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|content| match content.raw.as_text() {
-                Some(content) => serde_json::from_str(&content.text).ok(),
-                None => todo!(),
-            })
-            .collect()
+        let result = self.call_tool("search", json!({ "keywords": keywords })).await;
+        
+        // Prefer structured_content if available (new in rmcp 0.4.0)
+        if let Some(structured) = result.structured_content {
+            // The structured content should be an array of tool objects
+            structured.as_array().cloned().unwrap_or_default()
+        } else if let Some(content) = result.content {
+            // Fallback to parsing from content field (legacy behavior)
+            content
+                .into_iter()
+                .filter_map(|content| match content.raw.as_text() {
+                    Some(content) => serde_json::from_str(&content.text).ok(),
+                    None => None,
+                })
+                .collect()
+        } else {
+            // Neither structured_content nor content is available
+            Vec::new()
+        }
     }
 
     pub async fn execute(&self, tool: &str, arguments: serde_json::Value) -> rmcp::model::CallToolResult {

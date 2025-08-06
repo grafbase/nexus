@@ -611,7 +611,7 @@ async fn token_forwarding_with_search() {
     let search_results = mcp_client.search(&["add", "text", "multiply"]).await;
 
     // Capture the search results as a snapshot
-    insta::assert_json_snapshot!(search_results, @r###"
+    insta::assert_json_snapshot!(search_results, @r#"
     [
       {
         "name": "text_server__text_processor",
@@ -639,7 +639,7 @@ async fn token_forwarding_with_search() {
             "action"
           ]
         },
-        "score": 2.4428196
+        "score": 2.442819595336914
       },
       {
         "name": "math_server__calculator",
@@ -672,10 +672,10 @@ async fn token_forwarding_with_search() {
             "y"
           ]
         },
-        "score": 0.4
+        "score": 0.4000000059604645
       }
     ]
-    "###);
+    "#);
 
     // Execute tools from both servers to verify token forwarding works
     let math_result = mcp_client.execute("math_server__adder", json!({"a": 5, "b": 7})).await;
@@ -1015,7 +1015,7 @@ async fn dynamic_server_isolation() {
     let search2 = client2.search(&["adder"]).await;
 
     // Both should find the same tool
-    insta::assert_json_snapshot!(search1, @r###"
+    insta::assert_json_snapshot!(search1, @r#"
     [
       {
         "name": "dynamic_server__adder",
@@ -1037,11 +1037,11 @@ async fn dynamic_server_isolation() {
             "b"
           ]
         },
-        "score": 0.8630463
+        "score": 0.8630462884902954
       }
     ]
-    "###);
-    insta::assert_json_snapshot!(search2, @r###"
+    "#);
+    insta::assert_json_snapshot!(search2, @r#"
     [
       {
         "name": "dynamic_server__adder",
@@ -1063,10 +1063,10 @@ async fn dynamic_server_isolation() {
             "b"
           ]
         },
-        "score": 0.8630463
+        "score": 0.8630462884902954
       }
     ]
-    "###);
+    "#);
 
     client1.disconnect().await;
     client2.disconnect().await;

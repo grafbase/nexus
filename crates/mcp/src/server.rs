@@ -41,6 +41,8 @@ pub(crate) struct McpServerInner {
     cache: Arc<DynamicDownstreamCache>,
     // Rate limit manager for server/tool limits
     rate_limit_manager: Option<Arc<rate_limit::RateLimitManager>>,
+    // Configuration for structured content responses
+    enable_structured_content: bool,
 }
 
 impl Deref for McpServer {
@@ -117,6 +119,7 @@ impl McpServer {
             dynamic_server_names,
             cache,
             rate_limit_manager,
+            enable_structured_content: config.mcp.enable_structured_content,
         };
 
         Ok(Self {
@@ -295,17 +298,30 @@ impl ServerHandler for McpServer {
                     .await
                     .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
-                let mut content = Vec::with_capacity(tools.len());
+                // Choose response format based on configuration
+                if self.enable_structured_content {
+                    // Modern format: structuredContent only (better performance)
+                    let structured_content =
+                        serde_json::to_value(&tools).map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
-                for tool in tools {
-                    content.push(Content::json(tool)?);
+                    Ok(CallToolResult {
+                        content: None,
+                        structured_content: Some(structured_content),
+                        is_error: None,
+                    })
+                } else {
+                    // Legacy format: content field with Content::json objects
+                    let mut content = Vec::with_capacity(tools.len());
+                    for tool in tools {
+                        content.push(Content::json(tool)?);
+                    }
+
+                    Ok(CallToolResult {
+                        content: Some(content),
+                        structured_content: None,
+                        is_error: None,
+                    })
                 }
-
-                Ok(CallToolResult {
-                    content: Some(content),
-                    structured_content: None,
-                    is_error: None,
-                })
             }
             "execute" => {
                 log::debug!("Executing downstream tool via execute endpoint");

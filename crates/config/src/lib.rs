@@ -216,6 +216,7 @@ mod tests {
                     idle_timeout: 600s,
                 },
                 servers: {},
+                enable_structured_content: true,
             },
         }
         "#);
@@ -256,6 +257,7 @@ mod tests {
                     idle_timeout: 600s,
                 },
                 servers: {},
+                enable_structured_content: true,
             },
         }
         "#);
@@ -833,6 +835,7 @@ mod tests {
                     },
                 ),
             },
+            enable_structured_content: true,
         }
         "#);
     }
@@ -1825,5 +1828,41 @@ mod tests {
             ),
         }
         "#);
+    }
+
+    #[test]
+    fn mcp_enable_structured_content() {
+        // Test that enable_structured_content defaults to true
+        let config = indoc! {r#"
+            [mcp]
+            enabled = true
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+        assert!(config.mcp.enable_structured_content);
+
+        // Test explicit true
+        let config = indoc! {r#"
+            [mcp]
+            enabled = true
+            enable_structured_content = true
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+        assert!(config.mcp.enable_structured_content);
+
+        // Test explicit false
+        let config = indoc! {r#"
+            [mcp]
+            enabled = true
+            enable_structured_content = false
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+        assert!(!config.mcp.enable_structured_content);
+
+        // Test that Default trait gives us true
+        let default_config = crate::McpConfig::default();
+        assert!(default_config.enable_structured_content);
     }
 }

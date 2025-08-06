@@ -21,6 +21,10 @@ pub struct McpConfig {
     pub downstream_cache: McpDownstreamCacheConfig,
     /// Map of server names to their configurations.
     pub servers: BTreeMap<String, McpServer>,
+    /// Enable structured content responses for better performance and type safety.
+    /// When true (default), the search tool uses the `structuredContent` field.
+    /// When false, uses legacy `content` field with Content::json objects.
+    pub enable_structured_content: bool,
 }
 
 /// Configuration for an individual MCP server.
@@ -100,6 +104,7 @@ impl Default for McpConfig {
             path: "/mcp".to_string(),
             downstream_cache: McpDownstreamCacheConfig::default(),
             servers: BTreeMap::new(),
+            enable_structured_content: true,  // Default to true for best performance
         }
     }
 }
