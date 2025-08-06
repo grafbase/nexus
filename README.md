@@ -112,6 +112,9 @@ cwd = "/workspace"
 
 - `mcp.enabled`: Enable MCP functionality (default: `true`)
 - `mcp.path`: MCP endpoint path (default: `/mcp`)
+- `mcp.enable_structured_content`: Control MCP search tool response format (default: `true`)
+  - When `true`: Uses modern `structuredContent` field for better performance and type safety
+  - When `false`: Uses legacy `content` field with `Content::json` objects for compatibility with older MCP clients
 
 #### MCP Server Types
 

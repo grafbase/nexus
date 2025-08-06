@@ -386,6 +386,7 @@ Remember: This codebase values **correctness and maintainability** over prematur
 2. **Add New Patterns**: If you introduce new patterns or conventions, document them
 3. **Remove Obsolete Info**: If you remove or deprecate features, update the docs
 4. **Review Periodically**: When working on the codebase, check if the guidelines still match reality
+5. **Update README.md**: When adding or modifying configuration options or CLI arguments, ALWAYS update the README.md documentation
 
 Examples of when to update:
 - Adding a new dependency management pattern
@@ -393,3 +394,6 @@ Examples of when to update:
 - Introducing new testing strategies
 - Modifying string formatting conventions
 - Updating technology choices
+- **Adding configuration options** (update both CLAUDE.md and README.md)
+- **Changing CLI arguments** (update both CLAUDE.md and README.md)
+- **Modifying default values** (update README.md configuration section)
