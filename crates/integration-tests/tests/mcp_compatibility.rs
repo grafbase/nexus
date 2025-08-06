@@ -1,5 +1,5 @@
 use indoc::{formatdoc, indoc};
-use integration_tests::{tools::AdderTool, TestServer, TestService};
+use integration_tests::{TestServer, TestService, tools::AdderTool};
 use serde_json::json;
 
 #[tokio::test]
@@ -123,7 +123,7 @@ async fn search_returns_proper_scores_in_both_modes() {
         // Search should return results with scores
         let results = client.search(&["add", "numbers"]).await;
         assert!(!results.is_empty());
-        
+
         // Verify score field exists and is a number
         assert!(results[0]["score"].is_number());
         let score = results[0]["score"].as_f64().unwrap();

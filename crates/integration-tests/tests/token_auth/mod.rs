@@ -22,7 +22,7 @@ async fn successful_token_auth() {
     let mcp_client = server.mcp_client("/mcp").await;
     let tools_result = mcp_client.list_tools().await;
 
-    insta::assert_json_snapshot!(tools_result, @r#"
+    insta::assert_json_snapshot!(tools_result, @r##"
     {
       "tools": [
         {
@@ -42,6 +42,43 @@ async fn successful_token_auth() {
             "required": [
               "keywords"
             ]
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "Array_of_SearchResult",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/SearchResult"
+            },
+            "$defs": {
+              "SearchResult": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
+                  "description": {
+                    "description": "Description of what the tool does",
+                    "type": "string"
+                  },
+                  "input_schema": {
+                    "description": "The input schema for the tool's parameters"
+                  },
+                  "score": {
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number",
+                    "format": "float"
+                  }
+                },
+                "required": [
+                  "name",
+                  "description",
+                  "input_schema",
+                  "score"
+                ]
+              }
+            }
           },
           "annotations": {
             "readOnlyHint": true
@@ -76,7 +113,7 @@ async fn successful_token_auth() {
         }
       ]
     }
-    "#);
+    "##);
 
     let result = mcp_client
         .execute("auth_service__adder", json!({ "a": 5, "b": 3 }))

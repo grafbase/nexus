@@ -23,7 +23,7 @@ async fn list_single_tool() {
     // Should list the adder tool with proper naming
     let tools_result = mcp_client.list_tools().await;
 
-    insta::assert_json_snapshot!(&tools_result, @r#"
+    insta::assert_json_snapshot!(&tools_result, @r##"
     {
       "tools": [
         {
@@ -43,6 +43,43 @@ async fn list_single_tool() {
             "required": [
               "keywords"
             ]
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "Array_of_SearchResult",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/SearchResult"
+            },
+            "$defs": {
+              "SearchResult": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
+                  "description": {
+                    "description": "Description of what the tool does",
+                    "type": "string"
+                  },
+                  "input_schema": {
+                    "description": "The input schema for the tool's parameters"
+                  },
+                  "score": {
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number",
+                    "format": "float"
+                  }
+                },
+                "required": [
+                  "name",
+                  "description",
+                  "input_schema",
+                  "score"
+                ]
+              }
+            }
           },
           "annotations": {
             "readOnlyHint": true
@@ -77,7 +114,7 @@ async fn list_single_tool() {
         }
       ]
     }
-    "#);
+    "##);
 
     mcp_client.disconnect().await;
 }
@@ -179,7 +216,7 @@ async fn mixed_sse_and_streaming_services() {
     // Should list tools from both services
     let tools_result = mcp_client.list_tools().await;
 
-    insta::assert_json_snapshot!(&tools_result, @r#"
+    insta::assert_json_snapshot!(&tools_result, @r##"
     {
       "tools": [
         {
@@ -199,6 +236,43 @@ async fn mixed_sse_and_streaming_services() {
             "required": [
               "keywords"
             ]
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "Array_of_SearchResult",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/SearchResult"
+            },
+            "$defs": {
+              "SearchResult": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
+                  "description": {
+                    "description": "Description of what the tool does",
+                    "type": "string"
+                  },
+                  "input_schema": {
+                    "description": "The input schema for the tool's parameters"
+                  },
+                  "score": {
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number",
+                    "format": "float"
+                  }
+                },
+                "required": [
+                  "name",
+                  "description",
+                  "input_schema",
+                  "score"
+                ]
+              }
+            }
           },
           "annotations": {
             "readOnlyHint": true
@@ -233,7 +307,7 @@ async fn mixed_sse_and_streaming_services() {
         }
       ]
     }
-    "#);
+    "##);
 
     // Test calling tools from both services
     let add_result = mcp_client
@@ -280,7 +354,7 @@ async fn tls_downstream_service() {
 
     // Verify the tool is listed correctly
     let tools_result = mcp_client.list_tools().await;
-    insta::assert_json_snapshot!(&tools_result, @r#"
+    insta::assert_json_snapshot!(&tools_result, @r##"
     {
       "tools": [
         {
@@ -300,6 +374,43 @@ async fn tls_downstream_service() {
             "required": [
               "keywords"
             ]
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "Array_of_SearchResult",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/SearchResult"
+            },
+            "$defs": {
+              "SearchResult": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
+                  "description": {
+                    "description": "Description of what the tool does",
+                    "type": "string"
+                  },
+                  "input_schema": {
+                    "description": "The input schema for the tool's parameters"
+                  },
+                  "score": {
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number",
+                    "format": "float"
+                  }
+                },
+                "required": [
+                  "name",
+                  "description",
+                  "input_schema",
+                  "score"
+                ]
+              }
+            }
           },
           "annotations": {
             "readOnlyHint": true
@@ -334,7 +445,7 @@ async fn tls_downstream_service() {
         }
       ]
     }
-    "#);
+    "##);
 
     // Test calling the tool
     let result = mcp_client

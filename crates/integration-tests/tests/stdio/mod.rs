@@ -45,7 +45,7 @@ async fn stdio_basic_echo_tool() {
             "text"
           ]
         },
-        "score": 3.6119184
+        "score": 3.611918449401855
       }
     ]
     "#);
@@ -294,7 +294,7 @@ async fn stdio_tool_search() {
             "text"
           ]
         },
-        "score": 5.026234
+        "score": 5.026234149932861
       }
     ]
     "#);

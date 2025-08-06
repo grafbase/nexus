@@ -198,7 +198,7 @@ async fn no_tools_by_default() {
     let tools_result = mcp_client.list_tools().await;
 
     // Should have no tools when no services are configured
-    insta::assert_json_snapshot!(&tools_result, @r#"
+    insta::assert_json_snapshot!(&tools_result, @r##"
     {
       "tools": [
         {
@@ -218,6 +218,43 @@ async fn no_tools_by_default() {
             "required": [
               "keywords"
             ]
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "Array_of_SearchResult",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/SearchResult"
+            },
+            "$defs": {
+              "SearchResult": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
+                  "description": {
+                    "description": "Description of what the tool does",
+                    "type": "string"
+                  },
+                  "input_schema": {
+                    "description": "The input schema for the tool's parameters"
+                  },
+                  "score": {
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number",
+                    "format": "float"
+                  }
+                },
+                "required": [
+                  "name",
+                  "description",
+                  "input_schema",
+                  "score"
+                ]
+              }
+            }
           },
           "annotations": {
             "readOnlyHint": true
@@ -252,7 +289,7 @@ async fn no_tools_by_default() {
         }
       ]
     }
-    "#);
+    "##);
 
     mcp_client.disconnect().await;
 }

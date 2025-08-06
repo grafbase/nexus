@@ -21,7 +21,7 @@ async fn list_tools() {
 
     let tools_result = mcp_client.list_tools().await;
 
-    insta::assert_json_snapshot!(&tools_result, @r#"
+    insta::assert_json_snapshot!(&tools_result, @r##"
     {
       "tools": [
         {
@@ -41,6 +41,43 @@ async fn list_tools() {
             "required": [
               "keywords"
             ]
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "Array_of_SearchResult",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/SearchResult"
+            },
+            "$defs": {
+              "SearchResult": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
+                  "description": {
+                    "description": "Description of what the tool does",
+                    "type": "string"
+                  },
+                  "input_schema": {
+                    "description": "The input schema for the tool's parameters"
+                  },
+                  "score": {
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number",
+                    "format": "float"
+                  }
+                },
+                "required": [
+                  "name",
+                  "description",
+                  "input_schema",
+                  "score"
+                ]
+              }
+            }
           },
           "annotations": {
             "readOnlyHint": true
@@ -75,7 +112,7 @@ async fn list_tools() {
         }
       ]
     }
-    "#);
+    "##);
 
     mcp_client.disconnect().await;
 }
@@ -272,7 +309,7 @@ async fn multiple_services_multiple_tools() {
 
     let tools_result = mcp_client.list_tools().await;
 
-    insta::assert_json_snapshot!(&tools_result, @r#"
+    insta::assert_json_snapshot!(&tools_result, @r##"
     {
       "tools": [
         {
@@ -292,6 +329,43 @@ async fn multiple_services_multiple_tools() {
             "required": [
               "keywords"
             ]
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "Array_of_SearchResult",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/SearchResult"
+            },
+            "$defs": {
+              "SearchResult": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
+                  "description": {
+                    "description": "Description of what the tool does",
+                    "type": "string"
+                  },
+                  "input_schema": {
+                    "description": "The input schema for the tool's parameters"
+                  },
+                  "score": {
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number",
+                    "format": "float"
+                  }
+                },
+                "required": [
+                  "name",
+                  "description",
+                  "input_schema",
+                  "score"
+                ]
+              }
+            }
           },
           "annotations": {
             "readOnlyHint": true
@@ -326,7 +400,7 @@ async fn multiple_services_multiple_tools() {
         }
       ]
     }
-    "#);
+    "##);
 
     let add_result = mcp_client
         .execute("math_service__adder", json!({ "a": 10, "b": 20 }))
@@ -372,7 +446,7 @@ async fn custom_mcp_path_with_tools() {
 
     let tools_result = mcp_client.list_tools().await;
 
-    insta::assert_json_snapshot!(&tools_result, @r#"
+    insta::assert_json_snapshot!(&tools_result, @r##"
     {
       "tools": [
         {
@@ -392,6 +466,43 @@ async fn custom_mcp_path_with_tools() {
             "required": [
               "keywords"
             ]
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "Array_of_SearchResult",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/SearchResult"
+            },
+            "$defs": {
+              "SearchResult": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
+                  "description": {
+                    "description": "Description of what the tool does",
+                    "type": "string"
+                  },
+                  "input_schema": {
+                    "description": "The input schema for the tool's parameters"
+                  },
+                  "score": {
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number",
+                    "format": "float"
+                  }
+                },
+                "required": [
+                  "name",
+                  "description",
+                  "input_schema",
+                  "score"
+                ]
+              }
+            }
           },
           "annotations": {
             "readOnlyHint": true
@@ -426,7 +537,7 @@ async fn custom_mcp_path_with_tools() {
         }
       ]
     }
-    "#);
+    "##);
 
     let result = mcp_client
         .execute("math_service__adder", json!({ "a": 7, "b": 2 }))
@@ -469,7 +580,7 @@ async fn tools_with_tls() {
     let mcp_client = server.mcp_client("/mcp").await;
     let tools_result = mcp_client.list_tools().await;
 
-    insta::assert_json_snapshot!(&tools_result, @r#"
+    insta::assert_json_snapshot!(&tools_result, @r##"
     {
       "tools": [
         {
@@ -489,6 +600,43 @@ async fn tools_with_tls() {
             "required": [
               "keywords"
             ]
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "Array_of_SearchResult",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/SearchResult"
+            },
+            "$defs": {
+              "SearchResult": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
+                  "description": {
+                    "description": "Description of what the tool does",
+                    "type": "string"
+                  },
+                  "input_schema": {
+                    "description": "The input schema for the tool's parameters"
+                  },
+                  "score": {
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number",
+                    "format": "float"
+                  }
+                },
+                "required": [
+                  "name",
+                  "description",
+                  "input_schema",
+                  "score"
+                ]
+              }
+            }
           },
           "annotations": {
             "readOnlyHint": true
@@ -523,7 +671,7 @@ async fn tools_with_tls() {
         }
       ]
     }
-    "#);
+    "##);
 
     let result = mcp_client
         .execute("math_service__adder", json!({ "a": 7, "b": 2 }))
@@ -562,7 +710,7 @@ async fn tls_downstream_service() {
     let mcp_client = server.mcp_client("/mcp").await;
 
     let tools_result = mcp_client.list_tools().await;
-    insta::assert_json_snapshot!(&tools_result, @r#"
+    insta::assert_json_snapshot!(&tools_result, @r##"
     {
       "tools": [
         {
@@ -582,6 +730,43 @@ async fn tls_downstream_service() {
             "required": [
               "keywords"
             ]
+          },
+          "outputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "title": "Array_of_SearchResult",
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/SearchResult"
+            },
+            "$defs": {
+              "SearchResult": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
+                  "description": {
+                    "description": "Description of what the tool does",
+                    "type": "string"
+                  },
+                  "input_schema": {
+                    "description": "The input schema for the tool's parameters"
+                  },
+                  "score": {
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number",
+                    "format": "float"
+                  }
+                },
+                "required": [
+                  "name",
+                  "description",
+                  "input_schema",
+                  "score"
+                ]
+              }
+            }
           },
           "annotations": {
             "readOnlyHint": true
@@ -616,7 +801,7 @@ async fn tls_downstream_service() {
         }
       ]
     }
-    "#);
+    "##);
 
     let result = mcp_client
         .execute("tls_http_service__adder", json!({ "a": 10, "b": 20 }))
@@ -677,7 +862,7 @@ async fn search_exact_matching() {
             "b"
           ]
         },
-        "score": 0.8630463
+        "score": 0.8630462884902954
       }
     ]
     "#);
@@ -731,7 +916,7 @@ async fn search_fuzzy_matching() {
             "action"
           ]
         },
-        "score": 0.6
+        "score": 0.6000000238418579
       }
     ]
     "#);
@@ -779,7 +964,7 @@ async fn search_multiple_keywords() {
             "b"
           ]
         },
-        "score": 0.6
+        "score": 0.6000000238418579
       }
     ]
     "#);
@@ -828,7 +1013,7 @@ async fn search_two() {
             "b"
           ]
         },
-        "score": 2.4077742
+        "score": 2.4077742099761963
       },
       {
         "name": "math_service__failing_tool",
@@ -837,7 +1022,7 @@ async fn search_two() {
           "type": "object",
           "properties": {}
         },
-        "score": 1.8299086
+        "score": 1.8299086093902588
       }
     ]
     "#);
@@ -885,7 +1070,7 @@ async fn search_case_insensitive() {
             "b"
           ]
         },
-        "score": 0.8630463
+        "score": 0.8630462884902954
       }
     ]
     "#);
@@ -933,7 +1118,7 @@ async fn search_by_description() {
             "b"
           ]
         },
-        "score": 0.6
+        "score": 0.6000000238418579
       }
     ]
     "#);
@@ -981,7 +1166,7 @@ async fn search_by_server_name() {
             "b"
           ]
         },
-        "score": 0.2301457
+        "score": 0.23014569282531736
       }
     ]
     "#);
@@ -1044,7 +1229,7 @@ async fn search_multiple_tools_ranking() {
           "type": "object",
           "properties": {}
         },
-        "score": 1.8299086
+        "score": 1.8299086093902588
       }
     ]
     "#);
@@ -1092,7 +1277,7 @@ async fn search_parameter_fields() {
             "b"
           ]
         },
-        "score": 0.4
+        "score": 0.4000000059604645
       }
     ]
     "#);
@@ -1163,7 +1348,7 @@ async fn search_whitespace_handling() {
             "b"
           ]
         },
-        "score": 0.6
+        "score": 0.6000000238418579
       }
     ]
     "#);
@@ -1222,7 +1407,7 @@ async fn search_tool_annotations() {
             "y"
           ]
         },
-        "score": 0.57536423
+        "score": 0.5753642320632935
       }
     ]
     "#);
@@ -1282,7 +1467,7 @@ async fn search_relevance_scoring_with_different_tools() {
             "action"
           ]
         },
-        "score": 2.4428196
+        "score": 2.442819595336914
       }
     ]
     "#);
@@ -1336,7 +1521,7 @@ async fn search_partial_word_matching() {
             "action"
           ]
         },
-        "score": 0.4
+        "score": 0.4000000059604645
       }
     ]
     "#);
@@ -1390,7 +1575,7 @@ async fn search_compound_words() {
             "operation"
           ]
         },
-        "score": 0.8630463
+        "score": 0.8630462884902954
       }
     ]
     "#);
@@ -1448,7 +1633,7 @@ async fn search_enum_values() {
             "y"
           ]
         },
-        "score": 0.4
+        "score": 0.4000000059604645
       }
     ]
     "#);
@@ -1496,7 +1681,7 @@ async fn search_deduplication_test() {
             "b"
           ]
         },
-        "score": 0.6
+        "score": 0.6000000238418579
       }
     ]
     "#);

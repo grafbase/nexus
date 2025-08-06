@@ -104,7 +104,7 @@ impl Default for McpConfig {
             path: "/mcp".to_string(),
             downstream_cache: McpDownstreamCacheConfig::default(),
             servers: BTreeMap::new(),
-            enable_structured_content: true,  // Default to true for best performance
+            enable_structured_content: true, // Default to true for best performance
         }
     }
 }

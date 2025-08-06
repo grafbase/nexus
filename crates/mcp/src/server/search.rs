@@ -12,7 +12,7 @@ pub struct SearchParameters {
     pub keywords: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct SearchResult {
     /// The name of the tool (format: "server__tool")
     pub name: String,
@@ -109,6 +109,14 @@ pub fn rmcp_tool() -> Tool {
 
     let search_schema = serde_json::to_value(params).unwrap().as_object().unwrap().clone();
 
+    // Generate output schema for array of SearchResult
+    let output_schema_json = schemars::schema_for!(Vec<SearchResult>);
+    let output_schema = serde_json::to_value(output_schema_json)
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .clone();
+
     let description = indoc! {r#"
        Search for relevant tools. A list of matching tools with their\nscore is returned with a map of input fields and their types.
 
@@ -122,7 +130,7 @@ pub fn rmcp_tool() -> Tool {
         name: "search".into(),
         description: Some(description.into()),
         input_schema: Arc::new(search_schema),
-        output_schema: None,
+        output_schema: Some(Arc::new(output_schema)),
         annotations: Some(ToolAnnotations::new().read_only(true)),
     }
 }
