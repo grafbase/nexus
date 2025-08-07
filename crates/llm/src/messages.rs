@@ -339,3 +339,96 @@ pub(crate) struct ModelsResponse {
     /// Models are prefixed with their provider name (e.g., "openai/gpt-4").
     pub(crate) data: Vec<Model>,
 }
+
+/// Represents a chunk in a streaming chat completion response.
+///
+/// When streaming is enabled, the response is sent as a series of chunks
+/// via Server-Sent Events (SSE). Each chunk contains a delta of the message
+/// being generated. This format is compatible with OpenAI's streaming API.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ChatCompletionChunk {
+    /// Unique identifier for this completion stream.
+    ///
+    /// Remains consistent across all chunks in the same stream.
+    pub(crate) id: String,
+
+    /// The object type, always "chat.completion.chunk" for streaming responses.
+    pub(crate) object: String,
+
+    /// Unix timestamp (seconds since epoch) when the chunk was created.
+    pub(crate) created: u64,
+
+    /// The model that is generating the completion.
+    ///
+    /// Includes the provider prefix (e.g., "openai/gpt-4").
+    pub(crate) model: String,
+
+    /// The delta choices for this chunk.
+    ///
+    /// Usually contains one choice, but can have multiple if n > 1 was requested.
+    pub(crate) choices: Vec<ChatChoiceDelta>,
+
+    /// System fingerprint for the model configuration.
+    ///
+    /// Optional field that some providers include for reproducibility.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) system_fingerprint: Option<String>,
+}
+
+/// A single choice delta in a streaming response chunk.
+///
+/// Represents an incremental update to a choice being generated.
+/// The client should concatenate these deltas to build the complete message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ChatChoiceDelta {
+    /// Zero-based index of this choice in the list of choices.
+    pub(crate) index: u32,
+
+    /// The incremental message content for this chunk.
+    pub(crate) delta: ChatMessageDelta,
+
+    /// The reason why the model stopped generating tokens.
+    ///
+    /// Only present in the final chunk of a stream for each choice.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) finish_reason: Option<FinishReason>,
+
+    /// Log probability information for this chunk.
+    ///
+    /// Only present if requested in the completion parameters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) logprobs: Option<serde_json::Value>,
+}
+
+/// Incremental message content in a streaming chunk.
+///
+/// Contains partial content that should be appended to the message
+/// being constructed. The role is typically only present in the first
+/// chunk of a stream.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ChatMessageDelta {
+    /// The role of the message sender.
+    ///
+    /// Usually only present in the first chunk to indicate the assistant role.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) role: Option<ChatRole>,
+
+    /// The incremental text content to append.
+    ///
+    /// Can be an empty string, especially in the first or last chunks.
+    /// Clients should concatenate all non-None content values.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) content: Option<String>,
+
+    /// Tool calls being constructed incrementally.
+    ///
+    /// Used when the model is invoking functions or tools.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tool_calls: Option<Vec<serde_json::Value>>,
+
+    /// Function call being constructed incrementally.
+    ///
+    /// Deprecated in favor of tool_calls but still supported for compatibility.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) function_call: Option<serde_json::Value>,
+}

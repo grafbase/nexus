@@ -13,6 +13,7 @@ mod error;
 mod messages;
 mod provider;
 mod server;
+mod sse;
 
 use error::LlmError;
 use server::LlmServer;

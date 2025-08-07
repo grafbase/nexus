@@ -13,9 +13,10 @@ repository = "https://github.com/grafbase/nexus"
 anyhow = "1.0.98"
 ascii = "1.1.0"
 async-trait = "0.1.83"
-axum = "0.8.4"
+axum = { version = "0.8.4", features = ["macros"] }
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 base64 = "0.22.1"
+bytes = "1.9.0"
 chrono = "0.4.41"
 clap = "4.5.41"
 config = { path = "crates/config" }
