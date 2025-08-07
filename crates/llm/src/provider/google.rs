@@ -8,8 +8,11 @@ use secrecy::ExposeSecret;
 
 use self::{
     input::GoogleGenerateRequest,
-    output::{GoogleGenerateResponse, GoogleModelsResponse},
+    output::{GoogleGenerateResponse, GoogleModelsResponse, GoogleStreamChunk},
 };
+
+use eventsource_stream::Eventsource;
+use futures::StreamExt;
 
 use crate::{
     error::LlmError,
@@ -55,10 +58,7 @@ impl GoogleProvider {
 #[async_trait]
 impl Provider for GoogleProvider {
     async fn chat_completion(&self, request: ChatCompletionRequest) -> crate::Result<ChatCompletionResponse> {
-        // Check if streaming was requested
-        if request.stream.unwrap_or(false) {
-            return Err(LlmError::StreamingNotSupported);
-        }
+        // Note: Streaming is handled by chat_completion_stream()
 
         // Extract the model name and construct the URL
         let model_name = extract_model_from_full_name(&request.model);
@@ -108,7 +108,7 @@ impl Provider for GoogleProvider {
         })?;
 
         // Try to parse the response
-        let google_response: GoogleGenerateResponse = serde_json::from_str(&response_text).map_err(|e| {
+        let google_response: GoogleGenerateResponse = sonic_rs::from_str(&response_text).map_err(|e| {
             log::error!("Failed to parse Google chat completion response: {e}");
             log::error!("Raw response that failed to parse: {response_text}");
             LlmError::InternalError(None)
@@ -159,7 +159,7 @@ impl Provider for GoogleProvider {
         })?;
 
         // Try to parse the response
-        let models_response: GoogleModelsResponse = serde_json::from_str(&response_text).map_err(|e| {
+        let models_response: GoogleModelsResponse = sonic_rs::from_str(&response_text).map_err(|e| {
             log::error!("Failed to parse Google models list response: {e}");
             log::error!("Raw response that failed to parse: {response_text}");
             LlmError::InternalError(None)
@@ -183,6 +183,83 @@ impl Provider for GoogleProvider {
             .collect::<Vec<Model>>();
 
         Ok(chat_models)
+    }
+
+    async fn chat_completion_stream(
+        &self,
+        request: ChatCompletionRequest,
+    ) -> crate::Result<crate::provider::ChatCompletionStream> {
+        // Extract the model name and construct the URL with streaming endpoint
+        let model_name = extract_model_from_full_name(&request.model);
+        let url = format!(
+            "{}/models/{}:streamGenerateContent?alt=sse&key={}",
+            self.base_url, model_name, self.api_key
+        );
+
+        // Convert to Google format
+        let google_request = GoogleGenerateRequest::from(request);
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&google_request)
+            .send()
+            .await
+            .map_err(|e| LlmError::ConnectionError(format!("Failed to send streaming request to Google: {e}")))?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            log::error!("Google streaming API error ({status}): {error_text}");
+
+            return Err(match status.as_u16() {
+                401 => LlmError::AuthenticationFailed(error_text),
+                403 => LlmError::InsufficientQuota(error_text),
+                404 => LlmError::ModelNotFound(error_text),
+                429 => LlmError::RateLimitExceeded(error_text),
+                400 => LlmError::InvalidRequest(error_text),
+                500 => LlmError::InternalError(Some(error_text)),
+                _ => LlmError::ProviderApiError {
+                    status: status.as_u16(),
+                    message: error_text,
+                },
+            });
+        }
+
+        // Convert response bytes stream to SSE event stream
+        let byte_stream = response.bytes_stream();
+        let event_stream = byte_stream.eventsource();
+
+        let provider_name = self.name.clone();
+
+        // Transform the SSE event stream into ChatCompletionChunk stream
+        let chunk_stream = event_stream.filter_map(move |event| {
+            let provider = provider_name.clone();
+            let model = model_name.clone();
+
+            async move {
+                // Handle SSE parsing errors
+                let Ok(event) = event else {
+                    log::warn!("SSE parsing error in Google stream");
+                    return None;
+                };
+
+                // Parse the JSON chunk
+                let Ok(chunk) = sonic_rs::from_str::<GoogleStreamChunk<'_>>(&event.data) else {
+                    log::warn!("Failed to parse Google streaming chunk");
+                    return None;
+                };
+
+                Some(Ok(chunk.into_chunk(&provider, &model)))
+            }
+        });
+
+        Ok(Box::pin(chunk_stream))
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
     }
 
     fn name(&self) -> &str {

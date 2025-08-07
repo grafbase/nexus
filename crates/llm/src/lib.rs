@@ -1,19 +1,19 @@
-use std::sync::Arc;
+use std::{convert::Infallible, sync::Arc};
 
 use axum::{
     Router,
     extract::{Json, State},
-    response::IntoResponse,
+    response::{IntoResponse, Sse, sse::Event},
     routing::{get, post},
 };
 use config::LlmConfig;
+use futures::StreamExt;
 use messages::ChatCompletionRequest;
 
 mod error;
 mod messages;
 mod provider;
 mod server;
-mod sse;
 
 use error::LlmError;
 use server::LlmServer;
@@ -37,21 +37,58 @@ pub async fn router(config: LlmConfig) -> anyhow::Result<Router> {
 }
 
 /// Handle chat completion requests.
+///
+/// This endpoint supports both streaming and non-streaming responses.
+/// When `stream: true` is set in the request, the response is sent as
+/// Server-Sent Events (SSE). Otherwise, a standard JSON response is returned.
 async fn chat_completions(
     State(server): State<Arc<LlmServer>>,
     Json(request): Json<ChatCompletionRequest>,
 ) -> Result<impl IntoResponse> {
     log::debug!("Received chat completion request for model: {}", request.model);
     log::debug!("Request has {} messages", request.messages.len());
+    log::debug!("Streaming: {}", request.stream.unwrap_or(false));
 
-    let response = server.completions(request).await?;
+    // Check if streaming is requested
+    if request.stream.unwrap_or(false) {
+        let stream = server.completions_stream(request).await?;
 
-    log::debug!(
-        "Chat completion successful, returning response with {} choices",
-        response.choices.len()
-    );
+        let event_stream = stream.map(move |result| {
+            let event = match result {
+                Ok(chunk) => {
+                    let json = sonic_rs::to_string(&chunk).unwrap_or_else(|e| {
+                        log::error!("Failed to serialize chunk: {e}");
+                        r#"{"error":"serialization failed"}"#.to_string()
+                    });
 
-    Ok(Json(response))
+                    Event::default().data(json)
+                }
+                Err(e) => {
+                    log::error!("Stream error: {e}");
+                    Event::default().data(format!(r#"{{"error":"{e}"}}"#))
+                }
+            };
+
+            Ok::<_, Infallible>(event)
+        });
+
+        let with_done = event_stream.chain(futures::stream::once(async {
+            Ok::<_, Infallible>(Event::default().data("[DONE]"))
+        }));
+
+        log::debug!("Returning streaming response");
+        Ok(Sse::new(with_done).into_response())
+    } else {
+        // Non-streaming response
+        let response = server.completions(request).await?;
+
+        log::debug!(
+            "Chat completion successful, returning response with {} choices",
+            response.choices.len()
+        );
+
+        Ok(Json(response).into_response())
+    }
 }
 
 /// Handle list models requests.

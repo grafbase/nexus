@@ -4,18 +4,20 @@ mod output;
 use async_trait::async_trait;
 use axum::http::HeaderMap;
 use config::OpenAiConfig;
+use eventsource_stream::Eventsource;
+use futures::StreamExt;
 use reqwest::{Client, header::AUTHORIZATION};
 use secrecy::ExposeSecret;
 
 use self::{
     input::OpenAIRequest,
-    output::{OpenAIModelsResponse, OpenAIResponse},
+    output::{OpenAIModelsResponse, OpenAIResponse, OpenAIStreamChunk},
 };
 
 use crate::{
     error::LlmError,
     messages::{ChatCompletionRequest, ChatCompletionResponse, Model},
-    provider::Provider,
+    provider::{ChatCompletionStream, Provider},
 };
 
 const DEFAULT_OPENAI_API_URL: &str = "https://api.openai.com/v1";
@@ -62,10 +64,7 @@ impl OpenAIProvider {
 #[async_trait]
 impl Provider for OpenAIProvider {
     async fn chat_completion(&self, request: ChatCompletionRequest) -> crate::Result<ChatCompletionResponse> {
-        // Check if streaming was requested and return error if so
-        if request.stream.unwrap_or(false) {
-            return Err(LlmError::StreamingNotSupported);
-        }
+        // Note: Streaming is handled by chat_completion_stream()
 
         let url = format!("{}/chat/completions", self.base_url);
 
@@ -112,7 +111,7 @@ impl Provider for OpenAIProvider {
         })?;
 
         // Try to parse the response
-        let openai_response: OpenAIResponse = serde_json::from_str(&response_text).map_err(|e| {
+        let openai_response: OpenAIResponse = sonic_rs::from_str(&response_text).map_err(|e| {
             log::error!("Failed to parse OpenAI chat completion response: {e}");
             log::error!("Raw response that failed to parse: {response_text}");
             LlmError::InternalError(None)
@@ -156,7 +155,7 @@ impl Provider for OpenAIProvider {
         })?;
 
         // Try to parse the response
-        let models_response: OpenAIModelsResponse = serde_json::from_str(&response_text).map_err(|e| {
+        let models_response: OpenAIModelsResponse = sonic_rs::from_str(&response_text).map_err(|e| {
             log::error!("Failed to parse OpenAI models list response: {e}");
             log::error!("Raw response that failed to parse: {response_text}");
             LlmError::InternalError(None)
@@ -215,6 +214,80 @@ impl Provider for OpenAIProvider {
         );
 
         Ok(chat_models)
+    }
+
+    async fn chat_completion_stream(&self, request: ChatCompletionRequest) -> crate::Result<ChatCompletionStream> {
+        let url = format!("{}/chat/completions", self.base_url);
+
+        let mut openai_request = OpenAIRequest::from(request);
+        openai_request.stream = true;
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&openai_request)
+            .send()
+            .await
+            .map_err(|e| LlmError::ConnectionError(format!("Failed to send streaming request to OpenAI: {e}")))?;
+
+        let status = response.status();
+
+        // Check for HTTP errors before attempting to stream
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            log::error!("OpenAI streaming API error ({status}): {error_text}");
+
+            return Err(match status.as_u16() {
+                401 => LlmError::AuthenticationFailed(error_text),
+                403 => LlmError::InsufficientQuota(error_text),
+                404 => LlmError::ModelNotFound(error_text),
+                429 => LlmError::RateLimitExceeded(error_text),
+                400 => LlmError::InvalidRequest(error_text),
+                500 => LlmError::InternalError(Some(error_text)),
+                _ => LlmError::ProviderApiError {
+                    status: status.as_u16(),
+                    message: error_text,
+                },
+            });
+        }
+
+        // Convert response bytes stream to SSE event stream
+        let byte_stream = response.bytes_stream();
+        let event_stream = byte_stream.eventsource();
+        let provider_name = self.name.clone();
+
+        // Transform the SSE event stream into ChatCompletionChunk stream
+        let chunk_stream = event_stream.filter_map(move |event| {
+            let provider = provider_name.clone();
+
+            async move {
+                // Handle SSE parsing errors
+                let Ok(event) = event else {
+                    // SSE parsing error - log and skip
+                    log::warn!("SSE parsing error in OpenAI stream");
+                    return None;
+                };
+
+                // Check for end marker
+                if event.data == "[DONE]" {
+                    return None;
+                }
+
+                // Parse the JSON chunk
+                let Ok(chunk) = sonic_rs::from_str::<OpenAIStreamChunk<'_>>(&event.data) else {
+                    log::warn!("Failed to parse OpenAI streaming chunk");
+                    return None;
+                };
+
+                Some(Ok(chunk.into_chunk(&provider)))
+            }
+        });
+
+        Ok(Box::pin(chunk_stream))
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
     }
 
     fn name(&self) -> &str {

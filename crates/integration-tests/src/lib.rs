@@ -344,12 +344,77 @@ impl LlmTestClient {
         self.completions(request).await
     }
 
-    /// Send a chat completion request and return the raw response (for error testing)
-    pub async fn completions_raw(&self, request: serde_json::Value) -> reqwest::Response {
+    /// Send a chat completion request and return the raw response
+    async fn send_completion_request(&self, request: serde_json::Value) -> reqwest::Response {
         self.client
             .post(&format!("{}/v1/chat/completions", self.base_path), &request)
             .await
             .unwrap()
+    }
+
+    /// Send a completion request expecting an error response
+    pub async fn completions_error(&self, request: serde_json::Value) -> reqwest::Response {
+        self.send_completion_request(request).await
+    }
+
+    /// Send a streaming chat completion request and collect all chunks as JSON values
+    pub async fn stream_completions(&self, request: serde_json::Value) -> Vec<serde_json::Value> {
+        use eventsource_stream::Eventsource;
+        use futures::StreamExt;
+
+        let response = self.send_completion_request(request).await;
+
+        assert_eq!(response.status(), 200);
+        assert_eq!(response.headers().get("content-type").unwrap(), "text/event-stream");
+
+        // Convert the response bytes stream to SSE event stream
+        let byte_stream = response.bytes_stream();
+        let event_stream = byte_stream.eventsource();
+
+        // Transform SSE events to JSON values
+        let stream = event_stream.filter_map(|event| async move {
+            match event {
+                Ok(event) => {
+                    // Skip empty events and [DONE] marker
+                    if event.data.is_empty() || event.data == "[DONE]" {
+                        None
+                    } else {
+                        // Parse as JSON Value
+                        serde_json::from_str::<serde_json::Value>(&event.data).ok()
+                    }
+                }
+                Err(_) => None,
+            }
+        });
+
+        futures::pin_mut!(stream);
+
+        let mut chunks = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            chunks.push(chunk);
+        }
+
+        chunks
+    }
+
+    /// Send a streaming request and collect the accumulated content
+    pub async fn stream_completions_content(&self, request: serde_json::Value) -> String {
+        let chunks = self.stream_completions(request).await;
+
+        let mut content = String::new();
+        for chunk in chunks {
+            if let Some(delta_content) = chunk
+                .get("choices")
+                .and_then(|c| c.get(0))
+                .and_then(|choice| choice.get("delta"))
+                .and_then(|delta| delta.get("content"))
+                .and_then(|c| c.as_str())
+            {
+                content.push_str(delta_content);
+            }
+        }
+
+        content
     }
 }
 

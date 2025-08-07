@@ -1,3 +1,4 @@
+use indoc::indoc;
 use integration_tests::{TestServer, llms::AnthropicMock};
 use serde_json::json;
 
@@ -247,6 +248,117 @@ async fn with_parameters() {
         "completion_tokens": 15,
         "total_tokens": 25
       }
+    }
+    "#);
+}
+
+#[tokio::test]
+async fn streaming_with_missing_fields() {
+    let mut builder = TestServer::builder();
+    builder
+        .spawn_llm(
+            AnthropicMock::new("anthropic")
+                .with_streaming()
+                .with_response("test", "This is a test response"),
+        )
+        .await;
+
+    let config = indoc! {r#"
+        [llm]
+        enabled = true
+    "#};
+
+    let server = builder.build(config).await;
+    let llm = server.llm_client("/llm");
+
+    let request = json!({
+        "model": "anthropic/claude-3-5-sonnet-20241022",
+        "messages": [{"role": "user", "content": "This is a test"}],
+        "stream": true
+    });
+
+    let chunks = llm.stream_completions(request).await;
+
+    // Should have multiple chunks (initial, content, final with usage)
+    assert!(chunks.len() >= 3);
+
+    // Verify last chunk structure with usage data
+    let last_chunk = chunks.last().unwrap();
+    insta::assert_json_snapshot!(last_chunk, {
+        ".id" => "[id]",
+        ".created" => "[created]"
+    }, @r#"
+    {
+      "id": "[id]",
+      "object": "chat.completion.chunk",
+      "created": "[created]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {},
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 10,
+        "completion_tokens": 15,
+        "total_tokens": 25
+      }
+    }
+    "#);
+}
+
+#[tokio::test]
+async fn streaming_json_snapshots() {
+    let mut builder = TestServer::builder();
+    builder
+        .spawn_llm(AnthropicMock::new("anthropic").with_streaming())
+        .await;
+
+    let config = indoc! {r#"
+        [llm]
+        enabled = true
+    "#};
+
+    let server = builder.build(config).await;
+    let llm = server.llm_client("/llm");
+
+    let request = json!({
+        "model": "anthropic/claude-3-opus-20240229",
+        "messages": [{"role": "user", "content": "Hello"}],
+        "stream": true
+    });
+
+    let chunks = llm.stream_completions(request).await;
+
+    // Should have multiple chunks
+    assert!(chunks.len() >= 3); // start, content, end
+
+    // Check structure of a content chunk
+    let content_chunk = chunks
+        .iter()
+        .find(|c| c["choices"][0]["delta"]["content"].is_string())
+        .expect("Should have a content chunk");
+
+    insta::assert_json_snapshot!(content_chunk, {
+        ".id" => "[id]",
+        ".created" => "[created]",
+        ".choices[0].delta.content" => "[content]"
+    }, @r#"
+    {
+      "id": "[id]",
+      "object": "chat.completion.chunk",
+      "created": "[created]",
+      "model": "anthropic/claude-3-opus-20240229",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "content": "[content]"
+          }
+        }
+      ]
     }
     "#);
 }

@@ -69,6 +69,13 @@ pub(super) struct AnthropicRequest {
     /// you can use the stop_sequences parameter.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stop_sequences: Option<Vec<String>>,
+
+    /// Whether to stream the response using server-sent events.
+    ///
+    /// When true, the response will be streamed incrementally as it's generated.
+    /// Default is false for non-streaming responses.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream: Option<bool>,
 }
 
 /// Represents a message in the conversation with Claude.
@@ -127,6 +134,7 @@ impl From<ChatCompletionRequest> for AnthropicRequest {
             top_p: request.top_p,
             top_k: None,
             stop_sequences: request.stop,
+            stream: None,
         }
     }
 }

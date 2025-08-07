@@ -4,12 +4,14 @@ mod output;
 use async_trait::async_trait;
 use axum::http::HeaderMap;
 use config::AnthropicConfig;
+use eventsource_stream::Eventsource;
+use futures::StreamExt;
 use reqwest::Client;
 use secrecy::ExposeSecret;
 
 use self::{
     input::AnthropicRequest,
-    output::{AnthropicModelsResponse, AnthropicResponse},
+    output::{AnthropicModelsResponse, AnthropicResponse, AnthropicStreamEvent, AnthropicStreamProcessor},
 };
 
 use crate::{
@@ -119,7 +121,7 @@ impl Provider for AnthropicProvider {
         })?;
 
         // Try to parse the response
-        let anthropic_response: AnthropicResponse = serde_json::from_str(&response_text).map_err(|e| {
+        let anthropic_response: AnthropicResponse = sonic_rs::from_str(&response_text).map_err(|e| {
             log::error!("Failed to parse Anthropic chat completion response: {e}");
             log::error!("Raw response that failed to parse: {response_text}");
             LlmError::InternalError(None)
@@ -164,13 +166,92 @@ impl Provider for AnthropicProvider {
         })?;
 
         // Try to parse the response
-        let models_response: AnthropicModelsResponse = serde_json::from_str(&response_text).map_err(|e| {
+        let models_response: AnthropicModelsResponse = sonic_rs::from_str(&response_text).map_err(|e| {
             log::error!("Failed to parse Anthropic models list response: {e}");
             log::error!("Raw response that failed to parse: {response_text}");
             LlmError::InternalError(None)
         })?;
 
         Ok(models_response.data.into_iter().map(Into::into).collect())
+    }
+
+    async fn chat_completion_stream(
+        &self,
+        request: ChatCompletionRequest,
+    ) -> crate::Result<crate::provider::ChatCompletionStream> {
+        let url = format!("{}/messages", self.base_url);
+
+        // Convert to Anthropic format with streaming enabled
+        let mut anthropic_request = AnthropicRequest::from(request);
+        anthropic_request.stream = Some(true);
+
+        let response = self
+            .client
+            .post(&url)
+            .json(&anthropic_request)
+            .send()
+            .await
+            .map_err(|e| LlmError::ConnectionError(format!("Failed to send streaming request to Anthropic: {e}")))?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            log::error!("Anthropic streaming API error ({status}): {error_text}");
+
+            return Err(match status.as_u16() {
+                401 => LlmError::AuthenticationFailed(error_text),
+                403 => LlmError::InsufficientQuota(error_text),
+                404 => LlmError::ModelNotFound(error_text),
+                429 => LlmError::RateLimitExceeded(error_text),
+                400 => LlmError::InvalidRequest(error_text),
+                500 => LlmError::InternalError(Some(error_text)),
+                _ => LlmError::ProviderApiError {
+                    status: status.as_u16(),
+                    message: error_text,
+                },
+            });
+        }
+
+        // Convert response bytes stream to SSE event stream
+        let byte_stream = response.bytes_stream();
+        let event_stream = byte_stream.eventsource();
+
+        let provider_name = self.name.clone();
+
+        // Use unfold to maintain state with AnthropicStreamProcessor
+        let chunk_stream = futures::stream::unfold(
+            (Box::pin(event_stream), AnthropicStreamProcessor::new(provider_name)),
+            |(mut stream, mut processor)| async move {
+                loop {
+                    let event = stream.next().await?;
+
+                    let Ok(event) = event else {
+                        log::warn!("SSE parsing error in Anthropic stream");
+                        continue;
+                    };
+
+                    let Ok(anthropic_event) = sonic_rs::from_str::<AnthropicStreamEvent<'_>>(&event.data) else {
+                        log::warn!("Failed to parse Anthropic streaming event");
+                        continue;
+                    };
+
+                    if let AnthropicStreamEvent::Error { error } = &anthropic_event {
+                        log::error!("Anthropic stream error event: {} - {}", error.error_type, error.message);
+                    }
+
+                    if let Some(chunk) = processor.process_event(anthropic_event) {
+                        return Some((Ok(chunk), (stream, processor)));
+                    }
+                }
+            },
+        );
+
+        Ok(Box::pin(chunk_stream))
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
     }
 
     fn name(&self) -> &str {

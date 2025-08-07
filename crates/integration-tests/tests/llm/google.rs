@@ -1,3 +1,4 @@
+use indoc::indoc;
 use integration_tests::{TestServer, llms::GoogleMock};
 use serde_json::json;
 
@@ -145,31 +146,158 @@ async fn handles_system_messages() {
 }
 
 #[tokio::test]
-async fn rejects_streaming() {
+async fn handles_escape_sequences_in_streaming() {
     let mut builder = TestServer::builder();
-    builder.spawn_llm(GoogleMock::new("google")).await;
 
-    let server = builder.build("").await;
+    // Create a response with newlines that need escape sequence handling
+    let text_with_newlines =
+        "Gemini response here.\n\nThis has multiple paragraphs.\n\nEscape sequences should work correctly.";
+
+    builder
+        .spawn_llm(GoogleMock::new("google").with_streaming_text_with_newlines(text_with_newlines))
+        .await;
+
+    let config = indoc! {r#"
+        [llm]
+        enabled = true
+    "#};
+
+    let server = builder.build(config).await;
     let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "google/gemini-1.5-flash",
-        "messages": [
-            {
-                "role": "user",
-                "content": "Hello!"
-            }
-        ],
+        "messages": [{"role": "user", "content": "Test"}],
         "stream": true
     });
 
-    let response = llm.completions_raw(request).await;
-    let status = response.status();
-    let body = response.text().await.unwrap();
+    let full_content = llm.stream_completions_content(request).await;
 
-    // Should return 400 because streaming is an invalid request (not supported)
-    assert_eq!(status, 400);
-    insta::assert_snapshot!(body, @r#"{"error":{"message":"Streaming is not yet supported. Please set stream=false or omit the parameter.","type":"invalid_request_error","code":400}}"#);
+    // Verify we got the complete text including the newlines
+    insta::assert_snapshot!(full_content, @r"
+    Gemini response here.
+
+    This has multiple paragraphs.
+
+    Escape sequences should work correctly.
+    ");
+}
+
+#[tokio::test]
+async fn streaming_with_long_content() {
+    let mut builder = TestServer::builder();
+    builder
+        .spawn_llm(GoogleMock::new("google").with_streaming().with_response(
+            "describe",
+            "He's a grizzled war veteran, a clone, and a master of infiltration.",
+        ))
+        .await;
+
+    let config = indoc! {r#"
+        [llm]
+        enabled = true
+    "#};
+
+    let server = builder.build(config).await;
+    let llm = server.llm_client("/llm");
+
+    let request = json!({
+        "model": "google/gemini-1.5-flash",
+        "messages": [{"role": "user", "content": "Please describe Solid Snake"}],
+        "stream": true
+    });
+
+    // Just verify we can collect the content properly
+    let content = llm.stream_completions_content(request).await;
+    insta::assert_snapshot!(content, @"He's a grizzled war veteran, a clone, and a master of infiltration.");
+}
+
+#[tokio::test]
+async fn streaming_with_many_small_chunks() {
+    let mut builder = TestServer::builder();
+
+    // Simulate many small chunks like real Google streaming
+    let chunks = vec![
+        "Here's".to_string(),
+        " the".to_string(),
+        " FizzBuzz".to_string(),
+        " problem".to_string(),
+        " solved".to_string(),
+        " in".to_string(),
+        " Rust".to_string(),
+        ":\n\n".to_string(),
+        "```rust".to_string(),
+        "\nfn".to_string(),
+        " main()".to_string(),
+        " {".to_string(),
+        "\n    for".to_string(),
+        " i".to_string(),
+        " in".to_string(),
+        " 1..=100".to_string(),
+        " {".to_string(),
+        "\n        if".to_string(),
+        " i % 15 == 0".to_string(),
+        " {".to_string(),
+        "\n            println!(\"FizzBuzz\");".to_string(),
+        "\n        }".to_string(),
+        " else if".to_string(),
+        " i % 3 == 0".to_string(),
+        " {".to_string(),
+        "\n            println!(\"Fizz\");".to_string(),
+        "\n        }".to_string(),
+        " else if".to_string(),
+        " i % 5 == 0".to_string(),
+        " {".to_string(),
+        "\n            println!(\"Buzz\");".to_string(),
+        "\n        }".to_string(),
+        " else".to_string(),
+        " {".to_string(),
+        "\n            println!(\"{}\", i);".to_string(),
+        "\n        }".to_string(),
+        "\n    }".to_string(),
+        "\n}".to_string(),
+        "\n```".to_string(),
+    ];
+
+    builder
+        .spawn_llm(GoogleMock::new("google").with_streaming_chunks(chunks))
+        .await;
+
+    let config = indoc! {r#"
+        [llm]
+        enabled = true
+    "#};
+
+    let server = builder.build(config).await;
+    let llm = server.llm_client("/llm");
+
+    let request = json!({
+        "model": "google/gemini-1.5-flash",
+        "messages": [{"role": "user", "content": "Test"}],
+        "stream": true
+    });
+
+    let full_content = llm.stream_completions_content(request).await;
+
+    insta::assert_snapshot!(full_content, @r#"
+    Here's the FizzBuzz problem solved in Rust:
+
+    ```rust
+    fn main() {
+        for i in 1..=100 {
+            if i % 15 == 0 {
+                println!("FizzBuzz");
+            } else if i % 3 == 0 {
+                println!("Fizz");
+            } else if i % 5 == 0 {
+                println!("Buzz");
+            } else {
+                println!("{}", i);
+            }
+        }
+    }
+    ```
+    "#);
 }
 
 #[tokio::test]
@@ -343,6 +471,51 @@ async fn custom_response() {
         "completion_tokens": 15,
         "total_tokens": 25
       }
+    }
+    "#);
+}
+
+#[tokio::test]
+async fn streaming_json_snapshots() {
+    let mut builder = TestServer::builder();
+    builder.spawn_llm(GoogleMock::new("google").with_streaming()).await;
+
+    let config = indoc! {r#"
+        [llm]
+        enabled = true
+    "#};
+
+    let server = builder.build(config).await;
+    let llm = server.llm_client("/llm");
+
+    let request = json!({
+        "model": "google/gemini-pro",
+        "messages": [{"role": "user", "content": "Hello"}],
+        "stream": true
+    });
+
+    let chunks = llm.stream_completions(request).await;
+
+    // Verify chunks are in OpenAI format
+    insta::assert_json_snapshot!(chunks[0], {
+        ".id" => "[id]",
+        ".created" => "[created]",
+        ".choices[0].delta.content" => "[content]"
+    }, @r#"
+    {
+      "id": "[id]",
+      "object": "chat.completion.chunk",
+      "created": "[created]",
+      "model": "google/gemini-pro",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "role": "assistant",
+            "content": "[content]"
+          }
+        }
+      ]
     }
     "#);
 }

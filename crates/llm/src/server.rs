@@ -12,7 +12,9 @@ use mini_moka::sync::Cache;
 use crate::{
     error::LlmError,
     messages::{ChatCompletionRequest, ChatCompletionResponse, ModelsResponse, ObjectType},
-    provider::{Provider, anthropic::AnthropicProvider, google::GoogleProvider, openai::OpenAIProvider},
+    provider::{
+        ChatCompletionStream, Provider, anthropic::AnthropicProvider, google::GoogleProvider, openai::OpenAIProvider,
+    },
 };
 
 // Cache models for 5 minutes
@@ -69,10 +71,7 @@ impl LlmServer {
 
     /// Process a chat completion request.
     pub async fn completions(&self, mut request: ChatCompletionRequest) -> crate::Result<ChatCompletionResponse> {
-        // Check if streaming was requested
-        if request.stream.unwrap_or(false) {
-            return Err(LlmError::StreamingNotSupported);
-        }
+        // Note: Streaming is handled by completions_stream(), this method is for non-streaming only
 
         // Extract provider name from the model string (format: "provider/model")
         let Some((provider_name, model_name)) = request.model.split_once('/') else {
@@ -98,6 +97,53 @@ impl LlmServer {
         response.model = original_model;
 
         Ok(response)
+    }
+
+    /// Process a streaming chat completion request.
+    ///
+    /// Returns a stream of completion chunks that are sent incrementally as the
+    /// model generates the response. The stream is prefixed with the provider name
+    /// to maintain consistency with the non-streaming API.
+    pub async fn completions_stream(&self, mut request: ChatCompletionRequest) -> crate::Result<ChatCompletionStream> {
+        // Extract provider name from the model string (format: "provider/model")
+        let Some((provider_name, model_name)) = request.model.split_once('/') else {
+            return Err(LlmError::InvalidModelFormat(request.model.clone()));
+        };
+
+        let Some(provider) = self.get_provider(provider_name) else {
+            log::error!(
+                "Provider '{provider_name}' not found. Available providers: [{providers}]",
+                providers = self.shared.providers.iter().map(|p| p.name()).join(", ")
+            );
+
+            return Err(LlmError::ProviderNotFound(provider_name.to_string()));
+        };
+
+        // Check if provider supports streaming
+        if !provider.supports_streaming() {
+            log::debug!("Provider '{provider_name}' does not support streaming");
+            return Err(LlmError::StreamingNotSupported);
+        }
+
+        // Store the original model name for later
+        let original_model = request.model.clone();
+
+        // Strip the provider prefix from the model name for the provider
+        request.model = model_name.to_string();
+
+        // Get the stream from the provider
+        let stream = provider.chat_completion_stream(request).await?;
+
+        // Transform the stream to restore the full model name with prefix
+        let transformed_stream = stream.map(move |chunk_result| {
+            chunk_result.map(|mut chunk| {
+                // Restore the full model name with provider prefix
+                chunk.model = original_model.clone();
+                chunk
+            })
+        });
+
+        Ok(Box::pin(transformed_stream))
     }
 
     /// List available models.

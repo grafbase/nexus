@@ -1,6 +1,11 @@
+use std::borrow::Cow;
+
 use serde::{Deserialize, Serialize};
 
-use crate::messages::{ChatChoice, ChatCompletionResponse, ChatMessage, ChatRole, Model, ObjectType, Usage};
+use crate::messages::{
+    ChatChoice, ChatChoiceDelta, ChatCompletionChunk, ChatCompletionResponse, ChatMessage, ChatMessageDelta, ChatRole,
+    Model, ObjectType, Usage,
+};
 
 /// Reason why the model stopped generating tokens.
 ///
@@ -109,15 +114,15 @@ pub(super) struct GoogleCandidate {
 ///
 /// Indicates the probability that content is harmful for a specific category.
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 pub(super) struct GoogleSafetyRating {
     /// The category of potential harm.
     ///
     /// Categories include:
     /// - HARM_CATEGORY_HARASSMENT
-    /// - HARM_CATEGORY_HATE_SPEECH  
+    /// - HARM_CATEGORY_HATE_SPEECH
     /// - HARM_CATEGORY_SEXUALLY_EXPLICIT
     /// - HARM_CATEGORY_DANGEROUS_CONTENT
+    #[allow(dead_code)]
     category: String,
 
     /// The probability level of harm.
@@ -127,6 +132,7 @@ pub(super) struct GoogleSafetyRating {
     /// - LOW: Low probability of harm
     /// - MEDIUM: Medium probability of harm
     /// - HIGH: High probability of harm
+    #[allow(dead_code)]
     probability: String,
 }
 
@@ -266,6 +272,197 @@ impl From<GoogleModel> for Model {
             object: ObjectType::Model,
             created: 0, // Google doesn't provide creation timestamps
             owned_by: "google".to_string(),
+        }
+    }
+}
+
+// Streaming types for Google Gemini SSE responses
+
+/// Google streaming chunk format with borrowed strings for zero-copy parsing.
+///
+/// Google's streaming format uses Server-Sent Events with a structure similar
+/// to their non-streaming API, but with incremental text delivered in parts.
+/// Unlike OpenAI and Anthropic, Google maintains the candidates array structure
+/// even in streaming mode.
+///
+/// See: https://ai.google.dev/gemini-api/docs/text-generation?lang=rest#stream-response-body
+///
+/// Each SSE event contains a complete JSON object with candidates array,
+/// where each candidate contains incremental text in the parts array.
+#[derive(Debug, Deserialize)]
+pub(super) struct GoogleStreamChunk<'a> {
+    /// Array of response candidates.
+    ///
+    /// Usually contains a single candidate (index 0) unless candidate_count > 1.
+    /// Each candidate represents a different possible completion.
+    pub candidates: Vec<GoogleStreamCandidate<'a>>,
+
+    /// Model version information.
+    ///
+    /// Format: "gemini-1.5-flash-001" or similar
+    /// Indicates the specific model version used for generation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[allow(dead_code)]
+    pub model_version: Option<Cow<'a, str>>,
+
+    /// Token usage statistics.
+    ///
+    /// Only present in the final chunk when streaming is complete.
+    /// Contains:
+    /// - `promptTokenCount`: Number of tokens in the prompt
+    /// - `candidatesTokenCount`: Number of tokens generated
+    /// - `totalTokenCount`: Sum of prompt and candidates tokens
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_metadata: Option<GoogleUsageMetadata>,
+}
+
+/// A streaming candidate from Google.
+///
+/// Represents one possible completion being generated.
+/// In streaming mode, each chunk contains partial content that should
+/// be concatenated to build the complete response.
+#[derive(Debug, Deserialize)]
+pub(super) struct GoogleStreamCandidate<'a> {
+    /// Content with incremental text.
+    ///
+    /// Contains the role and parts array with text fragments.
+    /// Each chunk adds more text to build the complete message.
+    pub content: GoogleStreamContent<'a>,
+
+    /// The reason generation stopped for this candidate.
+    ///
+    /// Only present in the final chunk for this candidate.
+    /// Possible values:
+    /// - "STOP": Natural stopping point reached
+    /// - "MAX_TOKENS": Maximum token limit reached
+    /// - "SAFETY": Response filtered for safety reasons
+    /// - "RECITATION": Response filtered for recitation/plagiarism
+    /// - "OTHER": Other stopping reason
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<Cow<'a, str>>,
+
+    /// Zero-based index of this candidate.
+    ///
+    /// Used to track multiple parallel completions when candidate_count > 1.
+    /// Most requests have only one candidate (index: 0).
+    #[allow(dead_code)]
+    pub index: i32,
+
+    /// Safety ratings for harmful content categories.
+    ///
+    /// Array of safety ratings for different harm categories:
+    /// - HARM_CATEGORY_HARASSMENT
+    /// - HARM_CATEGORY_HATE_SPEECH
+    /// - HARM_CATEGORY_SEXUALLY_EXPLICIT
+    /// - HARM_CATEGORY_DANGEROUS_CONTENT
+    ///
+    /// Each rating includes:
+    /// - `category`: The harm category
+    /// - `probability`: NEGLIGIBLE, LOW, MEDIUM, HIGH
+    /// - `blocked`: Whether content was blocked for this category
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[allow(dead_code)]
+    pub safety_ratings: Option<Vec<sonic_rs::Value>>,
+}
+
+/// Streaming content from Google.
+///
+/// Contains the actual text content being generated and metadata
+/// about who is generating it (role).
+#[derive(Debug, Deserialize)]
+pub(super) struct GoogleStreamContent<'a> {
+    /// Parts containing the incremental text.
+    ///
+    /// In streaming mode, typically contains a single part with a text fragment.
+    /// Multiple parts might be present for multi-modal responses (text + code, etc.).
+    /// Concatenate all text parts to build the complete response.
+    pub parts: Vec<GoogleStreamPart<'a>>,
+
+    /// Role of the content author.
+    ///
+    /// Always "model" for AI-generated responses.
+    /// Other possible values: "user" (in conversation history)
+    #[allow(dead_code)]
+    pub role: Cow<'a, str>,
+}
+
+/// A streaming part with text content.
+///
+/// Represents a fragment of content in Google's streaming response.
+/// Parts are the atomic units of content that get concatenated.
+#[derive(Debug, Deserialize)]
+pub(super) struct GoogleStreamPart<'a> {
+    /// The incremental text content.
+    ///
+    /// Contains a text fragment that should be appended to previous parts.
+    /// Can be as small as a single character or as large as multiple sentences.
+    /// Empty strings may appear, especially at the start or end of streaming.
+    pub text: Cow<'a, str>,
+}
+
+impl<'a> GoogleStreamChunk<'a> {
+    /// Convert Google's streaming format to OpenAI-compatible ChatCompletionChunk.
+    ///
+    /// Maps Google's candidates/parts structure to OpenAI's simpler delta format.
+    /// Handles finish reasons and usage statistics when present.
+    pub(super) fn into_chunk(self, provider_name: &str, model_name: &str) -> ChatCompletionChunk {
+        // Google sends one candidate at a time in streaming
+        let candidate = self.candidates.first();
+
+        let (content, finish_reason) = if let Some(candidate) = candidate {
+            // Extract text from parts
+            let text = candidate
+                .content
+                .parts
+                .first()
+                .map(|part| part.text.clone().into_owned());
+
+            // Map finish reason
+            let finish = candidate.finish_reason.as_ref().map(|reason| match reason.as_ref() {
+                "STOP" => crate::messages::FinishReason::Stop,
+                "MAX_TOKENS" => crate::messages::FinishReason::Length,
+                "SAFETY" | "RECITATION" => crate::messages::FinishReason::ContentFilter,
+                "OTHER" => crate::messages::FinishReason::Stop,
+                other => crate::messages::FinishReason::Other(other.to_string()),
+            });
+
+            (text, finish)
+        } else {
+            (None, None)
+        };
+
+        // Generate a unique ID for this stream
+        let id = format!("gen-{}", uuid::Uuid::new_v4());
+
+        ChatCompletionChunk {
+            id,
+            object: ObjectType::ChatCompletionChunk,
+            created: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            model: format!("{provider_name}/{model_name}"),
+            choices: vec![ChatChoiceDelta {
+                index: 0,
+                delta: ChatMessageDelta {
+                    role: if content.is_some() {
+                        Some(ChatRole::Assistant)
+                    } else {
+                        None
+                    },
+                    content,
+                    tool_calls: None,
+                    function_call: None,
+                },
+                finish_reason,
+                logprobs: None,
+            }],
+            system_fingerprint: None,
+            usage: self.usage_metadata.map(|metadata| Usage {
+                prompt_tokens: metadata.prompt_token_count as u32,
+                completion_tokens: metadata.candidates_token_count as u32,
+                total_tokens: metadata.total_token_count as u32,
+            }),
         }
     }
 }

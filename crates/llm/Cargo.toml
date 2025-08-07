@@ -13,14 +13,15 @@ async-trait.workspace = true
 axum.workspace = true
 bytes.workspace = true
 config.workspace = true
+eventsource-stream.workspace = true
 futures.workspace = true
 itertools.workspace = true
 log.workspace = true
 mini-moka.workspace = true
-reqwest = { workspace = true, features = ["json"] }
+reqwest = { workspace = true, features = ["json", "stream"] }
 secrecy.workspace = true
 serde.workspace = true
-serde_json.workspace = true
+sonic-rs.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 

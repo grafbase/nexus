@@ -220,33 +220,210 @@ async fn chat_completions_with_parameters() {
 }
 
 #[tokio::test]
-async fn chat_completions_streaming_not_supported() {
+async fn streaming_with_multiple_chunks() {
     let mut builder = TestServer::builder();
-    builder.spawn_llm(OpenAIMock::new("test_openai")).await;
+    builder
+        .spawn_llm(OpenAIMock::new("openai").with_streaming().with_streaming_chunks(vec![
+            "Hello", " there", "!", " How", " can", " I", " help", " you", " today", "?",
+        ]))
+        .await;
 
     let server = builder.build("").await;
     let llm = server.llm_client("/llm");
 
     let request = json!({
-        "model": "test_openai/gpt-3.5-turbo",
-        "messages": [
-            {
-                "role": "user",
-                "content": "Test message"
-            }
-        ],
+        "model": "openai/gpt-4",
+        "messages": [{"role": "user", "content": "Hi"}],
         "stream": true
     });
 
-    let response = llm.completions_raw(request).await;
+    let content = llm.stream_completions_content(request).await;
+    insta::assert_snapshot!(content, @"Hello there! How can I help you today?");
+}
 
-    // Should return 400 because streaming is an invalid request (not supported)
-    let status = response.status();
-    let body = response.text().await.unwrap();
+#[tokio::test]
+async fn streaming_includes_usage_in_final_chunk() {
+    let mut builder = TestServer::builder();
+    builder.spawn_llm(OpenAIMock::new("openai").with_streaming()).await;
 
-    assert_eq!(status, 400, "Expected 400 status for streaming request");
-    assert!(
-        body.contains("Streaming is not yet supported"),
-        "Expected error message about streaming not supported"
-    );
+    let server = builder.build("").await;
+    let llm = server.llm_client("/llm");
+
+    let request = json!({
+        "model": "openai/gpt-4",
+        "messages": [{"role": "user", "content": "Hi"}],
+        "stream": true
+    });
+
+    let chunks = llm.stream_completions(request).await;
+
+    // Last chunk should have usage data
+    let last_chunk = chunks.last().unwrap();
+    insta::assert_json_snapshot!(last_chunk, {
+        ".id" => "[id]"
+    }, @r#"
+    {
+      "id": "[id]",
+      "object": "chat.completion.chunk",
+      "created": 1677651200,
+      "model": "openai/gpt-4",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {},
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 10,
+        "completion_tokens": 15,
+        "total_tokens": 25
+      }
+    }
+    "#);
+}
+
+#[tokio::test]
+async fn handles_escape_sequences_in_streaming() {
+    let mut builder = TestServer::builder();
+
+    // Create a response with newlines that need escape sequence handling
+    let text_with_newlines =
+        "This is a test.\n\nThis text has paragraph breaks.\n\nThe streaming should handle escape sequences correctly.";
+
+    let mock = OpenAIMock::new("openai").with_streaming_text_with_newlines(text_with_newlines);
+    builder.spawn_llm(mock).await;
+
+    let server = builder.build("").await;
+    let llm = server.llm_client("/llm");
+
+    let request = json!({
+        "model": "openai/gpt-3.5-turbo",
+        "messages": [{"role": "user", "content": "Test"}],
+        "stream": true
+    });
+
+    let full_content = llm.stream_completions_content(request).await;
+
+    // Verify we got the complete text including the newlines
+    insta::assert_snapshot!(full_content, @r"
+    This is a test.
+
+    This text has paragraph breaks.
+
+    The streaming should handle escape sequences correctly.
+    ");
+}
+
+#[tokio::test]
+async fn handles_fragmented_chunks() {
+    let mut builder = TestServer::builder();
+    builder
+        .spawn_llm(OpenAIMock::new("openai").with_streaming().with_streaming_chunks(vec![
+            "Solid",
+            " Snake",
+            " is",
+            " a",
+            " character",
+            " from",
+            " the",
+            " Metal",
+            " Gear",
+            " series",
+        ]))
+        .await;
+
+    let config = indoc! {r#"
+        [llm]
+        enabled = true
+    "#};
+
+    let server = builder.build(config).await;
+    let llm = server.llm_client("/llm");
+
+    let request = json!({
+        "model": "openai/gpt-4",
+        "messages": [{"role": "user", "content": "Who is Solid Snake?"}],
+        "stream": true
+    });
+
+    let full_content = llm.stream_completions_content(request).await;
+    insta::assert_snapshot!(full_content, @"Solid Snake is a character from the Metal Gear series");
+}
+
+#[tokio::test]
+async fn streaming_with_json_values() {
+    let mut builder = TestServer::builder();
+    builder.spawn_llm(OpenAIMock::new("openai").with_streaming()).await;
+
+    let config = indoc! {r#"
+        [llm]
+        enabled = true
+    "#};
+
+    let server = builder.build(config).await;
+    let llm = server.llm_client("/llm");
+
+    let request = json!({
+        "model": "openai/gpt-3.5-turbo",
+        "messages": [{"role": "user", "content": "Tell me a joke"}],
+        "stream": true
+    });
+
+    let chunks = llm.stream_completions(request).await;
+
+    // First chunk should have the expected structure
+    insta::assert_json_snapshot!(chunks[0], {
+        ".id" => "[id]",
+        ".created" => "[created]"
+    }, @r#"
+    {
+      "id": "[id]",
+      "object": "chat.completion.chunk",
+      "created": "[created]",
+      "model": "openai/gpt-3.5-turbo",
+      "choices": [
+        {
+          "index": 0,
+          "delta": {
+            "role": "assistant",
+            "content": "Why don't scientists trust atoms? "
+          }
+        }
+      ]
+    }
+    "#);
+
+    // Last chunk should have finish reason
+    let last_chunk = chunks.last().unwrap();
+    insta::assert_snapshot!(last_chunk["choices"][0]["finish_reason"].is_string(), @"true");
+}
+
+#[tokio::test]
+async fn collect_streaming_content() {
+    let mut builder = TestServer::builder();
+    builder
+        .spawn_llm(
+            OpenAIMock::new("openai")
+                .with_streaming()
+                .with_streaming_chunks(vec!["Hello", " world", "!", " How", " are", " you", "?"]),
+        )
+        .await;
+
+    let config = indoc! {r#"
+        [llm]
+        enabled = true
+    "#};
+
+    let server = builder.build(config).await;
+    let llm = server.llm_client("/llm");
+
+    let request = json!({
+        "model": "openai/gpt-3.5-turbo",
+        "messages": [{"role": "user", "content": "Hi"}],
+        "stream": true
+    });
+
+    let content = llm.stream_completions_content(request).await;
+    insta::assert_snapshot!(content, @"Hello world! How are you?");
 }

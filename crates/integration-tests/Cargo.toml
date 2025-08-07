@@ -16,6 +16,7 @@ chrono = { workspace = true, features = ["serde"] }
 config.workspace = true
 ctor.workspace = true
 dashmap.workspace = true
+eventsource-stream.workspace = true
 futures.workspace = true
 futures-util.workspace = true
 indoc.workspace = true

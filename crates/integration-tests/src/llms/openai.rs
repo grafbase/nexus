@@ -6,12 +6,14 @@ use axum::{
     Router,
     extract::State,
     http::StatusCode,
-    response::{IntoResponse, Json, Response},
+    response::{IntoResponse, Json, Response, Sse, sse::Event},
     routing::{get, post},
 };
+use futures::stream;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 
+use super::common::find_custom_response;
 use super::provider::{LlmProviderConfig, TestLlmProvider};
 
 /// Builder for OpenAI test server
@@ -20,6 +22,9 @@ pub struct OpenAIMock {
     models: Vec<String>,
     custom_responses: HashMap<String, String>,
     error_type: Option<ErrorType>,
+    streaming_enabled: bool,
+    streaming_chunks: Option<Vec<String>>,
+    streaming_error: Option<String>,
 }
 
 #[derive(Clone)]
@@ -44,6 +49,9 @@ impl OpenAIMock {
             ],
             custom_responses: HashMap::new(),
             error_type: None,
+            streaming_enabled: false,
+            streaming_chunks: None,
+            streaming_error: None,
         }
     }
 
@@ -91,6 +99,44 @@ impl OpenAIMock {
         self.error_type = Some(ErrorType::ServiceUnavailable(message.into()));
         self
     }
+
+    pub fn with_streaming(mut self) -> Self {
+        self.streaming_enabled = true;
+        self
+    }
+
+    pub fn with_streaming_chunks(mut self, chunks: Vec<&str>) -> Self {
+        self.streaming_chunks = Some(chunks.into_iter().map(|s| s.to_string()).collect());
+        self
+    }
+
+    pub fn with_streaming_error(mut self, error: &str) -> Self {
+        self.streaming_error = Some(error.to_string());
+        self
+    }
+
+    pub fn with_streaming_text_with_newlines(mut self, text: &str) -> Self {
+        // Split text to include escape sequences that need to be handled
+        let mut chunks = Vec::new();
+
+        // Split at paragraph breaks to test escape sequence handling
+        if text.contains("\n\n") {
+            let parts: Vec<&str> = text.split("\n\n").collect();
+            for (i, part) in parts.iter().enumerate() {
+                chunks.push(part.to_string());
+                if i < parts.len() - 1 {
+                    // Add the paragraph break as a separate chunk to test escape handling
+                    chunks.push("\n\n".to_string());
+                }
+            }
+        } else {
+            chunks.push(text.to_string());
+        }
+
+        self.streaming_chunks = Some(chunks);
+        self.streaming_enabled = true;
+        self
+    }
 }
 
 impl TestLlmProvider for OpenAIMock {
@@ -107,6 +153,9 @@ impl TestLlmProvider for OpenAIMock {
             models: self.models,
             custom_responses: self.custom_responses,
             error_type: self.error_type,
+            streaming_enabled: self.streaming_enabled,
+            streaming_chunks: self.streaming_chunks,
+            streaming_error: self.streaming_error,
         });
 
         let app = Router::new()
@@ -135,7 +184,6 @@ impl TestLlmProvider for OpenAIMock {
 /// Test LLM server that mimics OpenAI API for testing (legacy compatibility)
 pub struct TestOpenAIServer {
     pub address: SocketAddr,
-    _handle: tokio::task::JoinHandle<()>,
 }
 
 impl TestOpenAIServer {
@@ -146,7 +194,6 @@ impl TestOpenAIServer {
 
         Self {
             address: config.address,
-            _handle: tokio::spawn(async {}), // Dummy handle, server already running
         }
     }
 
@@ -164,6 +211,9 @@ struct TestLlmState {
     models: Vec<String>,
     custom_responses: HashMap<String, String>,
     error_type: Option<ErrorType>,
+    streaming_enabled: bool,
+    streaming_chunks: Option<Vec<String>>,
+    streaming_error: Option<String>,
 }
 
 impl Default for TestLlmState {
@@ -176,6 +226,9 @@ impl Default for TestLlmState {
             ],
             custom_responses: HashMap::new(),
             error_type: None,
+            streaming_enabled: false,
+            streaming_chunks: None,
+            streaming_error: None,
         }
     }
 }
@@ -196,7 +249,7 @@ impl IntoResponse for ErrorResponse {
 async fn chat_completions(
     State(state): State<Arc<TestLlmState>>,
     Json(request): Json<ChatCompletionRequest>,
-) -> Result<Json<ChatCompletionResponse>, ErrorResponse> {
+) -> Result<Response, ErrorResponse> {
     // Check for configured error responses
     if let Some(error_type) = &state.error_type {
         return Err(match error_type {
@@ -212,7 +265,7 @@ async fn chat_completions(
                     }
                 } else {
                     // Don't return error if this isn't the problematic model
-                    return Ok(generate_success_response(request, &state));
+                    return Ok(Json(generate_success_response(request, &state)).into_response());
                 }
             }
             ErrorType::RateLimit(msg) => ErrorResponse {
@@ -238,49 +291,123 @@ async fn chat_completions(
         });
     }
 
-    // Check if streaming was requested (not supported in test server)
     if request.stream.unwrap_or(false) {
-        return Err(ErrorResponse {
-            status: StatusCode::BAD_REQUEST,
-            message: "Streaming is not yet supported".to_string(),
-        });
+        if !state.streaming_enabled {
+            return Err(ErrorResponse {
+                status: StatusCode::BAD_REQUEST,
+                message: "Streaming is not yet supported".to_string(),
+            });
+        }
+
+        if let Some(error_msg) = &state.streaming_error {
+            return Err(ErrorResponse {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: error_msg.clone(),
+            });
+        }
+
+        let streaming_chunks = state.streaming_chunks.clone();
+        return Ok(generate_streaming_response(request, streaming_chunks).into_response());
     }
 
-    Ok(generate_success_response(request, &state))
+    Ok(Json(generate_success_response(request, &state)).into_response())
 }
 
-fn generate_success_response(request: ChatCompletionRequest, state: &TestLlmState) -> Json<ChatCompletionResponse> {
-    // Check for custom responses
-    let mut response_text = None;
-    for message in &request.messages {
-        for (trigger, response) in &state.custom_responses {
-            if message.content.contains(trigger) {
-                response_text = Some(response.clone());
-                break;
-            }
-        }
-        if response_text.is_some() {
-            break;
-        }
+/// Generate SSE streaming response
+fn generate_streaming_response(
+    request: ChatCompletionRequest,
+    streaming_chunks: Option<Vec<String>>,
+) -> Sse<impl futures::Stream<Item = Result<Event, std::convert::Infallible>> + 'static> {
+    let model = request.model.clone();
+
+    let mut events = Vec::new();
+
+    // Note: streaming_error is handled at HTTP level, not in streaming chunks
+    let chunks = streaming_chunks.unwrap_or_else(|| vec!["Why don't scientists trust atoms? ".to_string()]);
+
+    let first_chunk = serde_json::json!({
+        "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+        "object": "chat.completion.chunk",
+        "created": 1677651200,
+        "model": &model,
+        "choices": [{
+            "index": 0,
+            "delta": {
+                "role": "assistant",
+                "content": chunks[0]
+            },
+            "finish_reason": null,
+            "logprobs": null
+        }],
+        "system_fingerprint": null,
+        "usage": null
+    });
+    events.push(Event::default().data(serde_json::to_string(&first_chunk).unwrap()));
+
+    for chunk_text in chunks.iter().skip(1) {
+        let chunk = serde_json::json!({
+            "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+            "object": "chat.completion.chunk",
+            "created": 1677651200,
+            "model": &model,
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "content": chunk_text
+                },
+                "finish_reason": null,
+                "logprobs": null
+            }],
+            "system_fingerprint": null,
+            "usage": null
+        });
+        events.push(Event::default().data(serde_json::to_string(&chunk).unwrap()));
     }
 
-    // If no custom response, use default logic
-    let response_text = response_text.unwrap_or_else(|| {
-        if request.messages.iter().any(|m| m.content.contains("error")) {
-            "This is an error response for testing".to_string()
-        } else if request.messages.iter().any(|m| m.content.contains("Hello")) {
-            "Hello! I'm a test LLM assistant. How can I help you today?".to_string()
-        } else {
-            // Include temperature in response if it was high
-            if request.temperature.unwrap_or(0.0) > 1.5 {
-                "This is a creative response due to high temperature".to_string()
-            } else {
-                "This is a test response from the mock LLM server".to_string()
-            }
+    let final_chunk = serde_json::json!({
+        "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+        "object": "chat.completion.chunk",
+        "created": 1677651200,
+        "model": &model,
+        "choices": [{
+            "index": 0,
+            "delta": {},
+            "finish_reason": "stop",
+            "logprobs": null
+        }],
+        "system_fingerprint": null,
+        "usage": {
+            "prompt_tokens": 10,
+            "completion_tokens": 15,
+            "total_tokens": 25
         }
     });
+    events.push(Event::default().data(serde_json::to_string(&final_chunk).unwrap()));
 
-    let response = ChatCompletionResponse {
+    events.push(Event::default().data("[DONE]"));
+
+    let stream = stream::iter(events.into_iter().map(Ok));
+    Sse::new(stream)
+}
+
+fn generate_success_response(request: ChatCompletionRequest, state: &TestLlmState) -> ChatCompletionResponse {
+    let response_text = find_custom_response(&request.messages, &state.custom_responses, |m| &m.content)
+        .unwrap_or_else(|| {
+            if request.messages.iter().any(|m| m.content.contains("error")) {
+                "This is an error response for testing".to_string()
+            } else if request.messages.iter().any(|m| m.content.contains("Hello")) {
+                "Hello! I'm a test LLM assistant. How can I help you today?".to_string()
+            } else {
+                // Include temperature in response if it was high
+                if request.temperature.unwrap_or(0.0) > 1.5 {
+                    "This is a creative response due to high temperature".to_string()
+                } else {
+                    "This is a test response from the mock LLM server".to_string()
+                }
+            }
+        });
+
+    ChatCompletionResponse {
         id: format!("chatcmpl-test-{}", uuid::Uuid::new_v4()),
         object: "chat.completion".to_string(),
         created: 1677651200,
@@ -298,9 +425,7 @@ fn generate_success_response(request: ChatCompletionRequest, state: &TestLlmStat
             completion_tokens: 15,
             total_tokens: 25,
         },
-    };
-
-    Json(response)
+    }
 }
 
 /// Handle list models requests

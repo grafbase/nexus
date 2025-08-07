@@ -1,6 +1,11 @@
+use std::borrow::Cow;
+
 use serde::Deserialize;
 
-use crate::messages::{ChatChoice, ChatCompletionResponse, ChatMessage, FinishReason, Model, ObjectType, Usage};
+use crate::messages::{
+    ChatChoice, ChatChoiceDelta, ChatCompletionChunk, ChatCompletionResponse, ChatMessage, ChatMessageDelta, ChatRole,
+    FinishReason, Model, ObjectType, Usage,
+};
 
 /// Response from OpenAI Chat Completions API.
 ///
@@ -145,6 +150,213 @@ impl From<OpenAIModel> for Model {
             object: ObjectType::Model,
             created: model.created,
             owned_by: model.owned_by,
+        }
+    }
+}
+
+// Streaming types for OpenAI SSE responses
+
+/// OpenAI streaming chunk format with borrowed strings for zero-copy parsing.
+///
+/// This represents a single Server-Sent Event in OpenAI's streaming response format.
+/// Each chunk contains incremental updates to the chat completion response.
+///
+/// See: https://platform.openai.com/docs/api-reference/chat/streaming
+///
+/// This struct uses lifetime 'a to borrow strings directly from the input buffer,
+/// avoiding allocations during JSON parsing for better performance.
+#[derive(Debug, Deserialize)]
+pub(super) struct OpenAIStreamChunk<'a> {
+    /// Unique identifier for this completion stream.
+    ///
+    /// Format: "chatcmpl-{alphanumeric}"
+    /// Example: "chatcmpl-123abc"
+    /// This ID is consistent across all chunks in the same stream.
+    pub(super) id: Cow<'a, str>,
+
+    /// The object type, always "chat.completion.chunk" for streaming responses.
+    ///
+    /// This differentiates streaming chunks from regular completion responses
+    /// which have object type "chat.completion".
+    #[allow(dead_code)]
+    pub(super) object: Cow<'a, str>,
+
+    /// Unix timestamp (seconds since epoch) when this chunk was created.
+    ///
+    /// All chunks in the same stream typically have the same timestamp.
+    pub(super) created: u64,
+
+    /// The model that generated this completion.
+    ///
+    /// Examples: "gpt-4", "gpt-3.5-turbo", "gpt-4-turbo-preview"
+    /// Note: This is the model name without provider prefix.
+    pub(super) model: Cow<'a, str>,
+
+    /// Array of choice deltas containing the incremental content.
+    ///
+    /// Usually contains a single choice (index 0) unless n > 1 was specified
+    /// in the request. Each choice represents a different completion path.
+    pub(super) choices: Vec<OpenAIStreamChoice<'a>>,
+
+    /// System fingerprint for reproducibility and debugging.
+    ///
+    /// Format: "fp_{alphanumeric}"
+    /// Example: "fp_44709d6fcb"
+    /// This helps OpenAI track the exact model configuration used.
+    /// Only present in some models and API versions.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) system_fingerprint: Option<Cow<'a, str>>,
+
+    /// Token usage statistics.
+    ///
+    /// Only present in the final chunk of the stream (when finish_reason is set).
+    /// Contains prompt_tokens, completion_tokens, and total_tokens counts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) usage: Option<Usage>,
+}
+
+/// A streaming choice delta from OpenAI.
+///
+/// Represents incremental updates to a single completion choice.
+/// In streaming mode, the content is delivered incrementally through
+/// multiple chunks rather than all at once.
+#[derive(Debug, Deserialize)]
+pub(super) struct OpenAIStreamChoice<'a> {
+    /// Zero-based index of this choice in the choices array.
+    ///
+    /// Used to track multiple parallel completions when n > 1.
+    /// Most requests have only one choice (index: 0).
+    pub(super) index: u32,
+
+    /// The incremental content update for this choice.
+    ///
+    /// Contains partial message content that should be appended
+    /// to build the complete response.
+    pub(super) delta: OpenAIDelta<'a>,
+
+    /// The reason why the model stopped generating tokens.
+    ///
+    /// Only present in the final chunk for this choice.
+    /// Possible values:
+    /// - "stop": Natural completion or stop sequence reached
+    /// - "length": Maximum token limit reached
+    /// - "content_filter": Content was filtered
+    /// - "tool_calls": Model decided to call a function/tool
+    /// - "function_call": (Deprecated) Model called a function
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) finish_reason: Option<Cow<'a, str>>,
+
+    /// Log probability information for the tokens in this chunk.
+    ///
+    /// Only present if `logprobs: true` was set in the request.
+    /// Contains detailed token-level probability information including:
+    /// - tokens: The tokens generated
+    /// - token_logprobs: Log probabilities for each token
+    /// - top_logprobs: Alternative tokens and their probabilities
+    /// - text_offset: Character offsets in the text
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) logprobs: Option<sonic_rs::Value>,
+}
+
+/// Delta content in a streaming response.
+///
+/// Contains the incremental updates to the message being constructed.
+/// Fields are optional because different chunks contain different updates:
+/// - First chunk: Usually contains role
+/// - Middle chunks: Contain content text fragments
+/// - Tool call chunks: Contain tool_calls array updates
+/// - Final chunk: Often empty (finish_reason is in the choice)
+#[derive(Debug, Deserialize)]
+pub(super) struct OpenAIDelta<'a> {
+    /// The role of the message author.
+    ///
+    /// Only present in the first chunk of a message.
+    /// Always "assistant" for model responses.
+    /// Possible values: "system", "user", "assistant", "tool"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) role: Option<Cow<'a, str>>,
+
+    /// Incremental text content to append to the message.
+    ///
+    /// Contains a fragment of text that should be concatenated with
+    /// previous content chunks to build the complete message.
+    /// Can be an empty string, especially in first/last chunks.
+    /// Will be None when the model is calling tools instead of responding with text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) content: Option<Cow<'a, str>>,
+
+    /// Incremental updates to tool/function calls.
+    ///
+    /// When the model decides to call tools, this array contains incremental
+    /// updates to build the complete tool call. Each item represents a tool
+    /// being called with:
+    /// - index: Position in the tool calls array
+    /// - id: Unique identifier for this tool call (first chunk only)
+    /// - type: "function" (first chunk only)
+    /// - function.name: Name of the function (first chunk only)
+    /// - function.arguments: JSON arguments as a string (accumulated over chunks)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) tool_calls: Option<Vec<sonic_rs::Value>>,
+
+    /// Legacy function calling format (deprecated).
+    ///
+    /// Deprecated in favor of tool_calls but still supported for backward compatibility.
+    /// Contains incremental updates to a function call with:
+    /// - name: Function name (first chunk only)
+    /// - arguments: JSON arguments as a string (accumulated over chunks)
+    ///
+    /// New integrations should use tool_calls instead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) function_call: Option<sonic_rs::Value>,
+}
+
+impl<'a> From<OpenAIDelta<'a>> for ChatMessageDelta {
+    fn from(delta: OpenAIDelta<'a>) -> Self {
+        Self {
+            role: delta.role.map(|s| match s.as_ref() {
+                "assistant" => ChatRole::Assistant,
+                "user" => ChatRole::User,
+                "system" => ChatRole::System,
+                other => ChatRole::Other(other.to_string()),
+            }),
+            content: delta.content.map(|s| s.into_owned()),
+            tool_calls: delta.tool_calls,
+            function_call: delta.function_call,
+        }
+    }
+}
+
+impl<'a> From<OpenAIStreamChoice<'a>> for ChatChoiceDelta {
+    fn from(choice: OpenAIStreamChoice<'a>) -> Self {
+        Self {
+            index: choice.index,
+            delta: choice.delta.into(),
+            finish_reason: choice.finish_reason.map(|s| {
+                // Parse finish reason string to enum
+                match s.as_ref() {
+                    "stop" => FinishReason::Stop,
+                    "length" => FinishReason::Length,
+                    "content_filter" => FinishReason::ContentFilter,
+                    "tool_calls" | "function_call" => FinishReason::ToolCalls,
+                    other => FinishReason::Other(other.to_string()),
+                }
+            }),
+            logprobs: choice.logprobs,
+        }
+    }
+}
+
+impl<'a> OpenAIStreamChunk<'a> {
+    /// Convert to ChatCompletionChunk with provider name prefix.
+    pub(super) fn into_chunk(self, provider_name: &str) -> ChatCompletionChunk {
+        ChatCompletionChunk {
+            id: self.id.into_owned(),
+            object: ObjectType::ChatCompletionChunk,
+            created: self.created,
+            model: format!("{provider_name}/{}", self.model),
+            choices: self.choices.into_iter().map(Into::into).collect(),
+            system_fingerprint: self.system_fingerprint.map(|s| s.into_owned()),
+            usage: self.usage,
         }
     }
 }

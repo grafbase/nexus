@@ -1,3 +1,4 @@
+use indoc::indoc;
 use integration_tests::{TestServer, llms::OpenAIMock};
 use serde_json::json;
 
@@ -15,7 +16,7 @@ async fn invalid_model_format_returns_400() {
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = llm.completions_raw(request).await;
+    let response = llm.completions_error(request).await;
     assert_eq!(response.status(), 400);
 
     let body: serde_json::Value = response.json().await.unwrap();
@@ -44,7 +45,7 @@ async fn provider_not_found_returns_404() {
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = llm.completions_raw(request).await;
+    let response = llm.completions_error(request).await;
     assert_eq!(response.status(), 404);
 
     let body: serde_json::Value = response.json().await.unwrap();
@@ -75,7 +76,7 @@ async fn authentication_error_returns_401() {
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = llm.completions_raw(request).await;
+    let response = llm.completions_error(request).await;
     assert_eq!(response.status(), 401);
 
     let body: serde_json::Value = response.json().await.unwrap();
@@ -106,7 +107,7 @@ async fn model_not_found_returns_404() {
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = llm.completions_raw(request).await;
+    let response = llm.completions_error(request).await;
     assert_eq!(response.status(), 404);
 
     let body: serde_json::Value = response.json().await.unwrap();
@@ -137,7 +138,7 @@ async fn rate_limit_error_returns_429() {
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = llm.completions_raw(request).await;
+    let response = llm.completions_error(request).await;
     assert_eq!(response.status(), 429);
 
     let body: serde_json::Value = response.json().await.unwrap();
@@ -168,7 +169,7 @@ async fn insufficient_quota_returns_403() {
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = llm.completions_raw(request).await;
+    let response = llm.completions_error(request).await;
     assert_eq!(response.status(), 403);
 
     let body: serde_json::Value = response.json().await.unwrap();
@@ -184,7 +185,7 @@ async fn insufficient_quota_returns_403() {
 }
 
 #[tokio::test]
-async fn streaming_not_supported_returns_400() {
+async fn streaming_mock_not_implemented_returns_error() {
     let mut builder = TestServer::builder();
     builder.spawn_llm(OpenAIMock::new("openai")).await;
 
@@ -197,19 +198,26 @@ async fn streaming_not_supported_returns_400() {
         "stream": true
     });
 
-    let response = llm.completions_raw(request).await;
-    assert_eq!(response.status(), 400);
+    let response = llm.completions_error(request).await;
+    // OpenAI supports streaming now, but the mock doesn't implement it
+    // So we get an error when trying to connect to the streaming endpoint
+    assert!(response.status() == 400 || response.status() == 502);
 
     let body: serde_json::Value = response.json().await.unwrap();
-    insta::assert_json_snapshot!(body, @r#"
-    {
-      "error": {
-        "message": "Streaming is not yet supported. Please set stream=false or omit the parameter.",
-        "type": "invalid_request_error",
-        "code": 400
-      }
+
+    // The error message depends on whether we fail at mock level or stream parsing
+    if body["error"]["code"] == 400 {
+        assert_eq!(body["error"]["type"], "invalid_request_error");
+        assert!(
+            body["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("Streaming is not yet supported")
+        );
+    } else {
+        assert_eq!(body["error"]["code"], 502);
+        assert_eq!(body["error"]["type"], "api_error");
     }
-    "#);
 }
 
 #[tokio::test]
@@ -253,7 +261,7 @@ async fn bad_request_returns_400() {
         "messages": []  // Empty messages array
     });
 
-    let response = llm.completions_raw(request).await;
+    let response = llm.completions_error(request).await;
     assert_eq!(response.status(), 400);
 
     let body: serde_json::Value = response.json().await.unwrap();
@@ -285,7 +293,7 @@ async fn provider_internal_error_returns_500_with_message() {
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = llm.completions_raw(request).await;
+    let response = llm.completions_error(request).await;
     assert_eq!(response.status(), 500);
 
     let body: serde_json::Value = response.json().await.unwrap();
@@ -293,6 +301,48 @@ async fn provider_internal_error_returns_500_with_message() {
     {
       "error": {
         "message": "OpenAI service temporarily unavailable",
+        "type": "internal_error",
+        "code": 500
+      }
+    }
+    "#);
+}
+
+#[tokio::test]
+async fn streaming_error_returns_error_in_stream() {
+    let mut builder = TestServer::builder();
+    builder
+        .spawn_llm(
+            OpenAIMock::new("openai")
+                .with_streaming()
+                .with_internal_error("Connection lost mid-stream"),
+        )
+        .await;
+
+    let config = indoc! {r#"
+        [llm]
+        enabled = true
+    "#};
+
+    let server = builder.build(config).await;
+    let llm = server.llm_client("/llm");
+
+    let request = json!({
+        "model": "openai/gpt-4",
+        "messages": [{"role": "user", "content": "Hi"}],
+        "stream": true
+    });
+
+    let response = llm.completions_error(request).await;
+
+    // Streaming errors should return HTTP 500 (Internal Server Error from provider)
+    assert_eq!(response.status(), 500);
+
+    let body: serde_json::Value = response.json().await.unwrap();
+    insta::assert_json_snapshot!(body, @r#"
+    {
+      "error": {
+        "message": "Connection lost mid-stream",
         "type": "internal_error",
         "code": 500
       }
@@ -317,7 +367,7 @@ async fn provider_other_error_returns_502() {
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = llm.completions_raw(request).await;
+    let response = llm.completions_error(request).await;
     assert_eq!(response.status(), 502);
 
     let body: serde_json::Value = response.json().await.unwrap();

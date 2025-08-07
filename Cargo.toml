@@ -25,6 +25,7 @@ ctor = "0.4.2"
 dashmap = "6.1.0"
 deadpool = { version = "0.12", features = ["managed", "rt_tokio_1"] }
 duration-str = "0.17"
+eventsource-stream = "0.2.3"
 fast-glob = "1.0.0"
 fastrace = "0.7.14"
 futures = "0.3.31"
@@ -62,6 +63,7 @@ serde-dynamic-string = { git = "https://github.com/grafbase/grafbase" }
 serde_json = "1.0"
 server = { path = "crates/server" }
 sha2 = "0.10"
+sonic-rs = "0.5.3"
 tantivy = "0.24.2"
 temp-env = "0.3.6"
 tempfile = "3.14.0"

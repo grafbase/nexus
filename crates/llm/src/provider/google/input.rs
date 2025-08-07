@@ -61,7 +61,7 @@ pub(super) struct GoogleGenerationConfig {
     /// Output schema of the generated candidate text when response_mime_type is `application/json`.
     ///
     /// This field allows you to constrain the model's JSON output to match a specific schema.
-    pub(super) response_schema: Option<serde_json::Value>,
+    pub(super) response_schema: Option<sonic_rs::Value>,
 
     /// Number of generated responses to return.
     ///
@@ -96,7 +96,6 @@ pub(super) struct GoogleGenerationConfig {
 ///
 /// Controls content filtering based on harmfulness probability.
 #[derive(Debug, Serialize)]
-#[allow(dead_code)]
 pub(super) struct GoogleSafetySetting {
     /// The category of harmful content to filter.
     ///
@@ -122,7 +121,6 @@ pub(super) struct GoogleSafetySetting {
 /// Defines functions that the model can call to get additional information.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 pub(super) struct GoogleTool {
     /// A list of function declarations that the model can call.
     function_declarations: Option<Vec<GoogleFunctionDeclaration>>,
@@ -132,7 +130,6 @@ pub(super) struct GoogleTool {
 ///
 /// Describes a function including its parameters that the model can invoke.
 #[derive(Debug, Serialize)]
-#[allow(dead_code)]
 pub(super) struct GoogleFunctionDeclaration {
     /// The name of the function to call.
     name: String,
@@ -141,7 +138,7 @@ pub(super) struct GoogleFunctionDeclaration {
     description: Option<String>,
 
     /// The parameters of this function in JSON Schema format.
-    parameters: Option<serde_json::Value>,
+    parameters: Option<sonic_rs::Value>,
 }
 
 /// Configuration for function calling behavior.
@@ -149,7 +146,6 @@ pub(super) struct GoogleFunctionDeclaration {
 /// Controls how the model should use the provided functions.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 pub(super) struct GoogleToolConfig {
     /// Configuration for function calling.
     function_calling_config: Option<GoogleFunctionCallingConfig>,
@@ -158,7 +154,6 @@ pub(super) struct GoogleToolConfig {
 /// Specifies the mode and allowed functions for function calling.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
 pub(super) struct GoogleFunctionCallingConfig {
     /// The mode of function calling.
     ///

@@ -7,13 +7,15 @@ use axum::{
     Router,
     extract::{Json, Path, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response, Sse, sse::Event},
     routing::{get, post},
 };
+use futures::stream;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 
+use super::common::find_custom_response_in_text;
 use super::provider::{LlmProviderConfig, TestLlmProvider};
 
 /// Builder for Google test server
@@ -21,6 +23,8 @@ pub struct GoogleMock {
     name: String,
     models: Vec<String>,
     custom_responses: HashMap<String, String>,
+    streaming_enabled: bool,
+    streaming_chunks: Option<Vec<String>>,
 }
 
 impl GoogleMock {
@@ -34,6 +38,8 @@ impl GoogleMock {
                 "text-embedding-004".to_string(),
             ],
             custom_responses: HashMap::new(),
+            streaming_enabled: false,
+            streaming_chunks: None,
         }
     }
 
@@ -44,6 +50,40 @@ impl GoogleMock {
 
     pub fn with_response(mut self, trigger: impl Into<String>, response: impl Into<String>) -> Self {
         self.custom_responses.insert(trigger.into(), response.into());
+        self
+    }
+
+    pub fn with_streaming(mut self) -> Self {
+        self.streaming_enabled = true;
+        self
+    }
+
+    pub fn with_streaming_text_with_newlines(mut self, text: &str) -> Self {
+        // Split text to test escape sequence handling
+        let mut chunks = Vec::new();
+
+        // Split at paragraph breaks to test escape sequences
+        if text.contains("\n\n") {
+            let parts: Vec<&str> = text.split("\n\n").collect();
+            for (i, part) in parts.iter().enumerate() {
+                chunks.push(part.to_string());
+                if i < parts.len() - 1 {
+                    // Add paragraph break as separate chunk
+                    chunks.push("\n\n".to_string());
+                }
+            }
+        } else {
+            chunks.push(text.to_string());
+        }
+
+        self.streaming_chunks = Some(chunks);
+        self.streaming_enabled = true;
+        self
+    }
+
+    pub fn with_streaming_chunks(mut self, chunks: Vec<String>) -> Self {
+        self.streaming_chunks = Some(chunks);
+        self.streaming_enabled = true;
         self
     }
 }
@@ -61,6 +101,8 @@ impl TestLlmProvider for GoogleMock {
         let state = Arc::new(TestGoogleState {
             models: self.models,
             custom_responses: self.custom_responses,
+            streaming_enabled: self.streaming_enabled,
+            streaming_chunks: self.streaming_chunks,
         });
 
         let app = Router::new()
@@ -90,12 +132,13 @@ impl TestLlmProvider for GoogleMock {
 struct TestGoogleState {
     models: Vec<String>,
     custom_responses: HashMap<String, String>,
+    streaming_enabled: bool,
+    streaming_chunks: Option<Vec<String>>,
 }
 
 /// Legacy compatibility server
 pub struct TestGoogleServer {
     pub address: SocketAddr,
-    _handle: tokio::task::JoinHandle<()>,
 }
 
 impl TestGoogleServer {
@@ -105,7 +148,6 @@ impl TestGoogleServer {
 
         Ok(Self {
             address: config.address,
-            _handle: tokio::spawn(async {}), // Dummy handle, server already running
         })
     }
 
@@ -119,20 +161,20 @@ async fn generate_content(
     State(state): State<Arc<TestGoogleState>>,
     Path(path): Path<String>,
     Json(request): Json<GoogleGenerateRequest>,
-) -> impl IntoResponse {
-    // Ensure we're handling a generateContent request
-    if !path.ends_with(":generateContent") {
+) -> Response {
+    // Ensure we're handling a generateContent or streamGenerateContent request
+    if !path.ends_with(":generateContent") && !path.ends_with(":streamGenerateContent") {
+        eprintln!(
+            "Google mock received path: {path:?}, expected to end with :generateContent or :streamGenerateContent"
+        );
         return (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Not found"}))).into_response();
     }
-    // Check for streaming (not supported in our mock)
-    if request
-        .generation_config
-        .as_ref()
-        .and_then(|c| c.stream)
-        .unwrap_or(false)
-    {
+    // Check for streaming based on endpoint path
+    let is_streaming = path.ends_with(":streamGenerateContent");
+
+    if is_streaming && !state.streaming_enabled {
         return (
-            StatusCode::INTERNAL_SERVER_ERROR,
+            StatusCode::BAD_REQUEST,
             Json(serde_json::json!({
                 "error": {
                     "code": 400,
@@ -153,13 +195,7 @@ async fn generate_content(
         .join(" ");
 
     // Check for custom responses
-    let mut response_text = None;
-    for (trigger, response) in &state.custom_responses {
-        if user_text.contains(trigger) {
-            response_text = Some(response.clone());
-            break;
-        }
-    }
+    let response_text = find_custom_response_in_text(&user_text, &state.custom_responses);
 
     // Default response logic
     let response_text = response_text.unwrap_or_else(|| {
@@ -183,6 +219,14 @@ async fn generate_content(
             }
         }
     });
+
+    // Handle streaming if requested
+    if is_streaming {
+        // Extract model from path (e.g., "gemini-1.5-flash:generateContent" -> "gemini-1.5-flash")
+        let model = path.split(':').next().unwrap_or("unknown");
+        return generate_google_streaming_response(model.to_string(), response_text, state.streaming_chunks.clone())
+            .into_response();
+    }
 
     let response = GoogleGenerateResponse {
         candidates: vec![GoogleCandidate {
@@ -227,6 +271,58 @@ async fn list_models(State(state): State<Arc<TestGoogleState>>) -> Json<GoogleMo
         .collect();
 
     Json(GoogleModelsResponse { models })
+}
+
+/// Generate SSE streaming response for Google in native Google format
+fn generate_google_streaming_response(
+    model: String,
+    response_text: String,
+    streaming_chunks: Option<Vec<String>>,
+) -> Sse<impl futures::Stream<Item = Result<Event, std::convert::Infallible>> + 'static> {
+    let mut events = Vec::new();
+
+    // Use custom chunks if provided, otherwise use the full text
+    let chunks = streaming_chunks.unwrap_or_else(|| vec![response_text]);
+
+    // Generate a chunk for each text piece
+    for chunk_text in &chunks {
+        let chunk = serde_json::json!({
+            "candidates": [{
+                "content": {
+                    "parts": [{
+                        "text": chunk_text
+                    }],
+                    "role": "model"
+                },
+                "index": 0
+            }],
+            "modelVersion": model.clone()
+        });
+        events.push(Event::default().data(serde_json::to_string(&chunk).unwrap()));
+    }
+
+    let final_chunk = serde_json::json!({
+        "candidates": [{
+            "content": {
+                "parts": [{}],
+                "role": "model"
+            },
+            "finishReason": "STOP",
+            "index": 0
+        }],
+        "usageMetadata": {
+            "promptTokenCount": 10,
+            "candidatesTokenCount": 15,
+            "totalTokenCount": 25
+        },
+        "modelVersion": model
+    });
+    events.push(Event::default().data(serde_json::to_string(&final_chunk).unwrap()));
+
+    events.push(Event::default().data("[DONE]"));
+
+    let stream = stream::iter(events.into_iter().map(Ok));
+    Sse::new(stream)
 }
 
 // Google API types based on the Gemini API specification
@@ -275,7 +371,6 @@ struct GoogleGenerationConfig {
     top_p: Option<f32>,
     #[serde(rename = "topK")]
     top_k: Option<i32>,
-    stream: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]

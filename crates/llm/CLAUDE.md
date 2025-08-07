@@ -408,7 +408,7 @@ Create tests in `crates/integration-tests/tests/llm/your_provider.rs`:
 ```rust
 use indoc::indoc;
 use integration_tests::{TestServer, llms::YourProviderMock};
-use serde_json::json;
+use sonic_rs::json;
 
 #[tokio::test]
 async fn list_models() {
