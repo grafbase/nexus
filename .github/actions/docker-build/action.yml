@@ -24,6 +24,10 @@ inputs:
     description: "Whether to add latest tag"
     required: false
     default: "false"
+  add_stable_tag:
+    description: "Whether to add stable tag"
+    required: false
+    default: "false"
   pr_number:
     description: "PR number for PR builds"
     required: false
@@ -59,6 +63,11 @@ runs:
         if [ "${{ inputs.add_latest_tag }}" = "true" ]; then
           # Add latest tag
           TAGS="$TAGS,ghcr.io/grafbase/nexus:latest"
+        fi
+
+        if [ "${{ inputs.add_stable_tag }}" = "true" ]; then
+          # Add stable tag
+          TAGS="$TAGS,ghcr.io/grafbase/nexus:stable"
         fi
 
         echo "tags=$TAGS" >> $GITHUB_OUTPUT

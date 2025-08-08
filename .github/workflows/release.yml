@@ -179,6 +179,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           depot_project: ${{ env.DEPOT_PROJECT }}
           depot_token: ${{ secrets.DEPOT_TOKEN }}
+          add_stable_tag: "true"
 
   # Create GitHub release
   github-release:
