@@ -74,7 +74,7 @@ use async_trait::async_trait;
 use crate::{
     error::LlmError,
     messages::{ChatCompletionRequest, ChatCompletionResponse, Model},
-    provider::Provider,
+    provider::{ChatCompletionStream, Provider},
 };
 
 pub(crate) struct YourProvider {
@@ -104,6 +104,17 @@ impl Provider for YourProvider {
         Ok(response)
     }
 
+    async fn chat_completion_stream(&self, request: ChatCompletionRequest) -> crate::Result<ChatCompletionStream> {
+        // Convert request to provider format with streaming enabled
+        let mut provider_request = YourProviderRequest::from(request);
+        provider_request.stream = true;
+
+        // Make streaming API call and return SSE stream
+        // See OpenAI/Anthropic/Google providers for examples
+        
+        // Return Err(LlmError::StreamingNotSupported) if provider doesn't support streaming
+    }
+
     async fn list_models(&self) -> crate::Result<Vec<Model>> {
         // Fetch and return available models
     }
@@ -111,7 +122,10 @@ impl Provider for YourProvider {
     fn name(&self) -> &str {
         &self.name
     }
-}
+
+    fn supports_streaming(&self) -> bool {
+        true  // or false if provider doesn't support streaming
+    }
 ```
 
 ### 3. Define Input/Output Types
@@ -127,6 +141,10 @@ use crate::messages::{ChatCompletionRequest, ChatMessage};
 pub(super) struct YourProviderRequest {
     // Provider-specific fields
     // Document each field with rustdoc comments based on the API documentation
+    
+    /// Enable streaming responses (if supported)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream: Option<bool>,
 }
 
 impl From<ChatCompletionRequest> for YourProviderRequest {
@@ -134,6 +152,7 @@ impl From<ChatCompletionRequest> for YourProviderRequest {
         // Transform common request to provider format
         // Handle role mapping (e.g., system messages)
         // Map optional fields appropriately
+        // Note: Don't set stream here - it's set in chat_completion_stream
     }
 }
 ```
@@ -142,13 +161,39 @@ Create `output.rs` with provider-specific response types:
 
 ```rust
 use serde::Deserialize;
-use crate::messages::{ChatCompletionResponse, Model, FinishReason};
+use crate::messages::{ChatCompletionResponse, ChatCompletionChunk, Model, FinishReason};
 
 /// Response format from your provider's API
 #[derive(Debug, Deserialize)]
 pub(super) struct YourProviderResponse {
     // Provider-specific fields
     // Document each field with rustdoc comments based on the API documentation
+}
+
+/// Streaming chunk format from your provider's API
+#[derive(Debug, Deserialize)]
+pub(super) struct YourProviderStreamChunk<'a> {
+    // Use borrowed strings (&'a str) for better performance
+    // Document fields based on provider's streaming API
+    
+    #[serde(borrow)]
+    pub id: Cow<'a, str>,
+    
+    // Other fields...
+}
+
+impl<'a> YourProviderStreamChunk<'a> {
+    /// Convert provider's streaming chunk to OpenAI-compatible format
+    pub(super) fn into_chunk(self, provider_name: &str) -> ChatCompletionChunk {
+        ChatCompletionChunk {
+            id: self.id.into_owned(),
+            object: ObjectType::ChatCompletionChunk,
+            created: self.created,
+            model: format!("{}/{}", provider_name, self.model),
+            choices: /* convert choices */,
+            usage: /* include in final chunk */,
+        }
+    }
 }
 
 // Define provider-specific enums with Other variants for forward compatibility
@@ -207,11 +252,25 @@ This prevents breaking changes when providers add new enum values.
 The `Provider` trait uses `#[async_trait]` to enable dynamic dispatch:
 
 ```rust
+/// Type alias for streaming chat completion responses.
+pub(crate) type ChatCompletionStream = Pin<Box<dyn Stream<Item = crate::Result<ChatCompletionChunk>> + Send>>;
+
 #[async_trait]
 pub(crate) trait Provider: Send + Sync {
     async fn chat_completion(&self, request: ChatCompletionRequest) -> crate::Result<ChatCompletionResponse>;
+    
+    /// Stream chat completion responses. Default returns StreamingNotSupported error.
+    async fn chat_completion_stream(&self, request: ChatCompletionRequest) -> crate::Result<ChatCompletionStream> {
+        Err(LlmError::StreamingNotSupported)
+    }
+    
     async fn list_models(&self) -> crate::Result<Vec<Model>>;
     fn name(&self) -> &str;
+    
+    /// Check if provider supports streaming. Default is false.
+    fn supports_streaming(&self) -> bool {
+        false
+    }
 }
 ```
 
@@ -227,7 +286,7 @@ The LLM crate uses a structured error handling approach with the `LlmError` enum
 pub(crate) enum LlmError {
     InvalidModelFormat(String),           // 400 - Invalid model format
     InvalidRequest(String),                // 400 - Bad request
-    StreamingNotSupported,                 // 400 - Streaming requested but not supported
+    StreamingNotSupported,                 // 501 - Provider doesn't support streaming
     AuthenticationFailed(String),          // 401 - Auth failure
     InsufficientQuota(String),            // 403 - Quota exceeded
     ProviderNotFound(String),              // 404 - Provider not found
@@ -287,7 +346,152 @@ if !status.is_success() {
 - Log internal errors with full details before returning `InternalError(None)`
 - Provider errors should be logged at the point of occurrence
 
-### 5. Integrate with Server
+### 5. Implementing Streaming Support
+
+Streaming is implemented using Server-Sent Events (SSE) for all providers. **IMPORTANT**: Each provider must convert its native streaming format to the OpenAI-compatible `ChatCompletionChunk` format to ensure consistency across all providers.
+
+#### SSE Stream Processing
+
+```rust
+use eventsource_stream::Eventsource;
+use futures::StreamExt;
+use crate::messages::{ChatCompletionChunk, ObjectType, ChunkChoice, Delta};
+
+async fn chat_completion_stream(&self, request: ChatCompletionRequest) -> crate::Result<ChatCompletionStream> {
+    let url = format!("{}/streaming-endpoint", self.base_url);
+    
+    // Enable streaming in the request
+    let mut provider_request = YourProviderRequest::from(request);
+    provider_request.stream = Some(true);
+    
+    // Make the streaming request
+    let response = self.client
+        .post(&url)
+        .json(&provider_request)
+        .send()
+        .await
+        .map_err(|e| LlmError::ConnectionError(e.to_string()))?;
+    
+    // Check for errors
+    if !response.status().is_success() {
+        // Handle error responses appropriately
+        return Err(/* appropriate error */);
+    }
+    
+    // Convert response to SSE stream
+    let stream = response
+        .bytes_stream()
+        .eventsource()
+        .filter_map(move |event| {
+            // Process SSE events
+            match event {
+                Ok(event) if event.data == "[DONE]" => None,
+                Ok(event) => {
+                    // Parse the provider's native chunk format
+                    let native_chunk = sonic_rs::from_str::<YourProviderStreamChunk>(&event.data)
+                        .ok()?;
+                    
+                    // CRITICAL: Convert to OpenAI-compatible format
+                    // This ensures all providers return the same chunk structure
+                    let openai_chunk = ChatCompletionChunk {
+                        id: native_chunk.id.into_owned(),
+                        object: ObjectType::ChatCompletionChunk,
+                        created: native_chunk.created,
+                        model: format!("{}/{}", provider_name, native_chunk.model),
+                        choices: vec![ChunkChoice {
+                            index: 0,
+                            delta: Delta {
+                                role: /* map role if first chunk */,
+                                content: /* extract incremental content */,
+                            },
+                            finish_reason: /* map finish reason if present */,
+                        }],
+                        usage: /* include in final chunk only */,
+                    };
+                    
+                    Some(Ok(openai_chunk))
+                }
+                Err(e) => Some(Err(LlmError::ConnectionError(e.to_string()))),
+            }
+        });
+    
+    Ok(Box::pin(stream))
+}
+```
+
+#### Converting Provider Formats to OpenAI Format
+
+Each provider has a different streaming format that must be converted:
+
+**Anthropic Example:**
+```rust
+// Anthropic sends: message_start, content_block_delta, message_delta, message_stop
+// Convert to: OpenAI ChatCompletionChunk with delta.content
+```
+
+**Google Example:**
+```rust
+// Google sends: candidates[].content.parts[].text
+// Convert to: OpenAI ChatCompletionChunk with delta.content
+```
+
+**Your Provider:**
+```rust
+impl<'a> YourProviderStreamChunk<'a> {
+    /// Convert provider's native format to OpenAI-compatible ChatCompletionChunk
+    pub(super) fn into_chunk(self, provider_name: &str) -> ChatCompletionChunk {
+        // Map provider-specific fields to OpenAI format:
+        // - Extract incremental text content
+        // - Map finish reasons (stop, length, etc.)
+        // - Include role in first chunk's delta
+        // - Add usage statistics in final chunk
+        // - Prefix model name with provider
+        
+        ChatCompletionChunk {
+            id: self.id.into_owned(),
+            object: ObjectType::ChatCompletionChunk,
+            created: self.created,
+            model: format!("{}/{}", provider_name, self.model),
+            choices: /* convert provider's choice format */,
+            usage: /* only in final chunk */,
+        }
+    }
+}
+```
+
+#### Key Points for Streaming Implementation
+
+1. **Convert to OpenAI format**: ALL providers must return `ChatCompletionChunk` format
+2. **Use `eventsource_stream`**: For parsing SSE responses
+3. **Use `sonic_rs`**: For fast JSON parsing with borrowed strings
+4. **Handle `[DONE]` marker**: Most providers send this to signal stream end
+5. **Include usage in final chunk**: Add token usage statistics only in the last chunk
+6. **Prefix model names**: Always add provider prefix to model names in chunks
+7. **First chunk has role**: Include `delta.role = "assistant"` in the first content chunk
+8. **Error handling**: Convert stream errors to appropriate `LlmError` variants
+
+#### Testing Streaming
+
+Use the test helpers provided:
+
+```rust
+// Test basic streaming - returns parsed JSON chunks
+let chunks = llm.stream_completions(request).await;
+assert!(chunks.len() > 1);
+
+// Verify chunk structure with snapshots
+let first_chunk = &chunks[0];
+insta::assert_json_snapshot!(first_chunk, {
+    ".id" => "[id]",
+    ".created" => "[created]"
+});
+
+// Test content accumulation - concatenates all delta.content
+let content = llm.stream_completions_content(request).await;
+assert_eq!(content, "Expected response text");
+```
+
+### 6. Integrate with Server
 
 Add your provider to `crates/llm/src/server.rs`:
 
@@ -331,6 +535,8 @@ pub struct YourProviderMock {
     name: String,
     models: Vec<String>,
     custom_responses: HashMap<String, String>,
+    streaming_enabled: bool,
+    streaming_chunks: Option<Vec<String>>,
 }
 
 impl YourProviderMock {
@@ -342,6 +548,8 @@ impl YourProviderMock {
                 "model-2".to_string(),
             ],
             custom_responses: HashMap::new(),
+            streaming_enabled: false,
+            streaming_chunks: None,
         }
     }
 
@@ -352,6 +560,17 @@ impl YourProviderMock {
 
     pub fn with_response(mut self, trigger: impl Into<String>, response: impl Into<String>) -> Self {
         self.custom_responses.insert(trigger.into(), response.into());
+        self
+    }
+    
+    pub fn with_streaming(mut self) -> Self {
+        self.streaming_enabled = true;
+        self
+    }
+    
+    pub fn with_streaming_chunks(mut self, chunks: Vec<String>) -> Self {
+        self.streaming_chunks = Some(chunks);
+        self.streaming_enabled = true;
         self
     }
 }
@@ -474,25 +693,53 @@ async fn chat_completions_simple() {
 }
 
 #[tokio::test]
-async fn chat_completions_streaming_not_supported() {
+async fn chat_completions_streaming() {
     let mut builder = TestServer::builder();
-    builder.spawn_llm(YourProviderMock::new("test_provider")).await;
+    builder.spawn_llm(
+        YourProviderMock::new("test_provider")
+            .with_streaming()  // Enable streaming support
+            .with_response("Hello", "Hello! How can I help?")
+    ).await;
 
     let server = builder.build("").await;
     let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "test_provider/model-1",
-        "messages": [{"role": "user", "content": "Test"}],
+        "messages": [{"role": "user", "content": "Hello"}],
         "stream": true
     });
 
-    let response = llm.completions_raw(request).await;
-
-    // Should return 400 because streaming is an invalid request
-    assert_eq!(response.status(), 400);
-    let body = response.text().await.unwrap();
-    assert!(body.contains("Streaming is not yet supported"));
+    // Test streaming with stream_completions helper
+    let chunks = llm.stream_completions(request).await;
+    
+    // Should have multiple chunks
+    assert!(chunks.len() >= 2);
+    
+    // Verify chunk structure with snapshot
+    let first_chunk = &chunks[0];
+    insta::assert_json_snapshot!(first_chunk, {
+        ".id" => "[id]",
+        ".created" => "[created]"
+    }, @r#"
+    {
+      "id": "[id]",
+      "object": "chat.completion.chunk",
+      "created": "[created]",
+      "model": "test_provider/model-1",
+      "choices": [{
+        "index": 0,
+        "delta": {
+          "role": "assistant",
+          "content": "Hello"
+        }
+      }]
+    }
+    "#);
+    
+    // Test accumulated content
+    let content = llm.stream_completions_content(request).await;
+    assert_eq!(content, "Hello! How can I help?");
 }
 ```
 
@@ -553,9 +800,12 @@ async fn handles_rate_limiting() {
 - [ ] Configuration parsing tests in config crate
 - [ ] Integration tests with mock servers using TestServer
 - [ ] Error handling tests for all status codes
-- [ ] Test that streaming returns 400 (not supported)
+- [ ] Test streaming completions with `stream_completions()` helper
+- [ ] Test streaming content accumulation with `stream_completions_content()`
+- [ ] Test streaming error handling (network errors, malformed chunks)
 - [ ] Test model listing with various scenarios
 - [ ] Test chat completions with different parameters
+- [ ] Test that last streaming chunk includes usage statistics
 
 ## Architecture Notes
 
@@ -592,5 +842,7 @@ When updating providers:
 
 1. **Never expose internal errors**: Always use `InternalError(None)` for Nexus errors
 2. **Always log 5xx errors**: These are critical for debugging
-3. **Handle streaming requests**: Always check for `stream: true` and return 400
+3. **Handle streaming properly**: Implement SSE streaming or return `StreamingNotSupported` error
 4. **Test error scenarios**: Don't just test happy paths
+5. **Include usage in final chunk**: The last streaming chunk should contain usage statistics
+6. **Escape SSE data**: Ensure newlines in content are properly escaped in SSE format

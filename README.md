@@ -88,6 +88,15 @@ services:
 Create a `nexus.toml` file to configure Nexus:
 
 ```toml
+# LLM Provider configuration
+[llm.providers.openai]
+type = "openai"
+api_key = "{{ env.OPENAI_API_KEY }}"
+
+[llm.providers.anthropic]
+type = "anthropic"
+api_key = "{{ env.ANTHROPIC_API_KEY }}"
+
 # MCP Server configuration
 [mcp.servers.github]
 url = "https://api.githubcopilot.com/mcp/"
@@ -100,15 +109,6 @@ cmd = ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/Users/YOUR_USER
 cmd = ["python", "-m", "mcp_server"]
 env = { PYTHONPATH = "/opt/mcp" }
 cwd = "/workspace"
-
-# LLM Provider configuration
-[llm.providers.openai]
-type = "openai"
-api_key = "{{ env.OPENAI_API_KEY }}"
-
-[llm.providers.anthropic]
-type = "anthropic"
-api_key = "{{ env.ANTHROPIC_API_KEY }}"
 ```
 
 ### Configuration Options
@@ -118,6 +118,13 @@ api_key = "{{ env.ANTHROPIC_API_KEY }}"
 - `server.listen_address`: The address and port Nexus will listen on (default: `127.0.0.1:8000`)
 - `server.health.enabled`: Enable health endpoint (default: `true`)
 - `server.health.path`: Health check endpoint path (default: `/health`)
+
+#### LLM Configuration
+
+- `llm.enabled`: Enable LLM functionality (default: `true`)
+- `llm.path`: LLM endpoint path (default: `/llm`)
+
+For detailed LLM provider configuration, see the LLM Provider Configuration section below.
 
 #### MCP Configuration
 
@@ -431,44 +438,196 @@ curl -X POST http://localhost:8000/llm/chat/completions \
 
 The model name format is `<provider_name>/<model_id>`. Nexus automatically routes the request to the appropriate provider and transforms the request/response as needed.
 
+##### Streaming Responses
+
+Nexus supports streaming responses for all LLM providers using Server-Sent Events (SSE):
+
+```bash
+curl -X POST http://localhost:8000/llm/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "anthropic/claude-3-5-sonnet-20241022",
+    "messages": [
+      {"role": "user", "content": "Write a short poem"}
+    ],
+    "stream": true,
+    "max_tokens": 100
+  }'
+```
+
+When `stream: true` is set, the response will be streamed as Server-Sent Events with the following format:
+
+```
+data: {"id":"msg_123","object":"chat.completion.chunk","created":1234567890,"model":"anthropic/claude-3-5-sonnet-20241022","choices":[{"index":0,"delta":{"role":"assistant","content":"Here"}}]}
+
+data: {"id":"msg_123","object":"chat.completion.chunk","created":1234567890,"model":"anthropic/claude-3-5-sonnet-20241022","choices":[{"index":0,"delta":{"content":" is"}}]}
+
+data: {"id":"msg_123","object":"chat.completion.chunk","created":1234567890,"model":"anthropic/claude-3-5-sonnet-20241022","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":25,"total_tokens":35}}
+
+data: [DONE]
+```
+
+Streaming is supported for all providers (OpenAI, Anthropic, Google) and provides:
+- Real-time token delivery as they're generated
+- Consistent chunk format across all providers
+- Usage statistics in the final chunk
+- Standard SSE format compatible with OpenAI SDKs
+
 #### Provider-Specific Considerations
 
 ##### OpenAI
 - Supports all standard OpenAI models (GPT-3.5, GPT-4, etc.)
 - Compatible with Azure OpenAI endpoints
 - Supports function calling (when available)
-- Streaming is not yet supported (returns error if `stream: true`)
+- Supports streaming responses with Server-Sent Events (SSE)
 
 ##### Anthropic
 - System messages are automatically extracted and placed in the `system` field
 - Messages must alternate between user and assistant roles
 - Requires explicit `max_tokens` parameter (defaults to 4096 if not specified)
 - Supports all Claude models (Opus, Sonnet, Haiku)
+- Supports streaming responses with Server-Sent Events (SSE)
 
 ##### Google
 - Assistant role is automatically mapped to "model" role
 - System messages are placed in the `systemInstruction` field
 - Supports Gemini models
 - Returns appropriate safety ratings when available
+- Supports streaming responses with Server-Sent Events (SSE)
 
-#### Rate Limiting for LLM Providers
+#### Using Nexus with LLM SDKs
 
-You can configure rate limits for LLM endpoints:
+Nexus provides an OpenAI-compatible API, making it easy to use with existing LLM SDKs and libraries. Simply point the SDK to your Nexus instance instead of the provider's API.
 
-```toml
-[llm.rate_limits]
-# Overall LLM endpoint rate limit
-limit = 100
-interval = "60s"
+##### OpenAI SDK (Python)
 
-# Per-provider rate limits
-[llm.providers.openai_primary.rate_limits]
-limit = 50
-interval = "60s"
+```python
+from openai import OpenAI
 
-[llm.providers.anthropic.rate_limits]
-limit = 30
-interval = "60s"
+# Point to your Nexus instance
+client = OpenAI(
+    base_url="http://localhost:8000/llm",
+    api_key="your-service-token"  # Use a JWT token if OAuth2 is enabled, or any string if not
+)
+
+# Use any configured provider/model
+response = client.chat.completions.create(
+    model="anthropic/claude-3-5-sonnet-20241022",
+    messages=[
+        {"role": "user", "content": "Hello!"}
+    ]
+)
+
+# Streaming works seamlessly
+stream = client.chat.completions.create(
+    model="openai/gpt-4-turbo",
+    messages=[
+        {"role": "user", "content": "Write a poem"}
+    ],
+    stream=True
+)
+
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="")
+```
+
+##### OpenAI SDK (Node.js/TypeScript)
+
+```typescript
+import OpenAI from 'openai';
+
+// Configure to use Nexus
+const openai = new OpenAI({
+  baseURL: 'http://localhost:8000/llm',
+  apiKey: 'your-service-token', // Use a JWT token if OAuth2 is enabled, or any string if not
+});
+
+// Use any provider through Nexus
+const response = await openai.chat.completions.create({
+  model: 'google/gemini-1.5-pro',
+  messages: [
+    { role: 'user', content: 'Explain quantum computing' }
+  ],
+});
+
+// Streaming with any provider
+const stream = await openai.chat.completions.create({
+  model: 'anthropic/claude-3-opus-20240229',
+  messages: [
+    { role: 'user', content: 'Write a story' }
+  ],
+  stream: true,
+});
+
+for await (const chunk of stream) {
+  process.stdout.write(chunk.choices[0]?.delta?.content || '');
+}
+```
+
+##### LangChain Integration
+
+```python
+from langchain_openai import ChatOpenAI
+
+# Use Nexus as the LLM provider
+llm = ChatOpenAI(
+    base_url="http://localhost:8000/llm",
+    api_key="your-service-token",  # Use a JWT token if OAuth2 is enabled
+    model="openai/gpt-4-turbo"
+)
+
+# Works with any configured provider
+claude = ChatOpenAI(
+    base_url="http://localhost:8000/llm",
+    api_key="your-service-token",  # Use a JWT token if OAuth2 is enabled
+    model="anthropic/claude-3-5-sonnet-20241022"
+)
+```
+
+##### cURL with jq for Command Line
+
+```bash
+# Regular completion (with OAuth2 authentication if enabled)
+curl -s http://localhost:8000/llm/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-jwt-token" \
+  -d '{
+    "model": "openai/gpt-4",
+    "messages": [{"role": "user", "content": "Hello"}]
+  }' | jq -r '.choices[0].message.content'
+
+# Streaming with SSE parsing
+curl -s http://localhost:8000/llm/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your-jwt-token" \
+  -d '{
+    "model": "anthropic/claude-3-5-sonnet-20241022",
+    "messages": [{"role": "user", "content": "Write a haiku"}],
+    "stream": true
+  }' | grep "^data: " | sed 's/^data: //' | jq -r 'select(.choices != null) | .choices[0].delta.content // empty'
+```
+
+##### Authentication with OAuth2
+
+When OAuth2 is enabled in your Nexus configuration, you must provide a valid JWT token:
+
+```python
+# With OAuth2 enabled
+client = OpenAI(
+    base_url="http://localhost:8000/llm",
+    api_key="eyJhbGciOiJSUzI1NiIs..."  # Your JWT token
+)
+```
+
+Without OAuth2, the `api_key` field is still required by most SDKs but can be any non-empty string:
+
+```python
+# Without OAuth2
+client = OpenAI(
+    base_url="http://localhost:8000/llm",
+    api_key="dummy"  # Any non-empty string works
+)
 ```
 
 #### Error Handling
@@ -484,7 +643,7 @@ Example error response:
 ```json
 {
   "error": {
-    "message": "Streaming is not yet supported. Please set stream=false or omit the parameter.",
+    "message": "Invalid model format: expected 'provider/model', got 'invalid-format'",
     "type": "invalid_request_error",
     "code": 400
   }
