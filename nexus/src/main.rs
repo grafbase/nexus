@@ -15,6 +15,8 @@ async fn main() -> anyhow::Result<()> {
 
     logger::init(&args);
 
+    log::info!("Nexus {}", env!("CARGO_PKG_VERSION"));
+
     if let Err(e) = server::serve(serve_config(&args, config)).await {
         log::error!("Server failed to start: {e}");
         std::process::exit(1);
