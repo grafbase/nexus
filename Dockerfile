@@ -1,4 +1,4 @@
-FROM rust:1.88-bookworm AS chef
+FROM rust:1.89-bookworm AS chef
 
 COPY rust-toolchain.toml rust-toolchain.toml
 RUN curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash && \
