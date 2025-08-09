@@ -102,10 +102,10 @@ impl ToolIndex {
             doc.add_text(self.fields.input_params, &input_schema);
         }
 
-        if let Some(ref annotations) = tool.annotations {
-            if let Some(ref title) = annotations.title {
-                doc.add_text(self.fields.tool_title, title);
-            }
+        if let Some(ref annotations) = tool.annotations
+            && let Some(ref title) = annotations.title
+        {
+            doc.add_text(self.fields.tool_title, title);
         }
 
         let search_tokens = self.generate_search_tokens(tool)?;

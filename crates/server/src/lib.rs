@@ -89,11 +89,11 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
 
     // Apply rate limiting HTTP middleware only if server-level rate limiting is enabled
     // (global and IP-based limits only - MCP limits are handled in the MCP layer)
-    if config.server.rate_limits.enabled {
-        if let Some(manager) = rate_limit_manager {
-            log::debug!("Applying HTTP rate limiting middleware to protected routes");
-            protected_router = protected_router.layer(RateLimitLayer::new(manager));
-        }
+    if config.server.rate_limits.enabled
+        && let Some(manager) = rate_limit_manager
+    {
+        log::debug!("Applying HTTP rate limiting middleware to protected routes");
+        protected_router = protected_router.layer(RateLimitLayer::new(manager));
     }
 
     // Merge protected routes (with rate limiting) into main app
