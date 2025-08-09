@@ -17,7 +17,8 @@ use self::{
 use crate::{
     error::LlmError,
     messages::{ChatCompletionRequest, ChatCompletionResponse, Model},
-    provider::Provider,
+    provider::{ChatCompletionStream, Provider, token},
+    request::RequestContext,
 };
 
 const DEFAULT_ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1";
@@ -27,19 +28,12 @@ pub(crate) struct AnthropicProvider {
     client: Client,
     base_url: String,
     name: String,
+    config: AnthropicConfig,
 }
 
 impl AnthropicProvider {
     pub fn new(name: String, config: AnthropicConfig) -> crate::Result<Self> {
         let mut headers = HeaderMap::new();
-
-        headers.insert(
-            "x-api-key",
-            config.api_key.expose_secret().parse().map_err(|e| {
-                log::error!("Failed to parse API key header for Anthropic provider: {e}");
-                LlmError::InternalError(None)
-            })?,
-        );
 
         headers.insert(
             "anthropic-version",
@@ -71,24 +65,32 @@ impl AnthropicProvider {
             .clone()
             .unwrap_or_else(|| DEFAULT_ANTHROPIC_API_URL.to_string());
 
-        Ok(Self { client, base_url, name })
+        Ok(Self {
+            client,
+            base_url,
+            name,
+            config,
+        })
     }
 }
 
 #[async_trait]
 impl Provider for AnthropicProvider {
-    async fn chat_completion(&self, request: ChatCompletionRequest) -> crate::Result<ChatCompletionResponse> {
+    async fn chat_completion(
+        &self,
+        request: ChatCompletionRequest,
+        context: &RequestContext,
+    ) -> crate::Result<ChatCompletionResponse> {
         let url = format!("{}/messages", self.base_url);
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
-        // Store the original model name
         let original_model = request.model.clone();
-
-        // Convert to Anthropic format
         let anthropic_request = AnthropicRequest::from(request);
 
-        let response = self
-            .client
-            .post(&url)
+        let mut request_builder = self.client.post(&url);
+        request_builder = request_builder.header("x-api-key", api_key.expose_secret());
+
+        let response = request_builder
             .json(&anthropic_request)
             .send()
             .await
@@ -133,12 +135,14 @@ impl Provider for AnthropicProvider {
         Ok(response)
     }
 
-    async fn list_models(&self) -> Result<Vec<Model>, LlmError> {
+    async fn list_models(&self, context: &RequestContext) -> Result<Vec<Model>, LlmError> {
         let url = format!("{}/models", self.base_url);
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         let response = self
             .client
             .get(&url)
+            .header("x-api-key", api_key.expose_secret())
             .send()
             .await
             .map_err(|e| LlmError::ConnectionError(format!("Failed to fetch models from Anthropic: {e}")))?;
@@ -178,16 +182,18 @@ impl Provider for AnthropicProvider {
     async fn chat_completion_stream(
         &self,
         request: ChatCompletionRequest,
-    ) -> crate::Result<crate::provider::ChatCompletionStream> {
+        context: &RequestContext,
+    ) -> crate::Result<ChatCompletionStream> {
         let url = format!("{}/messages", self.base_url);
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
-        // Convert to Anthropic format with streaming enabled
         let mut anthropic_request = AnthropicRequest::from(request);
         anthropic_request.stream = Some(true);
 
         let response = self
             .client
             .post(&url)
+            .header("x-api-key", api_key.expose_secret())
             .json(&anthropic_request)
             .send()
             .await

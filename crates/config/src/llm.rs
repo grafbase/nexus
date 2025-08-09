@@ -47,10 +47,16 @@ pub enum LlmProvider {
 #[serde(deny_unknown_fields)]
 pub struct OpenAiConfig {
     /// API key for OpenAI (supports environment variable interpolation).
-    pub api_key: SecretString,
+    /// This key is used as a fallback when token forwarding is enabled and no user key is provided.
+    /// When token forwarding is disabled, this is the primary API key.
+    #[serde(default)]
+    pub api_key: Option<SecretString>,
     /// Custom base URL (defaults to https://api.openai.com/v1).
     #[serde(default)]
     pub base_url: Option<String>,
+    /// Enable token forwarding - allows users to provide their own API keys via headers.
+    #[serde(default)]
+    pub forward_token: bool,
 }
 
 /// Anthropic provider configuration.
@@ -58,10 +64,16 @@ pub struct OpenAiConfig {
 #[serde(deny_unknown_fields)]
 pub struct AnthropicConfig {
     /// API key for Anthropic (supports environment variable interpolation).
-    pub api_key: SecretString,
+    /// This key is used as a fallback when token forwarding is enabled and no user key is provided.
+    /// When token forwarding is disabled, this is the primary API key.
+    #[serde(default)]
+    pub api_key: Option<SecretString>,
     /// Custom base URL (defaults to https://api.anthropic.com/v1).
     #[serde(default)]
     pub base_url: Option<String>,
+    /// Enable token forwarding - allows users to provide their own API keys via headers.
+    #[serde(default)]
+    pub forward_token: bool,
 }
 
 /// Google provider configuration.
@@ -69,10 +81,16 @@ pub struct AnthropicConfig {
 #[serde(deny_unknown_fields)]
 pub struct GoogleConfig {
     /// API key for Google (supports environment variable interpolation).
-    pub api_key: SecretString,
+    /// This key is used as a fallback when token forwarding is enabled and no user key is provided.
+    /// When token forwarding is disabled, this is the primary API key.
+    #[serde(default)]
+    pub api_key: Option<SecretString>,
     /// Custom base URL (defaults to https://generativelanguage.googleapis.com/v1beta).
     #[serde(default)]
     pub base_url: Option<String>,
+    /// Enable token forwarding - allows users to provide their own API keys via headers.
+    #[serde(default)]
+    pub forward_token: bool,
 }
 
 #[cfg(test)]
@@ -114,8 +132,11 @@ mod tests {
             providers: {
                 "openai": Openai(
                     OpenAiConfig {
-                        api_key: SecretBox<str>([REDACTED]),
+                        api_key: Some(
+                            SecretBox<str>([REDACTED]),
+                        ),
                         base_url: None,
+                        forward_token: false,
                     },
                 ),
             },
@@ -143,8 +164,11 @@ mod tests {
             providers: {
                 "anthropic": Anthropic(
                     AnthropicConfig {
-                        api_key: SecretBox<str>([REDACTED]),
+                        api_key: Some(
+                            SecretBox<str>([REDACTED]),
+                        ),
                         base_url: None,
+                        forward_token: false,
                     },
                 ),
             },
@@ -169,8 +193,11 @@ mod tests {
             providers: {
                 "google": Google(
                     GoogleConfig {
-                        api_key: SecretBox<str>([REDACTED]),
+                        api_key: Some(
+                            SecretBox<str>([REDACTED]),
+                        ),
                         base_url: None,
+                        forward_token: false,
                     },
                 ),
             },
@@ -206,20 +233,29 @@ mod tests {
             providers: {
                 "anthropic": Anthropic(
                     AnthropicConfig {
-                        api_key: SecretBox<str>([REDACTED]),
+                        api_key: Some(
+                            SecretBox<str>([REDACTED]),
+                        ),
                         base_url: None,
+                        forward_token: false,
                     },
                 ),
                 "google": Google(
                     GoogleConfig {
-                        api_key: SecretBox<str>([REDACTED]),
+                        api_key: Some(
+                            SecretBox<str>([REDACTED]),
+                        ),
                         base_url: None,
+                        forward_token: false,
                     },
                 ),
                 "openai": Openai(
                     OpenAiConfig {
-                        api_key: SecretBox<str>([REDACTED]),
+                        api_key: Some(
+                            SecretBox<str>([REDACTED]),
+                        ),
                         base_url: None,
+                        forward_token: false,
                     },
                 ),
             },
@@ -293,8 +329,67 @@ mod tests {
             providers: {
                 "openai": Openai(
                     OpenAiConfig {
-                        api_key: SecretBox<str>([REDACTED]),
+                        api_key: Some(
+                            SecretBox<str>([REDACTED]),
+                        ),
                         base_url: None,
+                        forward_token: false,
+                    },
+                ),
+            },
+        }
+        "#);
+    }
+
+    #[test]
+    fn llm_config_with_forward_token_enabled() {
+        let config = indoc! {r#"
+            [providers.openai]
+            type = "openai"
+            api_key = "sk-fallback-key"
+            forward_token = true
+
+            [providers.anthropic]
+            type = "anthropic"
+            forward_token = true
+            # No api_key provided - relies entirely on token forwarding
+
+            [providers.google]
+            type = "google"
+            api_key = "{{ env.GOOGLE_KEY }}"
+            forward_token = false  # Explicitly disabled
+        "#};
+
+        let config: LlmConfig = toml::from_str(config).unwrap();
+
+        assert_debug_snapshot!(&config, @r#"
+        LlmConfig {
+            enabled: true,
+            path: "/llm",
+            providers: {
+                "anthropic": Anthropic(
+                    AnthropicConfig {
+                        api_key: None,
+                        base_url: None,
+                        forward_token: true,
+                    },
+                ),
+                "google": Google(
+                    GoogleConfig {
+                        api_key: Some(
+                            SecretBox<str>([REDACTED]),
+                        ),
+                        base_url: None,
+                        forward_token: false,
+                    },
+                ),
+                "openai": Openai(
+                    OpenAiConfig {
+                        api_key: Some(
+                            SecretBox<str>([REDACTED]),
+                        ),
+                        base_url: None,
+                        forward_token: true,
                     },
                 ),
             },

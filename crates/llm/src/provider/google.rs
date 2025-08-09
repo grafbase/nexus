@@ -17,7 +17,8 @@ use futures::StreamExt;
 use crate::{
     error::LlmError,
     messages::{ChatCompletionRequest, ChatCompletionResponse, Model},
-    provider::{Provider, openai::extract_model_from_full_name},
+    provider::{Provider, openai::extract_model_from_full_name, token},
+    request::RequestContext,
 };
 
 const DEFAULT_GOOGLE_API_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
@@ -25,8 +26,8 @@ const DEFAULT_GOOGLE_API_URL: &str = "https://generativelanguage.googleapis.com/
 pub(crate) struct GoogleProvider {
     client: Client,
     base_url: String,
-    api_key: String,
     name: String,
+    config: GoogleConfig,
 }
 
 impl GoogleProvider {
@@ -44,27 +45,29 @@ impl GoogleProvider {
             .clone()
             .unwrap_or_else(|| DEFAULT_GOOGLE_API_URL.to_string());
 
-        let api_key = config.api_key.expose_secret().to_string();
-
         Ok(Self {
             client,
             base_url,
-            api_key,
             name,
+            config,
         })
     }
 }
 
 #[async_trait]
 impl Provider for GoogleProvider {
-    async fn chat_completion(&self, request: ChatCompletionRequest) -> crate::Result<ChatCompletionResponse> {
-        // Note: Streaming is handled by chat_completion_stream()
-
-        // Extract the model name and construct the URL
+    async fn chat_completion(
+        &self,
+        request: ChatCompletionRequest,
+        context: &RequestContext,
+    ) -> crate::Result<ChatCompletionResponse> {
         let model_name = extract_model_from_full_name(&request.model);
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
+
         let url = format!(
-            "{}/models/{}:generateContent?key={}",
-            self.base_url, model_name, self.api_key
+            "{}/models/{model_name}:generateContent?key={}",
+            self.base_url,
+            api_key.expose_secret()
         );
 
         // Store the original model name
@@ -126,8 +129,9 @@ impl Provider for GoogleProvider {
         Ok(response)
     }
 
-    async fn list_models(&self) -> crate::Result<Vec<Model>> {
-        let url = format!("{}/models?key={}", self.base_url, self.api_key);
+    async fn list_models(&self, context: &RequestContext) -> crate::Result<Vec<Model>> {
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
+        let url = format!("{}/models?key={}", self.base_url, api_key.expose_secret());
 
         let response = self
             .client
@@ -188,15 +192,17 @@ impl Provider for GoogleProvider {
     async fn chat_completion_stream(
         &self,
         request: ChatCompletionRequest,
+        context: &RequestContext,
     ) -> crate::Result<crate::provider::ChatCompletionStream> {
-        // Extract the model name and construct the URL with streaming endpoint
         let model_name = extract_model_from_full_name(&request.model);
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
+
         let url = format!(
-            "{}/models/{}:streamGenerateContent?alt=sse&key={}",
-            self.base_url, model_name, self.api_key
+            "{}/models/{model_name}:streamGenerateContent?alt=sse&key={}",
+            self.base_url,
+            api_key.expose_secret()
         );
 
-        // Convert to Google format
         let google_request = GoogleGenerateRequest::from(request);
 
         let response = self
@@ -233,19 +239,16 @@ impl Provider for GoogleProvider {
 
         let provider_name = self.name.clone();
 
-        // Transform the SSE event stream into ChatCompletionChunk stream
         let chunk_stream = event_stream.filter_map(move |event| {
             let provider = provider_name.clone();
             let model = model_name.clone();
 
             async move {
-                // Handle SSE parsing errors
                 let Ok(event) = event else {
                     log::warn!("SSE parsing error in Google stream");
                     return None;
                 };
 
-                // Parse the JSON chunk
                 let Ok(chunk) = sonic_rs::from_str::<GoogleStreamChunk<'_>>(&event.data) else {
                     log::warn!("Failed to parse Google streaming chunk");
                     return None;

@@ -1,12 +1,16 @@
 pub(crate) mod anthropic;
 pub(crate) mod google;
 pub(crate) mod openai;
+mod token;
 
 use async_trait::async_trait;
 use futures::Stream;
 use std::pin::Pin;
 
-use crate::messages::{ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, Model};
+use crate::{
+    messages::{ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, Model},
+    request::RequestContext,
+};
 
 /// Type alias for a stream of chat completion chunks.
 ///
@@ -22,7 +26,11 @@ pub(crate) type ChatCompletionStream = Pin<Box<dyn Stream<Item = crate::Result<C
 #[async_trait]
 pub(crate) trait Provider: Send + Sync {
     /// Process a chat completion request.
-    async fn chat_completion(&self, request: ChatCompletionRequest) -> crate::Result<ChatCompletionResponse>;
+    async fn chat_completion(
+        &self,
+        request: ChatCompletionRequest,
+        context: &RequestContext,
+    ) -> crate::Result<ChatCompletionResponse>;
 
     /// Process a streaming chat completion request.
     ///
@@ -34,7 +42,11 @@ pub(crate) trait Provider: Send + Sync {
     ///
     /// Returns `LlmError::StreamingNotSupported` if the provider doesn't support
     /// streaming or if streaming is disabled in configuration.
-    async fn chat_completion_stream(&self, _request: ChatCompletionRequest) -> crate::Result<ChatCompletionStream> {
+    async fn chat_completion_stream(
+        &self,
+        _request: ChatCompletionRequest,
+        _context: &RequestContext,
+    ) -> crate::Result<ChatCompletionStream> {
         // Default implementation returns an error for providers that don't support streaming
         Err(crate::error::LlmError::StreamingNotSupported)
     }
@@ -49,7 +61,7 @@ pub(crate) trait Provider: Send + Sync {
     }
 
     /// List available models for this provider.
-    async fn list_models(&self) -> crate::Result<Vec<Model>>;
+    async fn list_models(&self, context: &RequestContext) -> crate::Result<Vec<Model>>;
 
     /// Get the provider name.
     fn name(&self) -> &str;

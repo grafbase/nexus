@@ -15,6 +15,7 @@ use crate::{
     provider::{
         ChatCompletionStream, Provider, anthropic::AnthropicProvider, google::GoogleProvider, openai::OpenAIProvider,
     },
+    request::RequestContext,
 };
 
 // Cache models for 5 minutes
@@ -70,7 +71,11 @@ impl LlmServer {
     }
 
     /// Process a chat completion request.
-    pub async fn completions(&self, mut request: ChatCompletionRequest) -> crate::Result<ChatCompletionResponse> {
+    pub async fn completions(
+        &self,
+        mut request: ChatCompletionRequest,
+        context: &RequestContext,
+    ) -> crate::Result<ChatCompletionResponse> {
         // Note: Streaming is handled by completions_stream(), this method is for non-streaming only
 
         // Extract provider name from the model string (format: "provider/model")
@@ -91,7 +96,7 @@ impl LlmServer {
         let original_model = request.model.clone();
         request.model = model_name.to_string();
 
-        let mut response = provider.chat_completion(request).await?;
+        let mut response = provider.chat_completion(request, context).await?;
 
         // Restore the full model name with provider prefix in the response
         response.model = original_model;
@@ -104,7 +109,11 @@ impl LlmServer {
     /// Returns a stream of completion chunks that are sent incrementally as the
     /// model generates the response. The stream is prefixed with the provider name
     /// to maintain consistency with the non-streaming API.
-    pub async fn completions_stream(&self, mut request: ChatCompletionRequest) -> crate::Result<ChatCompletionStream> {
+    pub async fn completions_stream(
+        &self,
+        mut request: ChatCompletionRequest,
+        context: &RequestContext,
+    ) -> crate::Result<ChatCompletionStream> {
         // Extract provider name from the model string (format: "provider/model")
         let Some((provider_name, model_name)) = request.model.split_once('/') else {
             return Err(LlmError::InvalidModelFormat(request.model.clone()));
@@ -132,7 +141,7 @@ impl LlmServer {
         request.model = model_name.to_string();
 
         // Get the stream from the provider
-        let stream = provider.chat_completion_stream(request).await?;
+        let stream = provider.chat_completion_stream(request, context).await?;
 
         // Transform the stream to restore the full model name with prefix
         let transformed_stream = stream.map(move |chunk_result| {
@@ -147,7 +156,7 @@ impl LlmServer {
     }
 
     /// List available models.
-    pub async fn list_models(&self) -> crate::Result<ModelsResponse> {
+    pub async fn list_models(&self, context: &RequestContext) -> crate::Result<ModelsResponse> {
         // Check cache first
         if let Some(cached) = self.shared.models_cache.get(&()) {
             log::debug!("Returning cached models (cache hit)");
@@ -172,11 +181,12 @@ impl LlmServer {
         for provider in &self.shared.providers {
             let provider_name = provider.name().to_string();
             let provider_ref = provider.as_ref();
+            let ctx = context.clone();
 
             model_futures.push(async move {
                 log::debug!("Fetching models from provider: {provider_name}");
 
-                let models = match provider_ref.list_models().await {
+                let models = match provider_ref.list_models(&ctx).await {
                     Ok(models) => models,
                     Err(e) => {
                         log::warn!("Failed to list models from provider {provider_name}: {e}");

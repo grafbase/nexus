@@ -1784,14 +1784,20 @@ mod tests {
             providers: {
                 "anthropic": Anthropic(
                     AnthropicConfig {
-                        api_key: SecretBox<str>([REDACTED]),
+                        api_key: Some(
+                            SecretBox<str>([REDACTED]),
+                        ),
                         base_url: None,
+                        forward_token: false,
                     },
                 ),
                 "openai": Openai(
                     OpenAiConfig {
-                        api_key: SecretBox<str>([REDACTED]),
+                        api_key: Some(
+                            SecretBox<str>([REDACTED]),
+                        ),
                         base_url: None,
+                        forward_token: false,
                     },
                 ),
             },

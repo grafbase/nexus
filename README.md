@@ -92,6 +92,7 @@ Create a `nexus.toml` file to configure Nexus:
 [llm.providers.openai]
 type = "openai"
 api_key = "{{ env.OPENAI_API_KEY }}"
+forward_token = true
 
 [llm.providers.anthropic]
 type = "anthropic"
@@ -380,6 +381,74 @@ api_key = "{{ env.ANTHROPIC_API_KEY }}"
 type = "google"
 api_key = "{{ env.GOOGLE_API_KEY }}"
 ```
+
+#### Token Forwarding
+
+Nexus supports token forwarding, allowing users to provide their own API keys at request time instead of using the configured keys. This feature is opt-in and disabled by default.
+
+##### Configuring Token Forwarding
+
+Enable token forwarding for any provider by setting `forward_token = true`:
+
+```toml
+[llm.providers.openai]
+type = "openai"
+api_key = "{{ env.OPENAI_API_KEY }}"  # Fallback key (optional with token forwarding)
+forward_token = true  # Enable token forwarding for this provider
+
+[llm.providers.anthropic]
+type = "anthropic"
+# No api_key required when token forwarding is enabled
+forward_token = true
+
+[llm.providers.google]
+type = "google"
+api_key = "{{ env.GOOGLE_API_KEY }}"
+forward_token = false  # Explicitly disabled (default)
+```
+
+##### Using Token Forwarding
+
+When token forwarding is enabled for a provider, users can pass their own API key using the `X-Provider-API-Key` header:
+
+```bash
+# Using your own OpenAI key
+curl -X POST http://localhost:8000/llm/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-Provider-API-Key: sk-your-openai-key" \
+  -d '{
+    "model": "openai/gpt-4",
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'
+
+# Using your own Anthropic key
+curl -X POST http://localhost:8000/llm/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "X-Provider-API-Key: sk-ant-your-anthropic-key" \
+  -d '{
+    "model": "anthropic/claude-3-opus-20240229",
+    "messages": [{"role": "user", "content": "Hello"}]
+  }'
+```
+
+##### Token Forwarding Behavior
+
+- **When token forwarding is enabled (`forward_token = true`)**:
+  - User-provided keys (via header) take priority
+  - Falls back to configured key if no header is provided
+  - Returns 401 error if neither key is available
+
+- **When token forwarding is disabled (`forward_token = false`, default)**:
+  - Always uses the configured API key
+  - Ignores the `X-Provider-API-Key` header
+  - Returns 401 error if no configured key exists
+
+##### Security Considerations
+
+- **OAuth2 Integration**: When OAuth2 is enabled, users must still authenticate with Nexus even when using token forwarding
+- **Key Validation**: API keys are validated by the provider's API
+- **No Logging**: User-provided keys are never logged
+- **HTTPS Recommended**: Always use HTTPS in production to protect API keys in transit
 
 #### Using the LLM API
 

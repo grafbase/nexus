@@ -17,7 +17,8 @@ use self::{
 use crate::{
     error::LlmError,
     messages::{ChatCompletionRequest, ChatCompletionResponse, Model},
-    provider::{ChatCompletionStream, Provider},
+    provider::{ChatCompletionStream, Provider, token},
+    request::RequestContext,
 };
 
 const DEFAULT_OPENAI_API_URL: &str = "https://api.openai.com/v1";
@@ -26,21 +27,12 @@ pub(crate) struct OpenAIProvider {
     client: Client,
     base_url: String,
     name: String,
+    config: OpenAiConfig,
 }
 
 impl OpenAIProvider {
     pub fn new(name: String, config: OpenAiConfig) -> crate::Result<Self> {
-        let mut headers = HeaderMap::new();
-
-        headers.insert(
-            AUTHORIZATION,
-            format!("Bearer {}", config.api_key.expose_secret())
-                .parse()
-                .map_err(|e| {
-                    log::error!("Failed to parse authorization header for OpenAI provider: {e}");
-                    LlmError::InternalError(None)
-                })?,
-        );
+        let headers = HeaderMap::new();
 
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(60))
@@ -57,18 +49,24 @@ impl OpenAIProvider {
             .clone()
             .unwrap_or_else(|| DEFAULT_OPENAI_API_URL.to_string());
 
-        Ok(Self { client, base_url, name })
+        Ok(Self {
+            client,
+            base_url,
+            name,
+            config,
+        })
     }
 }
 
 #[async_trait]
 impl Provider for OpenAIProvider {
-    async fn chat_completion(&self, request: ChatCompletionRequest) -> crate::Result<ChatCompletionResponse> {
-        // Note: Streaming is handled by chat_completion_stream()
-
+    async fn chat_completion(
+        &self,
+        request: ChatCompletionRequest,
+        context: &RequestContext,
+    ) -> crate::Result<ChatCompletionResponse> {
         let url = format!("{}/chat/completions", self.base_url);
 
-        // Convert our request to OpenAI format
         let model_name = extract_model_from_full_name(&request.model);
         let original_model = request.model.clone();
 
@@ -76,9 +74,11 @@ impl Provider for OpenAIProvider {
         openai_request.model = model_name;
         openai_request.stream = false; // Always false for now
 
-        let response = self
-            .client
-            .post(&url)
+        let mut request_builder = self.client.post(&url);
+        let key = token::get(self.config.forward_token, &self.config.api_key, context)?;
+        request_builder = request_builder.header(AUTHORIZATION, format!("Bearer {}", key.expose_secret()));
+
+        let response = request_builder
             .json(&openai_request)
             .send()
             .await
@@ -122,12 +122,14 @@ impl Provider for OpenAIProvider {
         Ok(response)
     }
 
-    async fn list_models(&self) -> crate::Result<Vec<Model>> {
+    async fn list_models(&self, context: &RequestContext) -> crate::Result<Vec<Model>> {
         let url = format!("{}/models", self.base_url);
+        let key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         let response = self
             .client
             .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", key.expose_secret()))
             .send()
             .await
             .map_err(|e| LlmError::ConnectionError(format!("Failed to fetch models from OpenAI: {e}")))?;
@@ -216,15 +218,23 @@ impl Provider for OpenAIProvider {
         Ok(chat_models)
     }
 
-    async fn chat_completion_stream(&self, request: ChatCompletionRequest) -> crate::Result<ChatCompletionStream> {
+    async fn chat_completion_stream(
+        &self,
+        request: ChatCompletionRequest,
+        context: &RequestContext,
+    ) -> crate::Result<ChatCompletionStream> {
         let url = format!("{}/chat/completions", self.base_url);
 
         let mut openai_request = OpenAIRequest::from(request);
         openai_request.stream = true;
 
+        let key = token::get(self.config.forward_token, &self.config.api_key, context)?;
+
+        // Build request with dynamic authorization header
         let response = self
             .client
             .post(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", key.expose_secret()))
             .json(&openai_request)
             .send()
             .await

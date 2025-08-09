@@ -3,6 +3,7 @@ use std::{convert::Infallible, sync::Arc};
 use axum::{
     Router,
     extract::{Json, State},
+    http::HeaderMap,
     response::{IntoResponse, Sse, sse::Event},
     routing::{get, post},
 };
@@ -13,6 +14,7 @@ use messages::ChatCompletionRequest;
 mod error;
 mod messages;
 mod provider;
+mod request;
 mod server;
 
 use error::LlmError;
@@ -43,15 +45,18 @@ pub async fn router(config: LlmConfig) -> anyhow::Result<Router> {
 /// Server-Sent Events (SSE). Otherwise, a standard JSON response is returned.
 async fn chat_completions(
     State(server): State<Arc<LlmServer>>,
+    headers: HeaderMap,
     Json(request): Json<ChatCompletionRequest>,
 ) -> Result<impl IntoResponse> {
     log::debug!("Received chat completion request for model: {}", request.model);
     log::debug!("Request has {} messages", request.messages.len());
     log::debug!("Streaming: {}", request.stream.unwrap_or(false));
 
+    let context = request::extract_context(&headers);
+
     // Check if streaming is requested
     if request.stream.unwrap_or(false) {
-        let stream = server.completions_stream(request).await?;
+        let stream = server.completions_stream(request, &context).await?;
 
         let event_stream = stream.map(move |result| {
             let event = match result {
@@ -80,7 +85,7 @@ async fn chat_completions(
         Ok(Sse::new(with_done).into_response())
     } else {
         // Non-streaming response
-        let response = server.completions(request).await?;
+        let response = server.completions(request, &context).await?;
 
         log::debug!(
             "Chat completion successful, returning response with {} choices",
@@ -92,8 +97,10 @@ async fn chat_completions(
 }
 
 /// Handle list models requests.
-async fn list_models(State(server): State<Arc<LlmServer>>) -> Result<impl IntoResponse> {
-    let response = server.list_models().await?;
+async fn list_models(State(server): State<Arc<LlmServer>>, headers: HeaderMap) -> Result<impl IntoResponse> {
+    let context = request::extract_context(&headers);
+    let response = server.list_models(&context).await?;
+
     log::debug!("Returning {} models", response.data.len());
     Ok(Json(response))
 }
