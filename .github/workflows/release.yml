@@ -87,7 +87,7 @@ jobs:
     runs-on: ${{ matrix.platform.runner }}
     steps:
       - name: Get sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
@@ -168,7 +168,7 @@ jobs:
       id-token: write
     steps:
       - name: Get sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Build and push versioned Docker image
         uses: ./.github/actions/docker-build
@@ -187,7 +187,7 @@ jobs:
     runs-on: depot-ubuntu-24.04-small
     steps:
       - name: Get sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download all artifacts
         uses: actions/download-artifact@v5
