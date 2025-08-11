@@ -37,9 +37,14 @@ Pull the latest image:
 docker pull ghcr.io/grafbase/nexus:latest
 ```
 
+Or use the stable version:
+```bash
+docker pull ghcr.io/grafbase/nexus:stable
+```
+
 Or use a specific version:
 ```bash
-docker pull ghcr.io/grafbase/nexus:0.2.0
+docker pull ghcr.io/grafbase/nexus:X.Y.Z
 ```
 
 ### Build from Source
