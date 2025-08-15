@@ -1,23 +1,12 @@
 pub mod execute;
 pub mod search;
 
+use crate::types::{CallToolRequest, CallToolResult, PROTOCOL_VERSION, ServerCapabilities, ServerInfo};
 use crate::{cache::DynamicDownstreamCache, server_builder::McpServerBuilder};
 use config::McpConfig;
-use execute::ExecuteParameters;
-use http::request::Parts;
 use indoc::indoc;
 use itertools::Itertools;
-use rmcp::{
-    RoleServer, ServerHandler,
-    model::{
-        CallToolRequestMethod, CallToolRequestParam, CallToolResult, Content, ErrorCode, ErrorData,
-        GetPromptRequestParam, GetPromptResult, Implementation, ListPromptsResult, ListResourcesResult,
-        ListToolsResult, PaginatedRequestParam, ReadResourceRequestParam, ReadResourceResult, ServerCapabilities,
-        ServerInfo,
-    },
-    service::RequestContext,
-};
-use search::{SearchParameters, SearchTool};
+use search::SearchTool;
 use secrecy::SecretString;
 use std::collections::{BTreeMap, HashSet};
 use std::{ops::Deref, sync::Arc};
@@ -30,7 +19,7 @@ pub(crate) struct McpServer {
 }
 
 pub(crate) struct McpServerInner {
-    info: ServerInfo,
+    pub info: ServerInfo,
     // Static downstream (servers without auth forwarding)
     static_downstream: Option<Arc<Downstream>>,
     // Static search tool cache
@@ -42,7 +31,7 @@ pub(crate) struct McpServerInner {
     // Rate limit manager for server/tool limits
     rate_limit_manager: Option<Arc<rate_limit::RateLimitManager>>,
     // Configuration for structured content responses
-    enable_structured_content: bool,
+    pub enable_structured_content: bool,
 }
 
 impl Deref for McpServer {
@@ -98,20 +87,12 @@ impl McpServer {
         // Create cache for dynamic instances
         let cache = Arc::new(DynamicDownstreamCache::new(config.mcp.clone()));
 
-        let server_info = Implementation {
-            name: generate_server_name(&config.mcp),
-            version: env!("CARGO_PKG_VERSION").to_string(),
-        };
-
         let inner = McpServerInner {
             info: ServerInfo {
-                protocol_version: crate::PROTOCOL_VERSION,
-                capabilities: ServerCapabilities::builder()
-                    .enable_tools()
-                    .enable_prompts()
-                    .enable_resources()
-                    .build(),
-                server_info,
+                name: generate_server_name(&config.mcp),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                protocol_version: PROTOCOL_VERSION.to_string(),
+                capabilities: ServerCapabilities::new(),
                 instructions: Some(generate_instructions(&config.mcp)),
             },
             static_downstream,
@@ -128,7 +109,7 @@ impl McpServer {
     }
 
     /// Get or create cached search tool for the given authentication context
-    async fn get_search_tool(&self, token: Option<&SecretString>) -> Result<Arc<SearchTool>, ErrorData> {
+    pub async fn get_search_tool(&self, token: Option<&SecretString>) -> Result<Arc<SearchTool>, String> {
         match token {
             Some(token) if !self.dynamic_server_names.is_empty() => {
                 log::debug!("Retrieving combined search tool (static + dynamic servers)");
@@ -138,7 +119,7 @@ impl McpServer {
                     .cache
                     .get_or_create(token)
                     .await
-                    .map_err(|e| ErrorData::internal_error(format!("Failed to load dynamic tools: {e}"), None))?;
+                    .map_err(|e| format!("Failed to load dynamic tools: {e}"))?;
 
                 Ok(Arc::new(cached.search_tool.clone()))
             }
@@ -149,34 +130,34 @@ impl McpServer {
                     Ok(search_tool.clone())
                 } else {
                     // No servers configured - return empty search tool
-                    Ok(Arc::new(SearchTool::new(Vec::new()).map_err(|e| {
-                        ErrorData::internal_error(format!("Failed to create empty search tool: {e}"), None)
-                    })?))
+                    Ok(Arc::new(
+                        SearchTool::new(Vec::new()).map_err(|e| format!("Failed to create empty search tool: {e}"))?,
+                    ))
                 }
             }
         }
     }
 
     /// Execute a tool by routing to the correct downstream
-    async fn execute(
+    pub async fn execute(
         &self,
-        params: CallToolRequestParam,
+        params: CallToolRequest,
         token: Option<&SecretString>,
-    ) -> Result<CallToolResult, ErrorData> {
+    ) -> Result<CallToolResult, String> {
         // Get the search tool to access all tools
         let search_tool = self.get_search_tool(token).await?;
 
         // Use binary search to find the tool
         search_tool.find_exact(&params.name).ok_or_else(|| {
             log::debug!("Tool '{}' not found in available tools registry", params.name);
-            ErrorData::method_not_found::<CallToolRequestMethod>()
+            format!("Tool '{}' not found", params.name)
         })?;
 
         // Extract server name from tool name
         let (server_name, tool_name) = params
             .name
             .split_once("__")
-            .ok_or_else(|| ErrorData::invalid_params("Invalid tool name format", None))?;
+            .ok_or_else(|| "Invalid tool name format".to_string())?;
 
         log::debug!(
             "Parsing tool name '{}': server='{server_name}', tool='{tool_name}'",
@@ -192,7 +173,7 @@ impl McpServer {
 
             if let Err(e) = manager.check_request(&rate_limit_request).await {
                 log::debug!("Rate limit exceeded for tool '{}': {e:?}", params.name);
-                return Err(ErrorData::internal_error("Rate limit exceeded", None));
+                return Err("Rate limit exceeded".to_string());
             }
             log::debug!("Rate limit check passed for tool '{}'", params.name);
         } else {
@@ -202,43 +183,38 @@ impl McpServer {
         // Route to appropriate downstream
         if self.dynamic_server_names.contains(server_name) {
             // Dynamic server - need token
-            let token = token.ok_or_else(|| {
-                ErrorData::new(
-                    ErrorCode::INVALID_REQUEST,
-                    "Authentication required for this tool",
-                    None,
-                )
-            })?;
+            let token = token.ok_or_else(|| "Authentication required for this tool".to_string())?;
 
             let cached = self
                 .cache
                 .get_or_create(token)
                 .await
-                .map_err(|e| ErrorData::internal_error(format!("Failed to initialize: {e}"), None))?;
+                .map_err(|e| format!("Failed to initialize: {e}"))?;
 
-            cached.downstream.execute(params).await
+            cached.downstream.execute(params).await.map_err(|e| e.to_string())
         } else {
             // Static server
             let downstream = self
                 .static_downstream
                 .as_ref()
-                .ok_or_else(ErrorData::method_not_found::<CallToolRequestMethod>)?; // Tool not found
+                .ok_or_else(|| "Tool not found".to_string())?;
 
-            downstream.execute(params).await
+            downstream.execute(params).await.map_err(|e| e.to_string())
         }
     }
 
     /// Get the appropriate downstream instance for the given token
-    async fn get_downstream(&self, token: Option<&SecretString>) -> Result<Arc<Downstream>, ErrorData> {
+    pub async fn get_downstream(&self, token: Option<&SecretString>) -> Result<Arc<Downstream>, String> {
         match token {
             Some(token) if !self.dynamic_server_names.is_empty() => {
                 log::debug!("Retrieving combined downstream instance (static + dynamic)");
 
                 // Dynamic case - get from cache
-                let cached =
-                    self.cache.get_or_create(token).await.map_err(|e| {
-                        ErrorData::internal_error(format!("Failed to load dynamic downstream: {e}"), None)
-                    })?;
+                let cached = self
+                    .cache
+                    .get_or_create(token)
+                    .await
+                    .map_err(|e| format!("Failed to load dynamic downstream: {e}"))?;
 
                 Ok(Arc::new(cached.downstream.clone()))
             }
@@ -247,184 +223,136 @@ impl McpServer {
 
                 self.static_downstream
                     .clone()
-                    .ok_or_else(|| ErrorData::internal_error("No servers configured".to_string(), None))
+                    .ok_or_else(|| "No servers configured".to_string())
             }
         }
     }
-}
 
-impl ServerHandler for McpServer {
-    fn get_info(&self) -> ServerInfo {
-        self.info.clone()
+    /// Get server information
+    pub async fn get_info(&self) -> &ServerInfo {
+        &self.info
     }
 
-    async fn list_tools(
-        &self,
-        _: Option<PaginatedRequestParam>,
-        _ctx: RequestContext<RoleServer>,
-    ) -> Result<ListToolsResult, ErrorData> {
+    /// List all available tools
+    pub async fn list_tools(&self) -> Result<crate::types::ListToolsResult, String> {
+        // For now, just return the built-in tools (search and execute)
+        use crate::types::{Tool, ListToolsResult};
+        
         Ok(ListToolsResult {
+            tools: vec![
+                Tool {
+                    name: "search".to_string(),
+                    description: Some("Search for relevant tools".to_string()),
+                    input_schema: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "keywords": {
+                                "type": "array",
+                                "items": { "type": "string" }
+                            }
+                        },
+                        "required": ["keywords"]
+                    }),
+                },
+                Tool {
+                    name: "execute".to_string(),
+                    description: Some("Executes a tool with the given parameters".to_string()),
+                    input_schema: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string" },
+                            "arguments": { "type": "object" }
+                        },
+                        "required": ["name", "arguments"]
+                    }),
+                },
+            ],
             next_cursor: None,
-            tools: vec![search::rmcp_tool(), execute::rmcp_tool()],
         })
     }
 
-    async fn call_tool(
-        &self,
-        params: CallToolRequestParam,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
-        log::debug!("Processing tool invocation for '{}'", params.name);
-
-        // Extract token from request extensions
-        let token = ctx
-            .extensions
-            .get::<Parts>()
-            .and_then(|parts| parts.extensions.get::<SecretString>());
-
-        match params.name.as_ref() {
+    /// Call a tool (redirects to execute)
+    pub async fn call_tool(&self, params: crate::types::CallToolRequest, token: Option<&SecretString>) -> Result<crate::types::CallToolResult, String> {
+        // Built-in tools: search and execute
+        match params.name.as_str() {
             "search" => {
-                log::debug!("Executing search tool to find available MCP tools");
-
-                // Get cached search tool
+                // Handle search tool
+                let keywords = params.arguments
+                    .get("keywords")
+                    .and_then(|v| v.as_array())
+                    .ok_or("keywords parameter is required and must be an array")?
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .map(String::from)
+                    .collect::<Vec<_>>();
+                
                 let search_tool = self.get_search_tool(token).await?;
-
-                let search_params: SearchParameters =
-                    serde_json::from_value(serde_json::Value::Object(params.arguments.unwrap_or_default()))
-                        .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
-
-                let tools = search_tool
-                    .find_by_keywords(search_params.keywords)
-                    .await
-                    .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-
-                // Choose response format based on configuration
-                if self.enable_structured_content {
-                    // Modern format: structuredContent only (better performance)
-                    let structured_content =
-                        serde_json::to_value(&tools).map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-
-                    Ok(CallToolResult {
-                        content: None,
-                        structured_content: Some(structured_content),
-                        is_error: None,
-                    })
-                } else {
-                    // Legacy format: content field with Content::json objects
-                    let mut content = Vec::with_capacity(tools.len());
-                    for tool in tools {
-                        content.push(Content::json(tool)?);
-                    }
-
-                    Ok(CallToolResult {
-                        content: Some(content),
-                        structured_content: None,
-                        is_error: None,
-                    })
-                }
+                let results = search_tool.find_by_keywords(keywords).await
+                    .map_err(|e| format!("Search failed: {}", e))?;
+                
+                Ok(crate::types::CallToolResult {
+                    content: vec![crate::types::Content::Text {
+                        text: serde_json::to_string(&results).unwrap_or_else(|_| "[]".to_string()),
+                    }],
+                    is_error: false,
+                })
             }
             "execute" => {
-                log::debug!("Executing downstream tool via execute endpoint");
-
-                // Parse execute parameters
-                let exec_params: ExecuteParameters =
-                    serde_json::from_value(serde_json::Value::Object(params.arguments.unwrap_or_default()))
-                        .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
-
-                log::debug!("Executing downstream tool: '{}'", exec_params.name);
-
-                let params = CallToolRequestParam {
-                    name: exec_params.name.clone().into(),
-                    arguments: Some(exec_params.arguments),
+                // Handle execute tool - extract name and arguments
+                let tool_name = params.arguments
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .ok_or("name parameter is required")?;
+                let tool_args = params.arguments
+                    .get("arguments")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!({}));
+                
+                // Create a new CallToolRequest for the actual tool
+                let execute_params = crate::types::CallToolRequest {
+                    name: tool_name.to_string(),
+                    arguments: tool_args,
                 };
-
-                // Execute the tool with proper routing
-                self.execute(params, token).await
+                
+                self.execute(execute_params, token).await
             }
-            tool_name => {
-                log::debug!("Unknown tool requested: '{tool_name}' - returning method not found");
-
-                Err(ErrorData::method_not_found::<CallToolRequestMethod>())
+            _ => {
+                // Direct tool call
+                self.execute(params, token).await
             }
         }
     }
 
-    async fn list_prompts(
-        &self,
-        _: Option<PaginatedRequestParam>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<ListPromptsResult, ErrorData> {
-        log::debug!("Listing all available MCP prompts");
-
-        // Extract token from request extensions
-        let token = ctx
-            .extensions
-            .get::<Parts>()
-            .and_then(|parts| parts.extensions.get::<SecretString>());
-
+    /// List available prompts
+    pub async fn list_prompts(&self, token: Option<&SecretString>) -> Result<crate::types::ListPromptsResult, String> {
         let downstream = self.get_downstream(token).await?;
-        let prompts = downstream.list_prompts().cloned().collect();
-
-        Ok(ListPromptsResult {
+        let prompts: Vec<_> = downstream.list_prompts().cloned().collect();
+        Ok(crate::types::ListPromptsResult {
             prompts,
             next_cursor: None,
         })
     }
 
-    async fn get_prompt(
-        &self,
-        params: GetPromptRequestParam,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<GetPromptResult, ErrorData> {
-        log::debug!("Retrieving prompt details for '{}'", params.name);
-
-        // Extract token from request extensions
-        let token = ctx
-            .extensions
-            .get::<Parts>()
-            .and_then(|parts| parts.extensions.get::<SecretString>());
-
+    /// Get a specific prompt
+    pub async fn get_prompt(&self, params: crate::types::GetPromptRequest, token: Option<&SecretString>) -> Result<crate::types::GetPromptResult, String> {
         let downstream = self.get_downstream(token).await?;
-        downstream.get_prompt(params).await
+        downstream.get_prompt(params).await.map_err(|e| e.to_string())
     }
 
-    async fn list_resources(
-        &self,
-        _: Option<PaginatedRequestParam>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<ListResourcesResult, ErrorData> {
-        log::debug!("Listing all available MCP resources");
-
-        // Extract token from request extensions
-        let token = ctx
-            .extensions
-            .get::<Parts>()
-            .and_then(|parts| parts.extensions.get::<SecretString>());
-
+    /// List available resources
+    pub async fn list_resources(&self, token: Option<&SecretString>) -> Result<crate::types::ListResourcesResult, String> {
         let downstream = self.get_downstream(token).await?;
-        let resources = downstream.list_resources().cloned().collect();
-
-        Ok(ListResourcesResult {
+        let resources: Vec<_> = downstream.list_resources().cloned().collect();
+        Ok(crate::types::ListResourcesResult {
             resources,
             next_cursor: None,
         })
     }
 
-    async fn read_resource(
-        &self,
-        params: ReadResourceRequestParam,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, ErrorData> {
-        log::debug!("Reading resource content for URI: '{}'", params.uri);
-
-        // Extract token from request extensions
-        let token = ctx
-            .extensions
-            .get::<Parts>()
-            .and_then(|parts| parts.extensions.get::<SecretString>());
-
+    /// Read a specific resource
+    pub async fn read_resource(&self, params: crate::types::ReadResourceRequest, token: Option<&SecretString>) -> Result<crate::types::ReadResourceResult, String> {
         let downstream = self.get_downstream(token).await?;
-        downstream.read_resource(params).await
+        downstream.read_resource(params).await.map_err(|e| e.to_string())
     }
 }
 
@@ -475,3 +403,4 @@ fn generate_instructions(config: &McpConfig) -> String {
 
     instructions
 }
+

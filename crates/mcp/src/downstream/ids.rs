@@ -1,6 +1,6 @@
 use std::ops::Index;
 
-use rmcp::model::Tool;
+use crate::types::Tool;
 
 use super::Downstream;
 

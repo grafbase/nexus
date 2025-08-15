@@ -34,7 +34,11 @@ async fn startup_with_two_failing_servers() {
 
     // Search should return empty results since both servers failed to initialize
     let search_results = mcp_client.search(&["test"]).await;
-    insta::assert_json_snapshot!(search_results, @"[]");
+    insta::assert_json_snapshot!(search_results, @r"
+    [
+      []
+    ]
+    ");
 }
 
 #[tokio::test]
@@ -69,7 +73,11 @@ async fn startup_with_all_servers_failing() {
 
     // Search should return empty results
     let search_results = mcp_client.search(&["test"]).await;
-    insta::assert_json_snapshot!(search_results, @"[]");
+    insta::assert_json_snapshot!(search_results, @r"
+    [
+      []
+    ]
+    ");
 }
 
 #[tokio::test]
@@ -103,7 +111,11 @@ async fn startup_with_no_servers_configured() {
 
     // Search should also return empty results with no servers
     let search_results = mcp_client.search(&["anything"]).await;
-    insta::assert_json_snapshot!(search_results, @"[]");
+    insta::assert_json_snapshot!(search_results, @r"
+    [
+      []
+    ]
+    ");
 }
 
 #[tokio::test]
@@ -145,27 +157,29 @@ async fn mixed_success_and_failure_servers() {
     let search_results = mcp_client.search(&["echo"]).await;
 
     // Snapshot the search results - should have the echo tool from working_server
-    insta::assert_json_snapshot!(search_results, @r###"
+    insta::assert_json_snapshot!(search_results, @r#"
     [
-      {
-        "name": "working_server__echo",
-        "description": "Echoes back the input text",
-        "input_schema": {
-          "type": "object",
-          "properties": {
-            "text": {
-              "type": "string",
-              "description": "Text to echo back"
-            }
+      [
+        {
+          "name": "working_server__echo",
+          "description": "Echoes back the input text",
+          "input_schema": {
+            "type": "object",
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "Text to echo back"
+              }
+            },
+            "required": [
+              "text"
+            ]
           },
-          "required": [
-            "text"
-          ]
-        },
-        "score": 3.611918449401855
-      }
+          "score": 3.6119184
+        }
+      ]
     ]
-    "###);
+    "#);
 
     // Test that we can execute the tool from the working server
     let result = mcp_client
@@ -177,18 +191,23 @@ async fn mixed_success_and_failure_servers() {
         )
         .await;
 
-    insta::assert_json_snapshot!(result, @r###"
+    insta::assert_json_snapshot!(result, @r#"
     {
       "content": [
         {
           "type": "text",
           "text": "Echo: Hello from partial startup!"
         }
-      ]
+      ],
+      "isError": false
     }
-    "###);
+    "#);
 
     // Search for something that doesn't exist should be empty
     let empty_results = mcp_client.search(&["nonexistent_tool"]).await;
-    insta::assert_json_snapshot!(empty_results, @"[]");
+    insta::assert_json_snapshot!(empty_results, @r"
+    [
+      []
+    ]
+    ");
 }

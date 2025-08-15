@@ -1,7 +1,7 @@
 use std::{future::Future, pin::Pin};
 
 use crate::TestTool;
-use rmcp::model::{CallToolRequestParam, CallToolResult, Content, ErrorData, Tool};
+use pmcp::types::{CallToolRequest, CallToolResult, Content, Tool};
 use serde_json::json;
 
 /// A simple test tool that adds two numbers
@@ -28,36 +28,28 @@ impl TestTool for AdderTool {
         schema.insert("required".to_string(), json!(["a", "b"]));
 
         Tool {
-            name: "adder".into(),
-            description: Some("Adds two numbers together".into()),
-            input_schema: std::sync::Arc::new(schema),
-            output_schema: None,
-            annotations: None,
+            name: "adder".to_string(),
+            description: Some("Adds two numbers together".to_string()),
+            input_schema: Some(serde_json::Value::Object(schema)),
         }
     }
 
     fn call(
         &self,
-        params: CallToolRequestParam,
-    ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, ErrorData>> + Send + '_>> {
+        params: CallToolRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, pmcp::Error>> + Send + '_>> {
         Box::pin(async move {
-            let args = params.arguments.ok_or_else(|| ErrorData {
-                code: rmcp::model::ErrorCode(-32602),
-                message: "Missing arguments".into(),
-                data: None,
-            })?;
+            let args = params.arguments.as_object().ok_or_else(|| 
+                pmcp::Error::invalid_params("Missing arguments")
+            )?;
 
-            let a = args.get("a").and_then(|v| v.as_f64()).ok_or_else(|| ErrorData {
-                code: rmcp::model::ErrorCode(-32602),
-                message: "Missing or invalid parameter 'a'".into(),
-                data: None,
-            })?;
+            let a = args.get("a").and_then(|v| v.as_f64()).ok_or_else(|| 
+                pmcp::Error::invalid_params("Missing or invalid parameter 'a'")
+            )?;
 
-            let b = args.get("b").and_then(|v| v.as_f64()).ok_or_else(|| ErrorData {
-                code: rmcp::model::ErrorCode(-32602),
-                message: "Missing or invalid parameter 'b'".into(),
-                data: None,
-            })?;
+            let b = args.get("b").and_then(|v| v.as_f64()).ok_or_else(|| 
+                pmcp::Error::invalid_params("Missing or invalid parameter 'b'")
+            )?;
 
             let result = a + b;
 
@@ -67,7 +59,10 @@ impl TestTool for AdderTool {
                 format!("{a} + {b} = {result}")
             };
 
-            Ok(CallToolResult::success(vec![Content::text(text)]))
+            Ok(CallToolResult {
+                content: Some(vec![Content::Text { text }]),
+                is_error: None,
+            })
         })
     }
 }
@@ -84,24 +79,18 @@ impl TestTool for FailingTool {
         schema.insert("properties".to_string(), json!({}));
 
         Tool {
-            name: "failing_tool".into(),
-            description: Some("A tool that always fails for testing error handling".into()),
-            input_schema: std::sync::Arc::new(schema),
-            output_schema: None,
-            annotations: None,
+            name: "failing_tool".to_string(),
+            description: Some("A tool that always fails for testing error handling".to_string()),
+            input_schema: Some(serde_json::Value::Object(schema)),
         }
     }
 
     fn call(
         &self,
-        _params: CallToolRequestParam,
-    ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, ErrorData>> + Send + '_>> {
+        _params: CallToolRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, pmcp::Error>> + Send + '_>> {
         Box::pin(async move {
-            Err(ErrorData {
-                code: rmcp::model::ErrorCode(-32000),
-                message: "This tool always fails".into(),
-                data: Some(json!({"reason": "intentional_failure"})),
-            })
+            Err(pmcp::Error::internal("This tool always fails"))
         })
     }
 }
@@ -135,51 +124,34 @@ impl TestTool for CalculatorTool {
         schema.insert("required".to_string(), json!(["operation", "x", "y"]));
 
         Tool {
-            name: "calculator".into(),
+            name: "calculator".to_string(),
             description: Some(
                 "Performs basic mathematical calculations including addition, subtraction, multiplication and division"
-                    .into(),
+                    .to_string(),
             ),
-            input_schema: std::sync::Arc::new(schema),
-            output_schema: None,
-            annotations: Some(rmcp::model::ToolAnnotations {
-                title: Some("Scientific Calculator".into()),
-                ..Default::default()
-            }),
+            input_schema: Some(serde_json::Value::Object(schema)),
         }
     }
 
     fn call(
         &self,
-        params: CallToolRequestParam,
-    ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, ErrorData>> + Send + '_>> {
+        params: CallToolRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, pmcp::Error>> + Send + '_>> {
         Box::pin(async move {
-            let args = params.arguments.ok_or_else(|| ErrorData {
-                code: rmcp::model::ErrorCode(-32602),
-                message: "Missing arguments".into(),
-                data: None,
-            })?;
+            let args = params.arguments.as_object().ok_or_else(|| pmcp::Error::invalid_params( "Missing arguments"))?;
 
             let operation = args
                 .get("operation")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| ErrorData {
-                    code: rmcp::model::ErrorCode(-32602),
-                    message: "Missing or invalid parameter 'operation'".into(),
+                    code: -32602,
+                    message: "Missing or invalid parameter 'operation'".to_string(),
                     data: None,
                 })?;
 
-            let x = args.get("x").and_then(|v| v.as_f64()).ok_or_else(|| ErrorData {
-                code: rmcp::model::ErrorCode(-32602),
-                message: "Missing or invalid parameter 'x'".into(),
-                data: None,
-            })?;
+            let x = args.get("x").and_then(|v| v.as_f64()).ok_or_else(|| pmcp::Error::invalid_params( "Missing or invalid parameter 'x'"))?;
 
-            let y = args.get("y").and_then(|v| v.as_f64()).ok_or_else(|| ErrorData {
-                code: rmcp::model::ErrorCode(-32602),
-                message: "Missing or invalid parameter 'y'".into(),
-                data: None,
-            })?;
+            let y = args.get("y").and_then(|v| v.as_f64()).ok_or_else(|| pmcp::Error::invalid_params( "Missing or invalid parameter 'y'"))?;
 
             let result = match operation {
                 "add" => x + y,
@@ -188,8 +160,8 @@ impl TestTool for CalculatorTool {
                 "divide" => {
                     if y == 0.0 {
                         return Err(ErrorData {
-                            code: rmcp::model::ErrorCode(-32000),
-                            message: "Division by zero".into(),
+                            code: -32000,
+                            message: "Division by zero".to_string(),
                             data: None,
                         });
                     }
@@ -197,15 +169,18 @@ impl TestTool for CalculatorTool {
                 }
                 _ => {
                     return Err(ErrorData {
-                        code: rmcp::model::ErrorCode(-32602),
-                        message: "Invalid operation".into(),
+                        code: -32602,
+                        message: "Invalid operation".to_string(),
                         data: None,
                     });
                 }
             };
 
             let text = format!("{x} {operation} {y} = {result}");
-            Ok(CallToolResult::success(vec![Content::text(text)]))
+            Ok(CallToolResult {
+                content: Some(vec![Content::Text { text }]),
+                is_error: None,
+            })
         })
     }
 }
@@ -235,41 +210,24 @@ impl TestTool for TextProcessorTool {
         schema.insert("required".to_string(), json!(["text", "action"]));
 
         Tool {
-            name: "text_processor".into(),
+            name: "text_processor".to_string(),
             description: Some(
-                "Processes text with various string manipulation operations like case conversion and reversal".into(),
+                "Processes text with various string manipulation operations like case conversion and reversal".to_string(),
             ),
-            input_schema: std::sync::Arc::new(schema),
-            output_schema: None,
-            annotations: Some(rmcp::model::ToolAnnotations {
-                title: Some("Text Processor".into()),
-                ..Default::default()
-            }),
+            input_schema: Some(serde_json::Value::Object(schema)),
         }
     }
 
     fn call(
         &self,
-        params: CallToolRequestParam,
-    ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, ErrorData>> + Send + '_>> {
+        params: CallToolRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, pmcp::Error>> + Send + '_>> {
         Box::pin(async move {
-            let args = params.arguments.ok_or_else(|| ErrorData {
-                code: rmcp::model::ErrorCode(-32602),
-                message: "Missing arguments".into(),
-                data: None,
-            })?;
+            let args = params.arguments.as_object().ok_or_else(|| pmcp::Error::invalid_params( "Missing arguments"))?;
 
-            let text = args.get("text").and_then(|v| v.as_str()).ok_or_else(|| ErrorData {
-                code: rmcp::model::ErrorCode(-32602),
-                message: "Missing or invalid parameter 'text'".into(),
-                data: None,
-            })?;
+            let text = args.get("text").and_then(|v| v.as_str()).ok_or_else(|| pmcp::Error::invalid_params( "Missing or invalid parameter 'text'"))?;
 
-            let action = args.get("action").and_then(|v| v.as_str()).ok_or_else(|| ErrorData {
-                code: rmcp::model::ErrorCode(-32602),
-                message: "Missing or invalid parameter 'action'".into(),
-                data: None,
-            })?;
+            let action = args.get("action").and_then(|v| v.as_str()).ok_or_else(|| pmcp::Error::invalid_params( "Missing or invalid parameter 'action'"))?;
 
             let result = match action {
                 "uppercase" => text.to_uppercase(),
@@ -278,14 +236,17 @@ impl TestTool for TextProcessorTool {
                 "word_count" => text.split_whitespace().count().to_string(),
                 _ => {
                     return Err(ErrorData {
-                        code: rmcp::model::ErrorCode(-32602),
-                        message: "Invalid action".into(),
+                        code: -32602,
+                        message: "Invalid action".to_string(),
                         data: None,
                     });
                 }
             };
 
-            Ok(CallToolResult::success(vec![Content::text(result)]))
+            Ok(CallToolResult {
+                content: Some(vec![Content::Text { text: result }]),
+                is_error: None,
+            })
         })
     }
 }
@@ -315,42 +276,29 @@ impl TestTool for FileSystemTool {
         schema.insert("required".to_string(), json!(["path", "operation"]));
 
         Tool {
-            name: "filesystem".into(),
+            name: "filesystem".to_string(),
             description: Some(
-                "Manages files and directories with operations like listing, creating, and deleting".into(),
+                "Manages files and directories with operations like listing, creating, and deleting".to_string(),
             ),
-            input_schema: std::sync::Arc::new(schema),
-            output_schema: None,
-            annotations: Some(rmcp::model::ToolAnnotations {
-                title: Some("File System Manager".into()),
-                ..Default::default()
-            }),
+            input_schema: Some(serde_json::Value::Object(schema)),
         }
     }
 
     fn call(
         &self,
-        params: CallToolRequestParam,
-    ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, ErrorData>> + Send + '_>> {
+        params: CallToolRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, pmcp::Error>> + Send + '_>> {
         Box::pin(async move {
-            let args = params.arguments.ok_or_else(|| ErrorData {
-                code: rmcp::model::ErrorCode(-32602),
-                message: "Missing arguments".into(),
-                data: None,
-            })?;
+            let args = params.arguments.as_object().ok_or_else(|| pmcp::Error::invalid_params( "Missing arguments"))?;
 
-            let path = args.get("path").and_then(|v| v.as_str()).ok_or_else(|| ErrorData {
-                code: rmcp::model::ErrorCode(-32602),
-                message: "Missing or invalid parameter 'path'".into(),
-                data: None,
-            })?;
+            let path = args.get("path").and_then(|v| v.as_str()).ok_or_else(|| pmcp::Error::invalid_params( "Missing or invalid parameter 'path'"))?;
 
             let operation = args
                 .get("operation")
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| ErrorData {
-                    code: rmcp::model::ErrorCode(-32602),
-                    message: "Missing or invalid parameter 'operation'".into(),
+                    code: -32602,
+                    message: "Missing or invalid parameter 'operation'".to_string(),
                     data: None,
                 })?;
 
@@ -362,14 +310,17 @@ impl TestTool for FileSystemTool {
                 "exists" => format!("Path {path} exists: true"),
                 _ => {
                     return Err(ErrorData {
-                        code: rmcp::model::ErrorCode(-32602),
-                        message: "Invalid operation".into(),
+                        code: -32602,
+                        message: "Invalid operation".to_string(),
                         data: None,
                     });
                 }
             };
 
-            Ok(CallToolResult::success(vec![Content::text(result)]))
+            Ok(CallToolResult {
+                content: Some(vec![Content::Text { text: result }]),
+                is_error: None,
+            })
         })
     }
 }

@@ -4,17 +4,17 @@ mod ids;
 use config::McpServer;
 pub use ids::ToolId;
 
+use crate::types::{
+    CallToolRequest, CallToolResult, GetPromptRequest, GetPromptResult, McpError, Prompt, ReadResourceRequest,
+    ReadResourceResult, Resource, Tool, error_not_found, error_validation,
+};
 use client::DownstreamClient;
 use futures_util::{
     FutureExt,
     stream::{FuturesUnordered, StreamExt},
 };
-use rmcp::model::{
-    CallToolRequestMethod, CallToolRequestParam, CallToolResult, ErrorData, GetPromptRequestParam, GetPromptResult,
-    Prompt, ReadResourceRequestParam, ReadResourceResult, Resource, Tool,
-};
 use secrecy::SecretString;
-use std::{borrow::Cow, collections::HashMap};
+use std::collections::HashMap;
 
 /// Represents an MCP server, providing access to multiple downstream servers.
 #[derive(Clone)]
@@ -150,7 +150,7 @@ impl Downstream {
 
             for mut tool in server_tools {
                 log::debug!("Registering tool '{}' with prefixed name", tool.name);
-                tool.name = Cow::Owned(format!("{}__{}", server.name(), tool.name));
+                tool.name = format!("{}__{}", server.name(), tool.name);
                 tools.push(tool);
             }
 
@@ -245,10 +245,8 @@ impl Downstream {
     /// The tool name should be in the format "server_name__tool_name".
     /// This method will parse the server name, find the appropriate server,
     /// and forward the call with the original tool name.
-    pub async fn execute(&self, mut params: CallToolRequestParam) -> Result<CallToolResult, ErrorData> {
+    pub async fn execute(&self, mut params: CallToolRequest) -> Result<CallToolResult, McpError> {
         log::debug!("Executing downstream tool: '{}'", params.name);
-
-        let error_fn = || ErrorData::method_not_found::<CallToolRequestMethod>();
 
         let tool_name_str = params.name.to_string();
         let (server_name, tool_name) = tool_name_str.split_once("__").ok_or_else(|| {
@@ -256,29 +254,22 @@ impl Downstream {
                 "Invalid tool name format '{}': missing server separator '__'",
                 params.name
             );
-            error_fn()
+            error_validation(format!("Invalid tool name format: {}", params.name))
         })?;
 
         let server = self.find_server(server_name).ok_or_else(|| {
             log::debug!("Server '{server_name}' not found in downstream registry");
-
-            error_fn()
+            error_not_found(format!("Server '{}' not found", server_name))
         })?;
 
         self.find_tool(&params.name).ok_or_else(|| {
             log::error!("Tool '{}' not found in tool registry", params.name);
-            error_fn()
+            error_not_found(format!("Tool '{}' not found", params.name))
         })?;
 
-        params.name = Cow::Owned(tool_name.to_string());
+        params.name = tool_name.to_string();
 
-        match server.call_tool(params).await {
-            Ok(result) => Ok(result),
-            Err(error) => match error {
-                rmcp::ServiceError::McpError(error_data) => Err(error_data),
-                _ => Err(ErrorData::internal_error(error.to_string(), None)),
-            },
-        }
+        server.call_tool(params).await
     }
 
     /// Gets a prompt from the appropriate downstream server.
@@ -286,16 +277,10 @@ impl Downstream {
     /// The prompt name should be in the format "server_name__prompt_name".
     /// This method will parse the server name, find the appropriate server,
     /// and forward the call with the original prompt name.
-    pub async fn get_prompt(&self, mut params: GetPromptRequestParam) -> Result<GetPromptResult, ErrorData> {
+    pub async fn get_prompt(&self, mut params: GetPromptRequest) -> Result<GetPromptResult, McpError> {
         log::debug!("Retrieving downstream prompt: '{}'", params.name);
 
-        let error_fn = || {
-            ErrorData::new(
-                rmcp::model::ErrorCode::METHOD_NOT_FOUND,
-                "Prompt not found".to_string(),
-                None,
-            )
-        };
+        let error_fn = || error_not_found("Prompt not found");
 
         let prompt_name_str = params.name.to_string();
         let (server_name, prompt_name) = prompt_name_str.split_once("__").ok_or_else(|| {
@@ -321,29 +306,17 @@ impl Downstream {
 
         log::debug!("Forwarding prompt request '{prompt_name}' to server '{server_name}'");
 
-        match server.get_prompt(params).await {
-            Ok(result) => Ok(result),
-            Err(error) => match error {
-                rmcp::ServiceError::McpError(error_data) => Err(error_data),
-                _ => Err(ErrorData::internal_error(error.to_string(), None)),
-            },
-        }
+        server.get_prompt(params).await
     }
 
     /// Reads a resource from the appropriate downstream server.
     ///
     /// This method uses the resource URI to lookup which downstream server owns the resource,
     /// then forwards the read request to that server with the original URI unchanged.
-    pub async fn read_resource(&self, params: ReadResourceRequestParam) -> Result<ReadResourceResult, ErrorData> {
+    pub async fn read_resource(&self, params: ReadResourceRequest) -> Result<ReadResourceResult, McpError> {
         log::debug!("Reading downstream resource: '{}'", params.uri);
 
-        let error_fn = || {
-            ErrorData::new(
-                rmcp::model::ErrorCode::METHOD_NOT_FOUND,
-                "Resource not found".to_string(),
-                None,
-            )
-        };
+        let error_fn = || error_not_found("Resource not found");
 
         // Find which server owns this resource
         let server_name = self.resource_to_server.get(params.uri.as_str()).ok_or_else(|| {
@@ -368,13 +341,7 @@ impl Downstream {
             server_name
         );
 
-        match server.read_resource(params).await {
-            Ok(result) => Ok(result),
-            Err(error) => match error {
-                rmcp::ServiceError::McpError(error_data) => Err(error_data),
-                _ => Err(ErrorData::internal_error(error.to_string(), None)),
-            },
-        }
+        server.read_resource(params).await
     }
 
     fn find_server(&self, name: &str) -> Option<&DownstreamClient> {
@@ -386,7 +353,7 @@ impl Downstream {
 
     fn find_tool(&self, name: &str) -> Option<&Tool> {
         self.tools
-            .binary_search_by(|tool| tool.name.as_ref().cmp(name))
+            .binary_search_by(|tool| tool.name.as_str().cmp(name))
             .ok()
             .map(|index| &self.tools[index])
     }

@@ -1,7 +1,5 @@
-use std::sync::Arc;
-
+use crate::types::Tool;
 use indoc::indoc;
-use rmcp::model::{Tool, ToolAnnotations};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +14,7 @@ pub struct ExecuteParameters {
     pub arguments: serde_json::Map<String, serde_json::Value>,
 }
 
-pub fn rmcp_tool() -> Tool {
+pub fn pmcp_tool() -> Tool {
     let description = indoc! {r#"
        Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.
 
@@ -24,17 +22,11 @@ pub fn rmcp_tool() -> Tool {
        and the parameters must be a map of strings to JSON values.
     "#};
 
-    let execute_schema = serde_json::to_value(ExecuteParameters::json_schema(&mut Default::default()))
-        .unwrap()
-        .as_object()
-        .unwrap()
-        .clone();
+    let execute_schema = serde_json::to_value(ExecuteParameters::json_schema(&mut Default::default())).unwrap();
 
     Tool {
-        name: "execute".into(),
-        description: Some(description.into()),
-        input_schema: Arc::new(execute_schema),
-        output_schema: None,
-        annotations: Some(ToolAnnotations::new().destructive(true).open_world(true)),
+        name: "execute".to_string(),
+        description: Some(description.to_string()),
+        input_schema: execute_schema,
     }
 }

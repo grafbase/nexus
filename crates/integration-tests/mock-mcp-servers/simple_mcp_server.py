@@ -74,10 +74,19 @@ class SimpleMcpServer:
         print("SimpleMcpServer: Server initialization complete", file=sys.stderr, flush=True)
 
     async def handle_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle incoming MCP message"""
-        method = message.get("method")
-        params = message.get("params", {})
-        msg_id = message.get("id")
+        """Handle incoming MCP message or TransportMessage"""
+        # Check if this is a TransportMessage wrapper from pmcp
+        if "request" in message and "id" in message and not "jsonrpc" in message:
+            # Extract the actual JSON-RPC message from the TransportMessage
+            msg_id = message["id"]
+            inner_request = message["request"]
+            method = inner_request.get("method")
+            params = inner_request.get("params", {})
+        else:
+            # Standard JSON-RPC message
+            method = message.get("method")
+            params = message.get("params", {})
+            msg_id = message.get("id")
 
         try:
             if method == "initialize":
@@ -197,42 +206,67 @@ class SimpleMcpServer:
         else:
             raise Exception(f"Unknown tool: {tool_name}")
 
+    async def read_message(self):
+        """Read an LSP-style message with Content-Length header"""
+        # Read headers
+        content_length = None
+        while True:
+            line = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.readline)
+            if not line:
+                return None
+            
+            line = line.strip()
+            if not line:
+                # Empty line marks end of headers
+                break
+            
+            # Parse header
+            if line.startswith("Content-Length:"):
+                content_length = int(line.split(":", 1)[1].strip())
+        
+        if content_length is None:
+            print("Missing Content-Length header", file=sys.stderr, flush=True)
+            return None
+        
+        # Read the message body
+        body = await asyncio.get_event_loop().run_in_executor(
+            None, sys.stdin.read, content_length
+        )
+        
+        return json.loads(body)
+    
+    def send_message(self, message):
+        """Send an LSP-style message with Content-Length header"""
+        # Wrap response in TransportMessage format for pmcp compatibility
+        # The message should already be a proper JSON-RPC response
+        if "jsonrpc" in message and "id" in message:
+            # This is a response - wrap it as TransportMessage::Response
+            wrapped_message = message  # pmcp expects the response directly
+        else:
+            wrapped_message = message
+            
+        body = json.dumps(wrapped_message)
+        content_length = len(body.encode('utf-8'))
+        sys.stdout.write(f"Content-Length: {content_length}\r\n\r\n")
+        sys.stdout.write(body)
+        sys.stdout.flush()
+    
     async def run(self):
         """Main server loop"""
         print("SimpleMcpServer: Starting main server loop", file=sys.stderr, flush=True)
         while True:
             try:
-                # Read line from stdin
-                line = await asyncio.get_event_loop().run_in_executor(None, sys.stdin.readline)
-                if not line:
+                # Read LSP-style message
+                message = await self.read_message()
+                if message is None:
                     break
-
-                line = line.strip()
-                if not line:
-                    continue
-
-                # Parse JSON message
-                try:
-                    message = json.loads(line)
-                except json.JSONDecodeError as e:
-                    # Send error response for invalid JSON
-                    error_response = {
-                        "jsonrpc": "2.0",
-                        "id": None,
-                        "error": {
-                            "code": -32700,
-                            "message": f"Parse error: {str(e)}"
-                        }
-                    }
-                    print(json.dumps(error_response), flush=True)
-                    continue
 
                 # Handle message
                 response = await self.handle_message(message)
 
                 # Send response if needed
                 if response is not None:
-                    print(json.dumps(response), flush=True)
+                    self.send_message(response)
 
             except KeyboardInterrupt:
                 break

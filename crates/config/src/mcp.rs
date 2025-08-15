@@ -148,7 +148,7 @@ pub struct StdioConfig {
     /// Configuration for stderr handling.
     /// If not specified, defaults to "null" to discard subprocess logs.
     ///
-    /// Note: Due to rmcp library limitations, file redirection may not work as expected.
+    /// Note: File redirection requires proper stderr configuration.
     #[serde(default = "default_stderr_target")]
     pub stderr: StdioTarget,
 
@@ -168,6 +168,25 @@ impl StdioConfig {
     /// Returns the arguments (all elements after the first).
     pub fn args(&self) -> &[String] {
         &self.cmd[1..]
+    }
+
+    /// Returns the environment variables map.
+    pub fn env(&self) -> Option<&BTreeMap<String, String>> {
+        if self.env.is_empty() {
+            None
+        } else {
+            Some(&self.env)
+        }
+    }
+
+    /// Returns the working directory.
+    pub fn cwd(&self) -> Option<&str> {
+        self.cwd.as_ref().map(|p| p.to_str()).flatten()
+    }
+
+    /// Returns the stderr configuration.
+    pub fn stderr(&self) -> &StdioTarget {
+        &self.stderr
     }
 }
 

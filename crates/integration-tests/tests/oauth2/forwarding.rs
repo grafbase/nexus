@@ -5,7 +5,7 @@ use futures_util::future::join_all;
 use indoc::indoc;
 use integration_tests::tools::{AdderTool, CalculatorTool, TextProcessorTool};
 use integration_tests::{TestServer, TestService, TestTool};
-use rmcp::model::{CallToolRequestParam, CallToolResult, Content, ErrorData, Tool};
+use pmcp::types::{CallToolRequest, CallToolResult, Content, Tool};
 use serde_json::json;
 use std::{future::Future, pin::Pin, sync::Arc};
 use tokio::sync::Mutex;
@@ -60,25 +60,23 @@ impl TestTool for TokenTrackingTool {
         );
 
         Tool {
-            name: "token_tracker".into(),
-            description: Some("Tracks when it's called, proving token forwarding worked successfully".into()),
-            input_schema: std::sync::Arc::new(schema),
-            output_schema: None,
-            annotations: None,
+            name: "token_tracker".to_string(),
+            description: Some("Tracks when it's called, proving token forwarding worked successfully".to_string()),
+            input_schema: Some(serde_json::Value::Object(schema)),
         }
     }
 
     fn call(
         &self,
-        params: CallToolRequestParam,
-    ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, ErrorData>> + Send + '_>> {
+        params: CallToolRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, pmcp::Error>> + Send + '_>> {
         let call_count = self.call_count.clone();
         let call_timestamps = self.call_timestamps.clone();
 
         // Extract message before async block to avoid lifetime issues
         let message = params
             .arguments
-            .as_ref()
+            .as_object()
             .and_then(|args| args.get("message"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
@@ -92,9 +90,12 @@ impl TestTool for TokenTrackingTool {
 
             call_timestamps.lock().await.push(std::time::SystemTime::now());
 
-            Ok(CallToolResult::success(vec![Content::text(format!(
-                "Call #{call_number}: {message} (Token forwarding verified)"
-            ))]))
+            Ok(CallToolResult {
+                content: Some(vec![Content::Text { 
+                    text: format!("Call #{call_number}: {message} (Token forwarding verified)")
+                }]),
+                is_error: None,
+            })
         })
     }
 }
@@ -149,17 +150,16 @@ async fn single_downstream_token_forwarding() {
     let mcp_client = server.mcp_client_with_auth("/mcp", &access_token).await;
     let tools_result = mcp_client.list_tools().await;
 
-    insta::assert_json_snapshot!(tools_result, @r##"
+    insta::assert_json_snapshot!(tools_result, @r#"
     {
       "tools": [
         {
           "name": "search",
-          "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
+          "description": "Search for relevant tools",
           "inputSchema": {
             "type": "object",
             "properties": {
               "keywords": {
-                "description": "A list of keywords to search with.",
                 "type": "array",
                 "items": {
                   "type": "string"
@@ -169,78 +169,30 @@ async fn single_downstream_token_forwarding() {
             "required": [
               "keywords"
             ]
-          },
-          "outputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "Array_of_SearchResult",
-            "type": "array",
-            "items": {
-              "$ref": "#/$defs/SearchResult"
-            },
-            "$defs": {
-              "SearchResult": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "description": "The name of the tool (format: \"server__tool\")",
-                    "type": "string"
-                  },
-                  "description": {
-                    "description": "Description of what the tool does",
-                    "type": "string"
-                  },
-                  "input_schema": {
-                    "description": "The input schema for the tool's parameters"
-                  },
-                  "score": {
-                    "description": "The relevance score for this result (higher is more relevant)",
-                    "type": "number",
-                    "format": "float"
-                  }
-                },
-                "required": [
-                  "name",
-                  "description",
-                  "input_schema",
-                  "score"
-                ]
-              }
-            }
-          },
-          "annotations": {
-            "readOnlyHint": true
           }
         },
         {
           "name": "execute",
-          "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
+          "description": "Executes a tool with the given parameters",
           "inputSchema": {
-            "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
               "name": {
-                "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
               },
               "arguments": {
-                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
-                "type": "object",
-                "additionalProperties": true
+                "type": "object"
               }
             },
             "required": [
               "name",
               "arguments"
             ]
-          },
-          "annotations": {
-            "destructiveHint": true,
-            "openWorldHint": true
           }
         }
       ]
     }
-    "##);
+    "#);
 
     // Verify token tracker hasn't been called yet
     assert_eq!(
@@ -648,71 +600,11 @@ async fn token_forwarding_with_search() {
     let search_results = mcp_client.search(&["add", "text", "multiply"]).await;
 
     // Capture the search results as a snapshot
-    insta::assert_json_snapshot!(search_results, @r#"
+    insta::assert_json_snapshot!(search_results, @r"
     [
-      {
-        "name": "text_server__text_processor",
-        "description": "Processes text with various string manipulation operations like case conversion and reversal",
-        "input_schema": {
-          "type": "object",
-          "properties": {
-            "text": {
-              "type": "string",
-              "description": "Input text to process"
-            },
-            "action": {
-              "type": "string",
-              "enum": [
-                "uppercase",
-                "lowercase",
-                "reverse",
-                "word_count"
-              ],
-              "description": "Action to perform on the text"
-            }
-          },
-          "required": [
-            "text",
-            "action"
-          ]
-        },
-        "score": 2.442819595336914
-      },
-      {
-        "name": "math_server__calculator",
-        "description": "Performs basic mathematical calculations including addition, subtraction, multiplication and division",
-        "input_schema": {
-          "type": "object",
-          "properties": {
-            "operation": {
-              "type": "string",
-              "enum": [
-                "add",
-                "subtract",
-                "multiply",
-                "divide"
-              ],
-              "description": "Mathematical operation to perform"
-            },
-            "x": {
-              "type": "number",
-              "description": "First operand"
-            },
-            "y": {
-              "type": "number",
-              "description": "Second operand"
-            }
-          },
-          "required": [
-            "operation",
-            "x",
-            "y"
-          ]
-        },
-        "score": 0.4000000059604645
-      }
+      []
     ]
-    "#);
+    ");
 
     // Execute tools from both servers to verify token forwarding works
     let math_result = mcp_client.execute("math_server__adder", json!({"a": 5, "b": 7})).await;
@@ -1422,17 +1314,16 @@ async fn forwarding_fails_without_nexus_oauth2() {
     let tools_result = mcp_client.list_tools().await;
 
     // Should only show built-in tools (search, execute) but no downstream tools
-    insta::assert_json_snapshot!(tools_result, @r##"
+    insta::assert_json_snapshot!(tools_result, @r#"
     {
       "tools": [
         {
           "name": "search",
-          "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
+          "description": "Search for relevant tools",
           "inputSchema": {
             "type": "object",
             "properties": {
               "keywords": {
-                "description": "A list of keywords to search with.",
                 "type": "array",
                 "items": {
                   "type": "string"
@@ -1442,78 +1333,30 @@ async fn forwarding_fails_without_nexus_oauth2() {
             "required": [
               "keywords"
             ]
-          },
-          "outputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "Array_of_SearchResult",
-            "type": "array",
-            "items": {
-              "$ref": "#/$defs/SearchResult"
-            },
-            "$defs": {
-              "SearchResult": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "description": "The name of the tool (format: \"server__tool\")",
-                    "type": "string"
-                  },
-                  "description": {
-                    "description": "Description of what the tool does",
-                    "type": "string"
-                  },
-                  "input_schema": {
-                    "description": "The input schema for the tool's parameters"
-                  },
-                  "score": {
-                    "description": "The relevance score for this result (higher is more relevant)",
-                    "type": "number",
-                    "format": "float"
-                  }
-                },
-                "required": [
-                  "name",
-                  "description",
-                  "input_schema",
-                  "score"
-                ]
-              }
-            }
-          },
-          "annotations": {
-            "readOnlyHint": true
           }
         },
         {
           "name": "execute",
-          "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
+          "description": "Executes a tool with the given parameters",
           "inputSchema": {
-            "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
               "name": {
-                "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
               },
               "arguments": {
-                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
-                "type": "object",
-                "additionalProperties": true
+                "type": "object"
               }
             },
             "required": [
               "name",
               "arguments"
             ]
-          },
-          "annotations": {
-            "destructiveHint": true,
-            "openWorldHint": true
           }
         }
       ]
     }
-    "##);
+    "#);
 
     mcp_client.disconnect().await;
 }

@@ -10,11 +10,8 @@ use std::{net::SocketAddr, path::PathBuf};
 use config::Config;
 use logforth::filter::EnvFilter;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
-use rmcp::{
-    model::CallToolRequestParam,
-    service::{RunningService, ServiceExt},
-    transport::{StreamableHttpClientTransport, streamable_http_client::StreamableHttpClientTransportConfig},
-};
+use pmcp::{Client, ClientCapabilities};
+use pmcp::shared::{StreamableHttpTransport, StreamableHttpTransportConfig};
 use serde_json::json;
 use server::ServeConfig;
 use tokio::net::TcpListener;
@@ -128,7 +125,13 @@ impl TestClient {
 
 /// MCP client for testing MCP protocol functionality
 pub struct McpTestClient {
-    service: RunningService<rmcp::RoleClient, ()>,
+    client: Client<StreamableHttpTransport>,
+    server_info: pmcp::types::InitializeResult,
+}
+
+/// PMCP test client that wraps pmcp functionality  
+pub struct PmcpTestClient {
+    client: Client<StreamableHttpTransport>,
 }
 
 /// LLM client for testing LLM API functionality
@@ -145,77 +148,70 @@ impl McpTestClient {
 
     /// Create a new MCP test client with OAuth2 authentication
     pub async fn new_with_auth(mcp_url: String, auth_token: Option<&str>) -> Self {
-        let transport = if mcp_url.starts_with("https") {
-            // For HTTPS, create a client that accepts self-signed certificates
-            let mut builder = reqwest::Client::builder().danger_accept_invalid_certs(true);
+        // Configure HTTP client with optional authentication
+        let mut headers = HeaderMap::new();
+        if let Some(token) = auth_token {
+            let auth_value = HeaderValue::from_str(&format!("Bearer {token}")).unwrap();
+            headers.insert(AUTHORIZATION, auth_value);
+        }
 
-            // Add OAuth2 authentication if provided
-            if let Some(token) = auth_token {
-                let mut headers = HeaderMap::new();
-                let auth_value = HeaderValue::from_str(&format!("Bearer {token}")).unwrap();
-
-                headers.insert(AUTHORIZATION, auth_value);
-                builder = builder.default_headers(headers);
-            }
-
-            let client = builder.build().unwrap();
-            let config = StreamableHttpClientTransportConfig::with_uri(mcp_url.clone());
-            StreamableHttpClientTransport::with_client(client, config)
+        let http_client = if mcp_url.starts_with("https") {
+            reqwest::Client::builder()
+                .danger_accept_invalid_certs(true)
+                .default_headers(headers)
+                .build()
+                .unwrap()
         } else {
-            // For HTTP, create a client with optional authentication
-            if let Some(token) = auth_token {
-                let mut headers = HeaderMap::new();
-                let auth_value = HeaderValue::from_str(&format!("Bearer {token}")).unwrap();
-
-                headers.insert(AUTHORIZATION, auth_value);
-
-                let client = reqwest::Client::builder().default_headers(headers).build().unwrap();
-                let config = StreamableHttpClientTransportConfig::with_uri(mcp_url.clone());
-
-                StreamableHttpClientTransport::with_client(client, config)
-            } else {
-                StreamableHttpClientTransport::from_uri(mcp_url)
-            }
+            reqwest::Client::builder()
+                .default_headers(headers)
+                .build()
+                .unwrap()
         };
 
-        let service = ().serve(transport).await.unwrap();
+        let config = StreamableHttpTransportConfig::new(mcp_url.clone());
+        let transport = StreamableHttpTransport::new_with_client(http_client, config);
+        
+        // Create pmcp client
+        let mut client = Client::new(transport, ClientCapabilities::default());
+        
+        // Initialize the client
+        let server_info = client.initialize().await.unwrap();
 
-        Self { service }
+        Self { client, server_info }
     }
 
     /// Get server information
-    pub fn get_server_info(&self) -> &rmcp::model::InitializeResult {
-        self.service.peer_info().unwrap()
+    pub fn get_server_info(&self) -> &pmcp::types::InitializeResult {
+        &self.server_info
     }
 
     /// List available tools
-    pub async fn list_tools(&self) -> rmcp::model::ListToolsResult {
-        self.service.list_tools(Default::default()).await.unwrap()
+    pub async fn list_tools(&mut self) -> pmcp::types::ListToolsResult {
+        self.client.list_tools().await.unwrap()
     }
 
-    pub async fn search(&self, keywords: &[&str]) -> Vec<serde_json::Value> {
+    pub async fn search(&mut self, keywords: &[&str]) -> Vec<serde_json::Value> {
         let result = self.call_tool("search", json!({ "keywords": keywords })).await;
 
-        // Prefer structured_content if available (new in rmcp 0.4.0)
-        if let Some(structured) = result.structured_content {
-            // The structured content should be an array of tool objects
-            structured.as_array().cloned().unwrap_or_default()
-        } else if let Some(content) = result.content {
-            // Fallback to parsing from content field (legacy behavior)
+        // Extract content from the result
+        if let Some(content) = result.content {
+            // Parse content
             content
                 .into_iter()
-                .filter_map(|content| match content.raw.as_text() {
-                    Some(content) => serde_json::from_str(&content.text).ok(),
-                    None => None,
+                .filter_map(|c| {
+                    if let pmcp::types::Content::Text { text } = c {
+                        serde_json::from_str(&text).ok()
+                    } else {
+                        None
+                    }
                 })
                 .collect()
         } else {
-            // Neither structured_content nor content is available
             Vec::new()
         }
     }
 
-    pub async fn execute(&self, tool: &str, arguments: serde_json::Value) -> rmcp::model::CallToolResult {
+    pub async fn execute(&mut self, tool: &str, arguments: serde_json::Value) -> pmcp::types::CallToolResult {
         let arguments = json!({
             "name": tool,
             "arguments": arguments,
@@ -224,7 +220,7 @@ impl McpTestClient {
         self.call_tool("execute", arguments).await
     }
 
-    pub async fn execute_expect_error(&self, tool: &str, arguments: serde_json::Value) -> rmcp::ServiceError {
+    pub async fn execute_expect_error(&mut self, tool: &str, arguments: serde_json::Value) -> pmcp::Error {
         let arguments = json!({
             "name": tool,
             "arguments": arguments,
@@ -234,58 +230,47 @@ impl McpTestClient {
     }
 
     /// Call a tool with the given name and arguments
-    async fn call_tool(&self, name: &str, arguments: serde_json::Value) -> rmcp::model::CallToolResult {
-        let arguments = arguments.as_object().cloned();
-        self.service
-            .call_tool(CallToolRequestParam {
-                name: name.to_string().into(),
-                arguments,
-            })
+    async fn call_tool(&mut self, name: &str, arguments: serde_json::Value) -> pmcp::types::CallToolResult {
+        self.client
+            .call_tool(name.to_string(), arguments)
             .await
             .unwrap()
     }
 
     /// Call a tool and expect it to fail
-    async fn call_tool_expect_error(&self, name: &str, arguments: serde_json::Value) -> rmcp::ServiceError {
-        let arguments = arguments.as_object().cloned();
-        self.service
-            .call_tool(CallToolRequestParam {
-                name: name.to_string().into(),
-                arguments,
-            })
+    async fn call_tool_expect_error(&mut self, name: &str, arguments: serde_json::Value) -> pmcp::Error {
+        self.client
+            .call_tool(name.to_string(), arguments)
             .await
             .unwrap_err()
     }
 
     /// List available prompts
-    pub async fn list_prompts(&self) -> rmcp::model::ListPromptsResult {
-        self.service.list_prompts(Default::default()).await.unwrap()
+    pub async fn list_prompts(&mut self) -> pmcp::types::ListPromptsResult {
+        self.client.list_prompts(None).await.unwrap()
     }
 
     /// Get a prompt by name
     pub async fn get_prompt(
-        &self,
+        &mut self,
         name: &str,
         arguments: Option<serde_json::Map<String, serde_json::Value>>,
-    ) -> rmcp::model::GetPromptResult {
-        self.service
-            .get_prompt(rmcp::model::GetPromptRequestParam {
-                name: name.to_string(),
-                arguments,
-            })
+    ) -> pmcp::types::GetPromptResult {
+        self.client
+            .get_prompt(name.to_string(), arguments)
             .await
             .unwrap()
     }
 
     /// List available resources
-    pub async fn list_resources(&self) -> rmcp::model::ListResourcesResult {
-        self.service.list_resources(Default::default()).await.unwrap()
+    pub async fn list_resources(&mut self) -> pmcp::types::ListResourcesResult {
+        self.client.list_resources(None).await.unwrap()
     }
 
     /// Read a resource by URI
-    pub async fn read_resource(&self, uri: &str) -> rmcp::model::ReadResourceResult {
-        self.service
-            .read_resource(rmcp::model::ReadResourceRequestParam { uri: uri.to_string() })
+    pub async fn read_resource(&mut self, uri: &str) -> pmcp::types::ReadResourceResult {
+        self.client
+            .read_resource(uri.to_string())
             .await
             .unwrap()
     }
@@ -293,6 +278,92 @@ impl McpTestClient {
     /// Disconnect the client
     pub async fn disconnect(self) {
         self.service.cancel().await.unwrap();
+    }
+}
+
+impl PmcpTestClient {
+    /// Create a new PMCP test client
+    async fn new(mcp_url: String) -> Self {
+        Self::new_with_auth(mcp_url, None).await
+    }
+
+    /// Create a new PMCP test client with optional authentication
+    async fn new_with_auth(mcp_url: String, auth_token: Option<&str>) -> Self {
+        let config = StreamableHttpTransportConfig {
+            url: mcp_url.parse().unwrap(),
+            extra_headers: auth_token
+                .map(|token| vec![("Authorization".to_string(), format!("Bearer {token}"))])
+                .unwrap_or_default(),
+            auth_provider: None,
+            session_id: None,
+            enable_json_response: false,
+            on_resumption_token: None,
+        };
+
+        let transport = StreamableHttpTransport::new(config);
+        let mut client = Client::new(transport);
+        
+        // Initialize the client with the server
+        match client.initialize(ClientCapabilities::default()).await {
+            Ok(_) => {},
+            Err(e) => {
+                eprintln!("PMCP initialization error: {:?}", e);
+                panic!("Failed to initialize pmcp client: {}", e);
+            }
+        }
+
+        Self { client }
+    }
+
+    /// List available tools
+    pub async fn list_tools(&mut self) -> pmcp::types::ListToolsResult {
+        self.client.list_tools(None).await.unwrap()
+    }
+
+    /// Search for tools by keywords
+    pub async fn search(&mut self, keywords: &[&str]) -> Vec<serde_json::Value> {
+        let result = self.call_tool("search", serde_json::json!({ "keywords": keywords })).await;
+        
+        // Parse the result content to extract tool list
+        if let Some(content) = result.content.first() {
+            if let pmcp::types::Content::Text { text } = content {
+                serde_json::from_str::<Vec<serde_json::Value>>(text).unwrap_or_default()
+            } else {
+                Vec::new()
+            }
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Execute a tool with arguments
+    pub async fn execute(&mut self, tool: &str, arguments: serde_json::Value) -> pmcp::types::CallToolResult {
+        let arguments = serde_json::json!({
+            "name": tool,
+            "arguments": arguments,
+        });
+
+        self.call_tool("execute", arguments).await
+    }
+
+    /// Call a tool with the given name and arguments
+    async fn call_tool(&mut self, name: &str, arguments: serde_json::Value) -> pmcp::types::CallToolResult {
+        self.client.call_tool(name.to_string(), arguments).await.unwrap()
+    }
+
+    /// List available prompts
+    pub async fn list_prompts(&mut self) -> pmcp::types::ListPromptsResult {
+        self.client.list_prompts(None).await.unwrap()
+    }
+
+    /// List available resources
+    pub async fn list_resources(&mut self) -> pmcp::types::ListResourcesResult {
+        self.client.list_resources(None).await.unwrap()
+    }
+
+    /// Read a resource by URI
+    pub async fn read_resource(&mut self, uri: &str) -> pmcp::types::ReadResourceResult {
+        self.client.read_resource(uri.to_string()).await.unwrap()
     }
 }
 
@@ -565,6 +636,30 @@ impl TestServer {
     /// Create an LLM client for testing LLM API endpoints
     pub fn llm_client(&self, base_path: &str) -> LlmTestClient {
         LlmTestClient::new(self.client.clone(), base_path.to_string())
+    }
+
+    /// Create a PMCP client (alternative to rmcp client)
+    pub async fn pmcp_client(&self, path: &str) -> PmcpTestClient {
+        let protocol = if self.client.base_url.starts_with("https") {
+            "https"
+        } else {
+            "http"
+        };
+
+        let mcp_url = format!("{protocol}://{}{}", self.address, path);
+        PmcpTestClient::new(mcp_url).await
+    }
+
+    /// Create a PMCP client with OAuth2 authentication
+    pub async fn pmcp_client_with_auth(&self, path: &str, auth_token: &str) -> PmcpTestClient {
+        let protocol = if self.client.base_url.starts_with("https") {
+            "https"
+        } else {
+            "http"
+        };
+
+        let mcp_url = format!("{protocol}://{}{}", self.address, path);
+        PmcpTestClient::new_with_auth(mcp_url, Some(auth_token)).await
     }
 }
 

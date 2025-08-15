@@ -24,15 +24,7 @@ itertools.workspace = true
 log.workspace = true
 logforth = { workspace = true, features = ["colored"] }
 reqwest = { workspace = true, features = ["json"] }
-rmcp = { workspace = true, features = [
-    "client",
-    "server",
-    "macros",
-    "reqwest",
-    "transport-streamable-http-client",
-    "transport-sse-server",
-    "transport-sse-client",
-] }
+pmcp.workspace = true
 rustls.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

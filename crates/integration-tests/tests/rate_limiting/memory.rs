@@ -170,13 +170,13 @@ async fn per_ip_rate_limit_basic() {
       {
         "ip": "192.168.1.2",
         "request": 1,
-        "status": 406,
+        "status": 200,
         "retry_after": null
       },
       {
         "ip": "192.168.1.2",
         "request": 2,
-        "status": 406,
+        "status": 200,
         "retry_after": null
       },
       {
@@ -511,27 +511,27 @@ async fn mixed_rate_limits() {
     [
       {
         "request": 1,
-        "status": 406,
+        "status": 200,
         "limit_type": "allowed"
       },
       {
         "request": 2,
-        "status": 406,
+        "status": 200,
         "limit_type": "allowed"
       },
       {
         "request": 3,
-        "status": 406,
+        "status": 200,
         "limit_type": "allowed"
       },
       {
         "request": 4,
-        "status": 406,
+        "status": 200,
         "limit_type": "allowed"
       },
       {
         "request": 5,
-        "status": 406,
+        "status": 200,
         "limit_type": "allowed"
       },
       {

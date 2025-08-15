@@ -7,31 +7,28 @@ homepage.workspace = true
 keywords.workspace = true
 repository.workspace = true
 
+[features]
+streamable-http = []
+
 [dependencies]
 anyhow = { workspace = true, features = ["backtrace"] }
+async-trait.workspace = true
 axum.workspace = true
+bytes.workspace = true
 config.workspace = true
 convert_case.workspace = true
 futures-util.workspace = true
 http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 indoc.workspace = true
 itertools.workspace = true
 log = { workspace = true, features = ["kv"] }
 mini-moka.workspace = true
 rate-limit.workspace = true
 reqwest.workspace = true
-rmcp = { workspace = true, features = [
-    "client",
-    "reqwest",
-    "transport-sse-client",
-    "transport-streamable-http-client",
-    "transport-streamable-http-server",
-    "auth",
-    "transport-io",
-    "transport-child-process",
-    "client-side-sse",
-
-] }
+pmcp.workspace = true
 schemars.workspace = true
 secrecy.workspace = true
 serde = { workspace = true, features = ["derive"] }
@@ -39,6 +36,9 @@ serde_json.workspace = true
 sha2.workspace = true
 tantivy.workspace = true
 tokio = { workspace = true, features = ["process", "time", "macros"] }
+tokio-stream.workspace = true
+url.workspace = true
+uuid.workspace = true
 
 [lints]
 workspace = true

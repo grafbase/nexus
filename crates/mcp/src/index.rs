@@ -1,10 +1,8 @@
 use std::collections::HashSet;
 
+use crate::types::Tool;
 use convert_case::Boundary;
-use rmcp::{
-    model::Tool,
-    serde_json::{self, Map, Value},
-};
+use serde_json::{Map, Value};
 use tantivy::{
     Index, IndexReader, IndexWriter, TantivyDocument, Term,
     collector::TopDocs,
@@ -97,16 +95,13 @@ impl ToolIndex {
             doc.add_text(self.fields.description, description);
         }
 
-        if !tool.input_schema.is_empty() {
+        // Add input schema if it's not null
+        if !tool.input_schema.is_null() {
             let input_schema = serde_json::to_string(&tool.input_schema)?;
             doc.add_text(self.fields.input_params, &input_schema);
         }
 
-        if let Some(ref annotations) = tool.annotations
-            && let Some(ref title) = annotations.title
-        {
-            doc.add_text(self.fields.tool_title, title);
-        }
+        // pmcp doesn't have annotations field, skip this for now
 
         let search_tokens = self.generate_search_tokens(tool)?;
         doc.add_text(self.fields.search_tokens, &search_tokens);
@@ -213,11 +208,14 @@ impl ToolIndex {
             buffer.push_str(desc);
         }
 
-        for token in tokenize_map(&tool.input_schema) {
-            if !buffer.is_empty() {
-                buffer.push(' ');
+        // Convert input_schema to map if it's an object
+        if let serde_json::Value::Object(ref map) = tool.input_schema {
+            for token in tokenize_map(map) {
+                if !buffer.is_empty() {
+                    buffer.push(' ');
+                }
+                buffer.push_str(&token);
             }
-            buffer.push_str(&token);
         }
 
         Ok(buffer)

@@ -7,17 +7,9 @@ use axum::{
 };
 use core::fmt;
 use dashmap::DashMap;
-use rmcp::{
-    handler::server::ServerHandler,
-    model::*,
-    service::{RequestContext, RoleServer},
-    transport::{
-        sse_server::{SseServer, SseServerConfig},
-        streamable_http_server::{
-            StreamableHttpServerConfig, StreamableHttpService, session::never::NeverSessionManager,
-        },
-    },
-};
+use pmcp::types::*;
+use pmcp::types::Implementation;
+use pmcp::{ProtocolVersion, ServerCapabilities as PmcpServerCapabilities};
 use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
@@ -29,8 +21,8 @@ pub trait TestTool: Send + Sync + 'static + std::fmt::Debug {
     fn tool_definition(&self) -> Tool;
     fn call(
         &self,
-        params: CallToolRequestParam,
-    ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, ErrorData>> + Send + '_>>;
+        params: CallToolRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, pmcp::Error>> + Send + '_>>;
 }
 
 #[derive(Clone, Copy)]
@@ -191,23 +183,18 @@ impl TestService {
 }
 
 async fn spawn_sse(service: TestService) -> (SocketAddr, CancellationToken) {
+    // For pmcp, we'll create a simple HTTP server that handles MCP requests
     let addr = SocketAddr::from(([127, 0, 0, 1], 0));
     let listener = TcpListener::bind(addr).await.unwrap();
     let address = listener.local_addr().unwrap();
 
     let ct = CancellationToken::new();
-
-    let sse_config = SseServerConfig {
-        // Use dummy bind address like grafbase - the actual binding happens with axum::serve
-        bind: SocketAddr::from(([127, 0, 0, 1], 8080)),
-        sse_path: "/mcp".to_string(),
-        post_path: "/mcp".to_string(),
-        ct: ct.clone(),
-        sse_keep_alive: Some(Duration::from_secs(5)),
-    };
-
-    let (sse_server, mut router) = SseServer::new(sse_config);
-    let tls_config = service.tls_config.clone();
+    let service = Arc::new(service);
+    
+    // Create HTTP router for MCP requests
+    let mut router = Router::new()
+        .route("/mcp", axum::routing::post(handle_mcp_request))
+        .with_state(service.clone());
 
     // Add authentication middleware if required
     if service.requires_auth() {
@@ -220,26 +207,71 @@ async fn spawn_sse(service: TestService) -> (SocketAddr, CancellationToken) {
         ));
     }
 
-    let service_ct = sse_server.with_service(move || {
-        log::debug!("SSE server: initializing service handler for test server");
-        service.clone()
-    });
-
-    // Create a combined cancellation token that cancels both when dropped
-    let combined_ct = CancellationToken::new();
-    let combined_ct_clone = combined_ct.clone();
+    let tls_config = service.tls_config.clone();
     let ct_clone = ct.clone();
 
-    tokio::spawn(async move {
-        tokio::select! {
-            _ = combined_ct_clone.cancelled() => {
-                ct_clone.cancel();
-                service_ct.cancel();
-            }
-        }
-    });
-
     // Serve with TLS or regular depending on configuration
+    match tls_config {
+        Some(tls_config) => {
+            use axum_server::tls_rustls::RustlsConfig;
+
+            let rustls_config = RustlsConfig::from_pem_file(&tls_config.cert_path, &tls_config.key_path)
+                .await
+                .expect("Failed to load TLS certificates");
+
+            let std_listener = listener.into_std().unwrap();
+
+            tokio::spawn(async move {
+                tokio::select! {
+                    _ = axum_server::from_tcp_rustls(std_listener, rustls_config)
+                        .serve(router.into_make_service())
+                        => {},
+                    _ = ct_clone.cancelled() => {},
+                }
+            });
+        }
+        None => {
+            tokio::spawn(async move {
+                tokio::select! {
+                    _ = axum::serve(listener, router) => {},
+                    _ = ct_clone.cancelled() => {},
+                }
+            });
+        }
+    }
+
+    // Give the server time to fully initialize
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    (address, ct)
+}
+
+async fn spawn_streamable_http(service: TestService) -> SocketAddr {
+    // For pmcp, use the same HTTP server implementation as SSE
+    let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+    let listener = TcpListener::bind(addr).await.unwrap();
+    let address = listener.local_addr().unwrap();
+    
+    let service = Arc::new(service);
+    
+    // Create HTTP router for MCP requests
+    let mut router = Router::new()
+        .route("/mcp", axum::routing::post(handle_mcp_request))
+        .with_state(service.clone());
+
+    // Add authentication middleware if required
+    if service.requires_auth() {
+        let expected_token = service.get_expected_token().cloned();
+        router = router.layer(middleware::from_fn(
+            move |headers: HeaderMap, request: Request, next: Next| {
+                let expected_token = expected_token.clone();
+                async move { auth_middleware(headers, request, next, expected_token).await }
+            },
+        ));
+    }
+
+    let tls_config = service.tls_config.clone();
+
     match tls_config {
         Some(tls_config) => {
             use axum_server::tls_rustls::RustlsConfig;
@@ -254,88 +286,42 @@ async fn spawn_sse(service: TestService) -> (SocketAddr, CancellationToken) {
                 axum_server::from_tcp_rustls(std_listener, rustls_config)
                     .serve(router.into_make_service())
                     .await
-                    .expect("TLS SSE server failed");
-            });
-        }
-        None => {
-            tokio::spawn(async move {
-                if let Err(e) = axum::serve(listener, router).await {
-                    eprintln!("SSE server failed: {e}");
-                }
-            });
-        }
-    }
-
-    // Give the SSE server time to fully initialize
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-    (address, combined_ct)
-}
-
-async fn spawn_streamable_http(service: TestService) -> SocketAddr {
-    // Check if TLS is configured before moving service
-    let tls_config = service.tls_config.clone();
-    let requires_auth = service.requires_auth();
-    let expected_token = service.get_expected_token().cloned();
-
-    let mcp_service = StreamableHttpService::new(
-        move || Ok(service.clone()),
-        Arc::new(NeverSessionManager::default()),
-        StreamableHttpServerConfig {
-            sse_keep_alive: Some(Duration::from_secs(5)),
-            stateful_mode: false,
-        },
-    );
-
-    let mut app = Router::new().route_service("/mcp", mcp_service);
-
-    // Add authentication middleware if required
-    if requires_auth {
-        app = app.layer(middleware::from_fn(
-            move |headers: HeaderMap, request: Request, next: Next| {
-                let expected_token = expected_token.clone();
-                async move { auth_middleware(headers, request, next, expected_token).await }
-            },
-        ));
-    }
-
-    let addr = SocketAddr::from(([127, 0, 0, 1], 0));
-    let listener = TcpListener::bind(addr).await.unwrap();
-    let address = listener.local_addr().unwrap();
-
-    match tls_config {
-        Some(tls_config) => {
-            use axum_server::tls_rustls::RustlsConfig;
-
-            let rustls_config = RustlsConfig::from_pem_file(&tls_config.cert_path, &tls_config.key_path)
-                .await
-                .expect("Failed to load TLS certificates");
-
-            let std_listener = listener.into_std().unwrap();
-
-            tokio::spawn(async move {
-                axum_server::from_tcp_rustls(std_listener, rustls_config)
-                    .serve(app.into_make_service())
-                    .await
                     .unwrap();
             });
         }
         None => {
             tokio::spawn(async move {
-                axum::serve(listener, app).await.unwrap();
+                axum::serve(listener, router).await.unwrap();
             });
         }
     }
 
+    // Give the server time to fully initialize
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    
     address
 }
 
-impl ServerHandler for TestService {
-    async fn list_tools(
-        &self,
-        _: Option<PaginatedRequestParam>,
-        _: RequestContext<RoleServer>,
-    ) -> Result<ListToolsResult, ErrorData> {
+// Handler implementation for TestService to work with pmcp
+impl TestService {
+    pub async fn initialize(&self) -> Result<InitializeResult, pmcp::Error> {
+        Ok(InitializeResult {
+            protocol_version: ProtocolVersion("2024-11-05".to_string()),
+            capabilities: PmcpServerCapabilities {
+                tools: Some(Default::default()),
+                prompts: Some(Default::default()),
+                resources: Some(Default::default()),
+                ..Default::default()
+            },
+            server_info: Implementation {
+                name: self.name.clone(),
+                version: "0.1.0".to_string(),
+            },
+            instructions: None,
+        })
+    }
+
+    pub async fn list_tools(&self) -> Result<ListToolsResult, pmcp::Error> {
         let tools = self.tools.iter().map(|refer| refer.value().tool_definition()).collect();
 
         Ok(ListToolsResult {
@@ -344,25 +330,15 @@ impl ServerHandler for TestService {
         })
     }
 
-    async fn call_tool(
-        &self,
-        params: CallToolRequestParam,
-        _context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let tool = self.tools.get(params.name.as_ref()).ok_or_else(|| ErrorData {
-            code: ErrorCode(-32601),
-            message: format!("Tool '{}' not found", params.name).into(),
-            data: None,
-        })?;
+    pub async fn call_tool(&self, request: CallToolRequest) -> Result<CallToolResult, pmcp::Error> {
+        let tool = self.tools.get(&request.name).ok_or_else(|| 
+            pmcp::Error::method_not_found(format!("Tool '{}' not found", request.name))
+        )?;
 
-        tool.call(params).await
+        tool.call(request).await
     }
 
-    async fn list_prompts(
-        &self,
-        _: Option<PaginatedRequestParam>,
-        _: RequestContext<RoleServer>,
-    ) -> Result<ListPromptsResult, ErrorData> {
+    pub async fn list_prompts(&self) -> Result<ListPromptsResult, pmcp::Error> {
         let prompts = self.prompts.iter().map(|refer| refer.value().clone()).collect();
         Ok(ListPromptsResult {
             prompts,
@@ -370,35 +346,25 @@ impl ServerHandler for TestService {
         })
     }
 
-    async fn get_prompt(
-        &self,
-        params: GetPromptRequestParam,
-        _: RequestContext<RoleServer>,
-    ) -> Result<GetPromptResult, ErrorData> {
+    pub async fn get_prompt(&self, request: GetPromptRequest) -> Result<GetPromptResult, pmcp::Error> {
         let prompts = &self.prompts;
-        let _prompt = prompts.get(params.name.as_str()).ok_or_else(|| ErrorData {
-            code: ErrorCode(-32601),
-            message: format!("Prompt '{}' not found", params.name).into(),
-            data: None,
-        })?;
+        let _prompt = prompts.get(&request.name).ok_or_else(|| 
+            pmcp::Error::method_not_found(format!("Prompt '{}' not found", request.name))
+        )?;
 
         // Return a simple prompt result
         Ok(GetPromptResult {
-            description: Some(format!("Test prompt: {}", params.name)),
+            description: Some(format!("Test prompt: {}", request.name)),
             messages: vec![PromptMessage {
                 role: PromptMessageRole::User,
                 content: PromptMessageContent::Text {
-                    text: format!("This is a test prompt named {}", params.name),
+                    text: format!("This is a test prompt named {}", request.name),
                 },
             }],
         })
     }
 
-    async fn list_resources(
-        &self,
-        _: Option<PaginatedRequestParam>,
-        _: RequestContext<RoleServer>,
-    ) -> Result<ListResourcesResult, ErrorData> {
+    pub async fn list_resources(&self) -> Result<ListResourcesResult, pmcp::Error> {
         let resources = self.resources.iter().map(|r| r.value().clone()).collect();
         Ok(ListResourcesResult {
             resources,
@@ -406,23 +372,187 @@ impl ServerHandler for TestService {
         })
     }
 
-    async fn read_resource(
-        &self,
-        params: ReadResourceRequestParam,
-        _: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, ErrorData> {
+    pub async fn read_resource(&self, request: ReadResourceRequest) -> Result<ReadResourceResult, pmcp::Error> {
         let resources = &self.resources;
-        let _resource = resources.get(params.uri.as_str()).ok_or_else(|| ErrorData {
-            code: ErrorCode(-32601),
-            message: format!("Resource '{}' not found", params.uri).into(),
-            data: None,
-        })?;
+        let _resource = resources.get(&request.uri).ok_or_else(|| 
+            pmcp::Error::method_not_found(format!("Resource '{}' not found", request.uri))
+        )?;
 
         // Return simple resource content
         Ok(ReadResourceResult {
             contents: vec![], // For now, return empty contents to get compilation working
         })
     }
+}
+
+/// Handle MCP requests for the test server
+async fn handle_mcp_request(
+    axum::extract::State(service): axum::extract::State<Arc<TestService>>,
+    body: String,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    use pmcp::types::jsonrpc::{JSONRPCRequest, JSONRPCResponse, ResponsePayload, JSONRPCError};
+    
+    // Parse the request
+    let request: JSONRPCRequest<serde_json::Value> = match serde_json::from_str(&body) {
+        Ok(r) => r,
+        Err(e) => {
+            let error_response = JSONRPCResponse::<serde_json::Value, JSONRPCError> {
+                jsonrpc: "2.0".to_string(),
+                id: pmcp::types::RequestId::String("unknown".to_string()),
+                payload: ResponsePayload::Error(JSONRPCError {
+                    code: -32700,
+                    message: format!("Parse error: {}", e),
+                    data: None,
+                }),
+            };
+            return (StatusCode::BAD_REQUEST, axum::Json(error_response)).into_response();
+        }
+    };
+    
+    // Handle different methods
+    let result = match request.method.as_str() {
+        "initialize" => {
+            let init_result = service.initialize().await;
+            match init_result {
+                Ok(result) => ResponsePayload::Result(serde_json::to_value(result).unwrap()),
+                Err(e) => ResponsePayload::Error(JSONRPCError {
+                    code: -32603,
+                    message: e.to_string(),
+                    data: None,
+                }),
+            }
+        }
+        "tools/list" => {
+            let list_result = service.list_tools().await;
+            match list_result {
+                Ok(result) => ResponsePayload::Result(serde_json::to_value(result).unwrap()),
+                Err(e) => ResponsePayload::Error(JSONRPCError {
+                    code: -32603,
+                    message: e.to_string(),
+                    data: None,
+                }),
+            }
+        }
+        "tools/call" => {
+            let params = match serde_json::from_value::<CallToolRequest>(request.params.clone().unwrap_or_default()) {
+                Ok(p) => p,
+                Err(e) => {
+                    let error_response = JSONRPCResponse::<serde_json::Value, JSONRPCError> {
+                        jsonrpc: "2.0".to_string(),
+                        id: request.id.clone(),
+                        payload: ResponsePayload::Error(JSONRPCError {
+                            code: -32602,
+                            message: format!("Invalid parameters: {}", e),
+                            data: None,
+                        }),
+                    };
+                    return (StatusCode::OK, axum::Json(error_response)).into_response();
+                }
+            };
+            
+            let call_result = service.call_tool(params).await;
+            match call_result {
+                Ok(result) => ResponsePayload::Result(serde_json::to_value(result).unwrap()),
+                Err(e) => ResponsePayload::Error(JSONRPCError {
+                    code: -32603,
+                    message: e.to_string(),
+                    data: None,
+                }),
+            }
+        }
+        "prompts/list" => {
+            let list_result = service.list_prompts().await;
+            match list_result {
+                Ok(result) => ResponsePayload::Result(serde_json::to_value(result).unwrap()),
+                Err(e) => ResponsePayload::Error(JSONRPCError {
+                    code: -32603,
+                    message: e.to_string(),
+                    data: None,
+                }),
+            }
+        }
+        "prompts/get" => {
+            let params = match serde_json::from_value::<GetPromptRequest>(request.params.clone().unwrap_or_default()) {
+                Ok(p) => p,
+                Err(e) => {
+                    let error_response = JSONRPCResponse::<serde_json::Value, JSONRPCError> {
+                        jsonrpc: "2.0".to_string(),
+                        id: request.id.clone(),
+                        payload: ResponsePayload::Error(JSONRPCError {
+                            code: -32602,
+                            message: format!("Invalid parameters: {}", e),
+                            data: None,
+                        }),
+                    };
+                    return (StatusCode::OK, axum::Json(error_response)).into_response();
+                }
+            };
+            
+            let get_result = service.get_prompt(params).await;
+            match get_result {
+                Ok(result) => ResponsePayload::Result(serde_json::to_value(result).unwrap()),
+                Err(e) => ResponsePayload::Error(JSONRPCError {
+                    code: -32603,
+                    message: e.to_string(),
+                    data: None,
+                }),
+            }
+        }
+        "resources/list" => {
+            let list_result = service.list_resources().await;
+            match list_result {
+                Ok(result) => ResponsePayload::Result(serde_json::to_value(result).unwrap()),
+                Err(e) => ResponsePayload::Error(JSONRPCError {
+                    code: -32603,
+                    message: e.to_string(),
+                    data: None,
+                }),
+            }
+        }
+        "resources/read" => {
+            let params = match serde_json::from_value::<ReadResourceRequest>(request.params.clone().unwrap_or_default()) {
+                Ok(p) => p,
+                Err(e) => {
+                    let error_response = JSONRPCResponse::<serde_json::Value, JSONRPCError> {
+                        jsonrpc: "2.0".to_string(),
+                        id: request.id.clone(),
+                        payload: ResponsePayload::Error(JSONRPCError {
+                            code: -32602,
+                            message: format!("Invalid parameters: {}", e),
+                            data: None,
+                        }),
+                    };
+                    return (StatusCode::OK, axum::Json(error_response)).into_response();
+                }
+            };
+            
+            let read_result = service.read_resource(params).await;
+            match read_result {
+                Ok(result) => ResponsePayload::Result(serde_json::to_value(result).unwrap()),
+                Err(e) => ResponsePayload::Error(JSONRPCError {
+                    code: -32603,
+                    message: e.to_string(),
+                    data: None,
+                }),
+            }
+        }
+        _ => {
+            ResponsePayload::Error(JSONRPCError {
+                code: -32601,
+                message: format!("Method not found: {}", request.method),
+                data: None,
+            })
+        }
+    };
+    
+    let response = JSONRPCResponse::<serde_json::Value, JSONRPCError> {
+        jsonrpc: "2.0".to_string(),
+        id: request.id,
+        payload: result,
+    };
+    
+    (StatusCode::OK, axum::Json(response)).into_response()
 }
 
 /// Middleware that validates Bearer token authentication

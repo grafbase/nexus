@@ -22,17 +22,16 @@ async fn successful_token_auth() {
     let mcp_client = server.mcp_client("/mcp").await;
     let tools_result = mcp_client.list_tools().await;
 
-    insta::assert_json_snapshot!(tools_result, @r##"
+    insta::assert_json_snapshot!(tools_result, @r#"
     {
       "tools": [
         {
           "name": "search",
-          "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
+          "description": "Search for relevant tools",
           "inputSchema": {
             "type": "object",
             "properties": {
               "keywords": {
-                "description": "A list of keywords to search with.",
                 "type": "array",
                 "items": {
                   "type": "string"
@@ -42,78 +41,30 @@ async fn successful_token_auth() {
             "required": [
               "keywords"
             ]
-          },
-          "outputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "Array_of_SearchResult",
-            "type": "array",
-            "items": {
-              "$ref": "#/$defs/SearchResult"
-            },
-            "$defs": {
-              "SearchResult": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "description": "The name of the tool (format: \"server__tool\")",
-                    "type": "string"
-                  },
-                  "description": {
-                    "description": "Description of what the tool does",
-                    "type": "string"
-                  },
-                  "input_schema": {
-                    "description": "The input schema for the tool's parameters"
-                  },
-                  "score": {
-                    "description": "The relevance score for this result (higher is more relevant)",
-                    "type": "number",
-                    "format": "float"
-                  }
-                },
-                "required": [
-                  "name",
-                  "description",
-                  "input_schema",
-                  "score"
-                ]
-              }
-            }
-          },
-          "annotations": {
-            "readOnlyHint": true
           }
         },
         {
           "name": "execute",
-          "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
+          "description": "Executes a tool with the given parameters",
           "inputSchema": {
-            "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
             "type": "object",
             "properties": {
               "name": {
-                "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
               },
               "arguments": {
-                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
-                "type": "object",
-                "additionalProperties": true
+                "type": "object"
               }
             },
             "required": [
               "name",
               "arguments"
             ]
-          },
-          "annotations": {
-            "destructiveHint": true,
-            "openWorldHint": true
           }
         }
       ]
     }
-    "##);
+    "#);
 
     let result = mcp_client
         .execute("auth_service__adder", json!({ "a": 5, "b": 3 }))

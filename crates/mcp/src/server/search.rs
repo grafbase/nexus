@@ -1,12 +1,12 @@
 use crate::index::ToolIndex;
+use crate::types::Tool;
 use indoc::indoc;
-use rmcp::model::{Tool, ToolAnnotations};
-use rmcp::serde_json;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use std::sync::Arc;
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Deserialize, Serialize, JsonSchema)]
 pub struct SearchParameters {
     /// A list of keywords to search with.
     pub keywords: Vec<String>,
@@ -59,7 +59,7 @@ impl SearchTool {
     /// Find a tool by name using binary search
     pub fn find_exact(&self, tool_name: &str) -> Option<&Tool> {
         self.tools
-            .binary_search_by(|tool| tool.name.as_ref().cmp(tool_name))
+            .binary_search_by(|tool| tool.name.as_str().cmp(tool_name))
             .ok()
             .map(|idx| &self.tools[idx])
     }
@@ -93,7 +93,7 @@ impl SearchTool {
                     .as_deref()
                     .unwrap_or("No description available")
                     .to_string(),
-                input_schema: serde_json::Value::Object(tool.input_schema.as_ref().clone()),
+                input_schema: tool.input_schema.clone(),
                 score: result.score,
             };
 
@@ -104,18 +104,10 @@ impl SearchTool {
     }
 }
 
-pub fn rmcp_tool() -> Tool {
+pub fn pmcp_tool() -> Tool {
     let params = SearchParameters::json_schema(&mut Default::default());
 
-    let search_schema = serde_json::to_value(params).unwrap().as_object().unwrap().clone();
-
-    // Generate output schema for array of SearchResult
-    let output_schema_json = schemars::schema_for!(Vec<SearchResult>);
-    let output_schema = serde_json::to_value(output_schema_json)
-        .unwrap()
-        .as_object()
-        .unwrap()
-        .clone();
+    let search_schema = serde_json::to_value(params).unwrap();
 
     let description = indoc! {r#"
        Search for relevant tools. A list of matching tools with their\nscore is returned with a map of input fields and their types.
@@ -127,10 +119,8 @@ pub fn rmcp_tool() -> Tool {
     "#};
 
     Tool {
-        name: "search".into(),
-        description: Some(description.into()),
-        input_schema: Arc::new(search_schema),
-        output_schema: Some(Arc::new(output_schema)),
-        annotations: Some(ToolAnnotations::new().read_only(true)),
+        name: "search".to_string(),
+        description: Some(description.to_string()),
+        input_schema: search_schema,
     }
 }
