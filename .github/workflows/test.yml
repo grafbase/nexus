@@ -21,7 +21,7 @@ jobs:
     runs-on: depot-ubuntu-24.04-small
     steps:
       - name: Get sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Rust
         uses: ./.github/actions/install-rust
@@ -37,7 +37,7 @@ jobs:
     runs-on: depot-ubuntu-24.04-small
     steps:
       - name: Get sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - uses: uncenter/setup-taplo@4f203fdb4f3b1e289c8382cf90d8397d2338df2e # v1.0.8
         with:
@@ -74,7 +74,7 @@ jobs:
       RUSTFLAGS: "-D warnings"
     steps:
       - name: Get sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
@@ -155,7 +155,7 @@ jobs:
       RUSTFLAGS: "-D warnings"
     steps:
       - name: Get sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Run sccache-cache
         uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
@@ -247,7 +247,7 @@ jobs:
       id-token: write
     steps:
       - name: Get sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Build and push Docker image
         uses: ./.github/actions/docker-build
@@ -270,7 +270,7 @@ jobs:
       id-token: write
     steps:
       - name: Get sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Build and push Docker image
         uses: ./.github/actions/docker-build
