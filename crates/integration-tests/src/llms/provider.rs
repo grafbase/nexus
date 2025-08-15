@@ -9,6 +9,7 @@ pub enum ProviderType {
     OpenAI,
     Anthropic,
     Google,
+    Bedrock,
 }
 
 /// Configuration for a test LLM provider
@@ -54,18 +55,36 @@ pub fn generate_config_for_type(provider_type: ProviderType, config: &LlmProvide
         }
     }
 
-    let (provider_type_str, base_url_path) = match provider_type {
-        ProviderType::OpenAI => ("openai", "/v1"),
-        ProviderType::Anthropic => ("anthropic", "/v1"),
-        ProviderType::Google => ("google", "/v1beta"),
-    };
+    match provider_type {
+        ProviderType::OpenAI | ProviderType::Anthropic | ProviderType::Google => {
+            let (provider_type_str, base_url_path) = match provider_type {
+                ProviderType::OpenAI => ("openai", "/v1"),
+                ProviderType::Anthropic => ("anthropic", "/v1"),
+                ProviderType::Google => ("google", "/v1beta"),
+                _ => unreachable!(),
+            };
 
-    formatdoc! {r#"
+            formatdoc! {r#"
 
-        [llm.providers.{}]
-        type = "{}"
-        api_key = "test-key"
-        base_url = "http://{}{}"
-        {}
-    "#, config.name, provider_type_str, config.address, base_url_path, models_section}
+                [llm.providers.{}]
+                type = "{}"
+                api_key = "test-key"
+                base_url = "http://{}{}"
+                {}
+            "#, config.name, provider_type_str, config.address, base_url_path, models_section}
+        }
+        ProviderType::Bedrock => {
+            // Bedrock uses different configuration
+            formatdoc! {r#"
+
+                [llm.providers.{}]
+                type = "bedrock"
+                region = "us-east-1"
+                access_key_id = "test-access-key"
+                secret_access_key = "test-secret-key"
+                base_url = "http://{}"
+                {}
+            "#, config.name, config.address, models_section}
+        }
+    }
 }

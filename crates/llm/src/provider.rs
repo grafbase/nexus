@@ -1,4 +1,5 @@
 pub(crate) mod anthropic;
+pub mod bedrock;
 pub(crate) mod google;
 mod model_manager;
 pub(crate) mod openai;

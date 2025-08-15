@@ -19,7 +19,7 @@ impl ModelManager {
     /// Create a new ModelManager from provider configuration.
     pub fn new(config: &LlmProviderConfig, owner: impl Into<String>) -> Self {
         Self {
-            models: config.models.clone(),
+            models: config.models().clone(),
             owner: owner.into(),
         }
     }
@@ -55,17 +55,16 @@ impl ModelManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use config::ModelConfig;
+    use config::{ApiProviderConfig, LlmProviderConfig, ModelConfig};
 
     #[test]
     fn empty_config_rejects_all_models() {
-        let config = LlmProviderConfig {
-            provider_type: config::ProviderType::Openai,
+        let config = LlmProviderConfig::Openai(ApiProviderConfig {
             api_key: None,
             base_url: None,
             forward_token: false,
             models: BTreeMap::new(),
-        };
+        });
 
         let manager = ModelManager::new(&config, "test");
 
@@ -79,13 +78,12 @@ mod tests {
         let mut models = BTreeMap::new();
         models.insert("gpt-4".to_string(), ModelConfig { rename: None });
 
-        let config = LlmProviderConfig {
-            provider_type: config::ProviderType::Openai,
+        let config = LlmProviderConfig::Openai(ApiProviderConfig {
             api_key: None,
             base_url: None,
             forward_token: false,
             models,
-        };
+        });
 
         let manager = ModelManager::new(&config, "test");
 
@@ -103,13 +101,12 @@ mod tests {
             },
         );
 
-        let config = LlmProviderConfig {
-            provider_type: config::ProviderType::Anthropic,
+        let config = LlmProviderConfig::Anthropic(ApiProviderConfig {
             api_key: None,
             base_url: None,
             forward_token: false,
             models,
-        };
+        });
 
         let manager = ModelManager::new(&config, "anthropic");
 
@@ -126,13 +123,12 @@ mod tests {
         models.insert("gpt-4".to_string(), ModelConfig { rename: None });
         models.insert("gpt-3.5-turbo".to_string(), ModelConfig { rename: None });
 
-        let config = LlmProviderConfig {
-            provider_type: config::ProviderType::Openai,
+        let config = LlmProviderConfig::Openai(ApiProviderConfig {
             api_key: None,
             base_url: None,
             forward_token: false,
             models,
-        };
+        });
 
         let manager = ModelManager::new(&config, "openai");
         let model_list = manager.get_configured_models();

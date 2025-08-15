@@ -42,8 +42,8 @@ impl GoogleProvider {
             })?;
 
         let base_url = config
-            .base_url
-            .clone()
+            .base_url()
+            .map(|s| s.to_string())
             .unwrap_or_else(|| DEFAULT_GOOGLE_API_URL.to_string());
 
         let model_manager = ModelManager::new(&config, "google");
@@ -73,7 +73,8 @@ impl Provider for GoogleProvider {
             .resolve_model(&model_name)
             .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", model_name)))?;
 
-        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
+        let temp_api_key = self.config.api_key().cloned();
+        let api_key = token::get(self.config.forward_token(), &temp_api_key, context)?;
 
         let url = format!(
             "{}/models/{actual_model}:generateContent?key={}",
@@ -158,7 +159,8 @@ impl Provider for GoogleProvider {
             .resolve_model(&model_name)
             .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", model_name)))?;
 
-        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
+        let temp_api_key = self.config.api_key().cloned();
+        let api_key = token::get(self.config.forward_token(), &temp_api_key, context)?;
 
         let url = format!(
             "{}/models/{actual_model}:streamGenerateContent?alt=sse&key={}",

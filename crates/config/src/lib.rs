@@ -17,7 +17,9 @@ use std::{
 
 pub use cors::*;
 use duration_str::deserialize_option_duration;
-pub use llm::{LlmConfig, LlmProviderConfig, ModelConfig, ProviderType};
+pub use llm::{
+    ApiProviderConfig, BedrockAwsConfig, BedrockProviderConfig, LlmConfig, LlmProviderConfig, ModelConfig, ProviderType,
+};
 pub use mcp::{
     ClientAuthConfig, HttpConfig, HttpProtocol, McpConfig, McpServer, McpServerRateLimit, StdioConfig, StdioTarget,
     StdioTargetType, TlsClientConfig,
@@ -1791,32 +1793,34 @@ mod tests {
             enabled: true,
             path: "/ai",
             providers: {
-                "anthropic": LlmProviderConfig {
-                    provider_type: Anthropic,
-                    api_key: Some(
-                        SecretBox<str>([REDACTED]),
-                    ),
-                    base_url: None,
-                    forward_token: false,
-                    models: {
-                        "claude-3-opus": ModelConfig {
-                            rename: None,
+                "anthropic": Anthropic(
+                    ApiProviderConfig {
+                        api_key: Some(
+                            SecretBox<str>([REDACTED]),
+                        ),
+                        base_url: None,
+                        forward_token: false,
+                        models: {
+                            "claude-3-opus": ModelConfig {
+                                rename: None,
+                            },
                         },
                     },
-                },
-                "openai": LlmProviderConfig {
-                    provider_type: Openai,
-                    api_key: Some(
-                        SecretBox<str>([REDACTED]),
-                    ),
-                    base_url: None,
-                    forward_token: false,
-                    models: {
-                        "gpt-4": ModelConfig {
-                            rename: None,
+                ),
+                "openai": Openai(
+                    ApiProviderConfig {
+                        api_key: Some(
+                            SecretBox<str>([REDACTED]),
+                        ),
+                        base_url: None,
+                        forward_token: false,
+                        models: {
+                            "gpt-4": ModelConfig {
+                                rename: None,
+                            },
                         },
                     },
-                },
+                ),
             },
         }
         "#);

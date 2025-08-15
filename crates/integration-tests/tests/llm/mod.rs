@@ -5,6 +5,7 @@ use integration_tests::{
 use serde_json::json;
 
 mod anthropic;
+mod bedrock;
 mod error_handling;
 mod forward_token;
 mod google;

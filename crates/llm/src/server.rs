@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use config::{LlmConfig, ProviderType};
+use config::LlmConfig;
 use futures::stream::StreamExt;
 use itertools::Itertools;
 
@@ -8,7 +8,8 @@ use crate::{
     error::LlmError,
     messages::{ChatCompletionRequest, ChatCompletionResponse, Model, ModelsResponse, ObjectType},
     provider::{
-        ChatCompletionStream, Provider, anthropic::AnthropicProvider, google::GoogleProvider, openai::OpenAIProvider,
+        ChatCompletionStream, Provider, anthropic::AnthropicProvider, bedrock::BedrockProvider, google::GoogleProvider,
+        openai::OpenAIProvider,
     },
     request::RequestContext,
 };
@@ -30,17 +31,21 @@ impl LlmServer {
         for (name, provider_config) in config.providers.into_iter() {
             log::debug!("Initializing provider: {name}");
 
-            match provider_config.provider_type {
-                ProviderType::Openai => {
+            match provider_config.provider_type() {
+                config::ProviderType::Openai => {
                     let provider = Box::new(OpenAIProvider::new(name.clone(), provider_config)?);
                     providers.push(provider as Box<dyn Provider>)
                 }
-                ProviderType::Anthropic => {
+                config::ProviderType::Anthropic => {
                     let provider = Box::new(AnthropicProvider::new(name.clone(), provider_config)?);
                     providers.push(provider as Box<dyn Provider>)
                 }
-                ProviderType::Google => {
+                config::ProviderType::Google => {
                     let provider = Box::new(GoogleProvider::new(name.clone(), provider_config)?);
+                    providers.push(provider as Box<dyn Provider>)
+                }
+                config::ProviderType::Bedrock => {
+                    let provider = Box::new(BedrockProvider::new(name.clone(), provider_config).await?);
                     providers.push(provider as Box<dyn Provider>)
                 }
             }

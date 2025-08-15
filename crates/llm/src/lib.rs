@@ -13,7 +13,7 @@ use messages::ChatCompletionRequest;
 
 mod error;
 mod messages;
-mod provider;
+pub mod provider;
 mod request;
 mod server;
 

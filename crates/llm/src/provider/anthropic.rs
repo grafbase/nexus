@@ -62,8 +62,8 @@ impl AnthropicProvider {
             })?;
 
         let base_url = config
-            .base_url
-            .clone()
+            .base_url()
+            .map(|s| s.to_string())
             .unwrap_or_else(|| DEFAULT_ANTHROPIC_API_URL.to_string());
 
         let model_manager = ModelManager::new(&config, "anthropic");
@@ -86,7 +86,8 @@ impl Provider for AnthropicProvider {
         context: &RequestContext,
     ) -> crate::Result<ChatCompletionResponse> {
         let url = format!("{}/messages", self.base_url);
-        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
+        let temp_api_key = self.config.api_key().cloned();
+        let api_key = token::get(self.config.forward_token(), &temp_api_key, context)?;
 
         let original_model = request.model.clone();
 
@@ -166,7 +167,8 @@ impl Provider for AnthropicProvider {
             .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", request.model)))?;
 
         request.model = actual_model;
-        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
+        let temp_api_key = self.config.api_key().cloned();
+        let api_key = token::get(self.config.forward_token(), &temp_api_key, context)?;
 
         let mut anthropic_request = AnthropicRequest::from(request);
         anthropic_request.stream = Some(true);

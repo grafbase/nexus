@@ -46,8 +46,8 @@ impl OpenAIProvider {
 
         // Use custom base URL if provided, otherwise use default
         let base_url = config
-            .base_url
-            .clone()
+            .base_url()
+            .map(|s| s.to_string())
             .unwrap_or_else(|| DEFAULT_OPENAI_API_URL.to_string());
 
         let model_manager = ModelManager::new(&config, "openai");
@@ -85,7 +85,8 @@ impl Provider for OpenAIProvider {
         openai_request.stream = false; // Always false for now
 
         let mut request_builder = self.client.post(&url);
-        let key = token::get(self.config.forward_token, &self.config.api_key, context)?;
+        let temp_api_key = self.config.api_key().cloned();
+        let key = token::get(self.config.forward_token(), &temp_api_key, context)?;
         request_builder = request_builder.header(AUTHORIZATION, format!("Bearer {}", key.expose_secret()));
 
         let response = request_builder
@@ -155,7 +156,8 @@ impl Provider for OpenAIProvider {
         openai_request.model = actual_model;
         openai_request.stream = true;
 
-        let key = token::get(self.config.forward_token, &self.config.api_key, context)?;
+        let temp_api_key = self.config.api_key().cloned();
+        let key = token::get(self.config.forward_token(), &temp_api_key, context)?;
 
         // Build request with dynamic authorization header
         let response = self

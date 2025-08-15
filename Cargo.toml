@@ -12,7 +12,13 @@ repository = "https://github.com/grafbase/nexus"
 [workspace.dependencies]
 anyhow = "1.0.98"
 ascii = "1.1.0"
+async-stream = "0.3"
 async-trait = "0.1.83"
+aws-config = { version = "1.5", features = ["behavior-version-latest"] }
+aws-credential-types = "1.2"
+aws-sdk-bedrockruntime = { version = "1.72", features = ["behavior-version-latest"] }
+aws-smithy-runtime-api = "1.7"
+aws-smithy-types = "1.2"
 axum = { version = "0.8.4", features = ["macros"] }
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 base64 = "0.22.1"
