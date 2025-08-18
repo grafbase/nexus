@@ -2,7 +2,7 @@ use crate::index::ToolIndex;
 use indoc::indoc;
 use rmcp::model::{Tool, ToolAnnotations};
 use rmcp::serde_json;
-use schemars::JsonSchema;
+use schemars::{JsonSchema, Schema, generate::SchemaSettings, transform::Transform};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -22,6 +22,13 @@ pub struct SearchResult {
     pub input_schema: serde_json::Value,
     /// The relevance score for this result (higher is more relevant)
     pub score: f32,
+}
+
+// Wrapper type to work around MCP Inspector bug that expects type: "object" at root
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct SearchResponse {
+    /// The list of search results
+    pub results: Vec<SearchResult>,
 }
 
 #[derive(Clone)]
@@ -104,18 +111,58 @@ impl SearchTool {
     }
 }
 
+/// Transform that removes fields that cause issues with MCP Inspector.
+/// This includes format fields (like "float", "double") and meta fields (like "$schema").
+#[derive(Clone, Debug)]
+struct McpCompatibilityTransform;
+
+impl Transform for McpCompatibilityTransform {
+    fn transform(&mut self, schema: &mut Schema) {
+        // Remove problematic fields from the schema
+        schema.remove("$schema");
+        schema.remove("format");
+
+        // Apply recursively to all subschemas
+        schemars::transform::transform_subschemas(self, schema);
+    }
+}
+
+/// Creates schema settings optimized for MCP Inspector compatibility.
+fn mcp_schema_settings() -> SchemaSettings {
+    let mut settings = SchemaSettings::default();
+    // Don't include meta schema to avoid validation issues
+    settings.meta_schema = None;
+    // Apply our transform to remove problematic fields
+    settings.transforms.push(Box::new(McpCompatibilityTransform));
+    settings
+}
+
 pub fn rmcp_tool() -> Tool {
-    let params = SearchParameters::json_schema(&mut Default::default());
+    // Create a schema generator with MCP-compatible settings
+    let settings = mcp_schema_settings();
+    let generator = settings.into_generator();
 
-    let search_schema = serde_json::to_value(params).unwrap().as_object().unwrap().clone();
+    // Generate input schema as a root schema (not a reference)
+    let search_schema_root = generator.into_root_schema_for::<SearchParameters>();
+    let search_schema_obj = match search_schema_root.to_value() {
+        serde_json::Value::Object(obj) => obj,
+        _ => {
+            log::warn!("Failed to generate input schema for search tool");
+            serde_json::Map::new()
+        }
+    };
 
-    // Generate output schema for array of SearchResult
-    let output_schema_json = schemars::schema_for!(Vec<SearchResult>);
-    let output_schema = serde_json::to_value(output_schema_json)
-        .unwrap()
-        .as_object()
-        .unwrap()
-        .clone();
+    // Generate output schema as a root schema
+    let settings = mcp_schema_settings();
+    let generator = settings.into_generator();
+    let output_schema_root = generator.into_root_schema_for::<SearchResponse>();
+    let output_schema_obj = match output_schema_root.to_value() {
+        serde_json::Value::Object(obj) => obj,
+        _ => {
+            log::warn!("Failed to generate output schema for search tool");
+            serde_json::Map::new()
+        }
+    };
 
     let description = indoc! {r#"
        Search for relevant tools. A list of matching tools with their\nscore is returned with a map of input fields and their types.
@@ -129,8 +176,8 @@ pub fn rmcp_tool() -> Tool {
     Tool {
         name: "search".into(),
         description: Some(description.into()),
-        input_schema: Arc::new(search_schema),
-        output_schema: Some(Arc::new(output_schema)),
+        input_schema: Arc::new(search_schema_obj),
+        output_schema: Some(Arc::new(output_schema_obj)),
         annotations: Some(ToolAnnotations::new().read_only(true)),
     }
 }

@@ -198,7 +198,13 @@ impl McpTestClient {
 
         // Prefer structured_content if available (new in rmcp 0.4.0)
         if let Some(structured) = result.structured_content {
-            // The structured content should be an array of tool objects
+            // The structured content is wrapped in a "results" object to work around MCP Inspector bug
+            if let Some(obj) = structured.as_object()
+                && let Some(results) = obj.get("results")
+            {
+                return results.as_array().cloned().unwrap_or_default();
+            }
+            // Fallback to treating it as an array directly for backward compatibility
             structured.as_array().cloned().unwrap_or_default()
         } else if let Some(content) = result.content {
             // Fallback to parsing from content field (legacy behavior)

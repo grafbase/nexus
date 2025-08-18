@@ -1,3 +1,5 @@
+mod output_schema;
+
 use crate::tools::{AdderTool, CalculatorTool, FailingTool, FileSystemTool, TextProcessorTool};
 use indoc::indoc;
 use integration_tests::{TestServer, TestService, get_test_cert_paths};
@@ -31,43 +33,51 @@ async fn list_tools() {
             "type": "object",
             "properties": {
               "keywords": {
-                "description": "A list of keywords to search with.",
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "description": "A list of keywords to search with."
               }
             },
             "required": [
               "keywords"
-            ]
+            ],
+            "title": "SearchParameters"
           },
           "outputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "Array_of_SearchResult",
-            "type": "array",
-            "items": {
-              "$ref": "#/$defs/SearchResult"
+            "type": "object",
+            "properties": {
+              "results": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "description": "The list of search results"
+              }
             },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
                 "type": "object",
                 "properties": {
                   "name": {
-                    "description": "The name of the tool (format: \"server__tool\")",
-                    "type": "string"
+                    "type": "string",
+                    "description": "The name of the tool (format: \"server__tool\")"
                   },
                   "description": {
-                    "description": "Description of what the tool does",
-                    "type": "string"
+                    "type": "string",
+                    "description": "Description of what the tool does"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
                   "score": {
-                    "description": "The relevance score for this result (higher is more relevant)",
                     "type": "number",
-                    "format": "float"
+                    "description": "The relevance score for this result (higher is more relevant)"
                   }
                 },
                 "required": [
@@ -319,43 +329,51 @@ async fn multiple_services_multiple_tools() {
             "type": "object",
             "properties": {
               "keywords": {
-                "description": "A list of keywords to search with.",
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "description": "A list of keywords to search with."
               }
             },
             "required": [
               "keywords"
-            ]
+            ],
+            "title": "SearchParameters"
           },
           "outputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "Array_of_SearchResult",
-            "type": "array",
-            "items": {
-              "$ref": "#/$defs/SearchResult"
+            "type": "object",
+            "properties": {
+              "results": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "description": "The list of search results"
+              }
             },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
                 "type": "object",
                 "properties": {
                   "name": {
-                    "description": "The name of the tool (format: \"server__tool\")",
-                    "type": "string"
+                    "type": "string",
+                    "description": "The name of the tool (format: \"server__tool\")"
                   },
                   "description": {
-                    "description": "Description of what the tool does",
-                    "type": "string"
+                    "type": "string",
+                    "description": "Description of what the tool does"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
                   "score": {
-                    "description": "The relevance score for this result (higher is more relevant)",
                     "type": "number",
-                    "format": "float"
+                    "description": "The relevance score for this result (higher is more relevant)"
                   }
                 },
                 "required": [
@@ -456,43 +474,51 @@ async fn custom_mcp_path_with_tools() {
             "type": "object",
             "properties": {
               "keywords": {
-                "description": "A list of keywords to search with.",
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "description": "A list of keywords to search with."
               }
             },
             "required": [
               "keywords"
-            ]
+            ],
+            "title": "SearchParameters"
           },
           "outputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "Array_of_SearchResult",
-            "type": "array",
-            "items": {
-              "$ref": "#/$defs/SearchResult"
+            "type": "object",
+            "properties": {
+              "results": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "description": "The list of search results"
+              }
             },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
                 "type": "object",
                 "properties": {
                   "name": {
-                    "description": "The name of the tool (format: \"server__tool\")",
-                    "type": "string"
+                    "type": "string",
+                    "description": "The name of the tool (format: \"server__tool\")"
                   },
                   "description": {
-                    "description": "Description of what the tool does",
-                    "type": "string"
+                    "type": "string",
+                    "description": "Description of what the tool does"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
                   "score": {
-                    "description": "The relevance score for this result (higher is more relevant)",
                     "type": "number",
-                    "format": "float"
+                    "description": "The relevance score for this result (higher is more relevant)"
                   }
                 },
                 "required": [
@@ -590,43 +616,51 @@ async fn tools_with_tls() {
             "type": "object",
             "properties": {
               "keywords": {
-                "description": "A list of keywords to search with.",
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "description": "A list of keywords to search with."
               }
             },
             "required": [
               "keywords"
-            ]
+            ],
+            "title": "SearchParameters"
           },
           "outputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "Array_of_SearchResult",
-            "type": "array",
-            "items": {
-              "$ref": "#/$defs/SearchResult"
+            "type": "object",
+            "properties": {
+              "results": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "description": "The list of search results"
+              }
             },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
                 "type": "object",
                 "properties": {
                   "name": {
-                    "description": "The name of the tool (format: \"server__tool\")",
-                    "type": "string"
+                    "type": "string",
+                    "description": "The name of the tool (format: \"server__tool\")"
                   },
                   "description": {
-                    "description": "Description of what the tool does",
-                    "type": "string"
+                    "type": "string",
+                    "description": "Description of what the tool does"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
                   "score": {
-                    "description": "The relevance score for this result (higher is more relevant)",
                     "type": "number",
-                    "format": "float"
+                    "description": "The relevance score for this result (higher is more relevant)"
                   }
                 },
                 "required": [
@@ -720,43 +754,51 @@ async fn tls_downstream_service() {
             "type": "object",
             "properties": {
               "keywords": {
-                "description": "A list of keywords to search with.",
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "description": "A list of keywords to search with."
               }
             },
             "required": [
               "keywords"
-            ]
+            ],
+            "title": "SearchParameters"
           },
           "outputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "Array_of_SearchResult",
-            "type": "array",
-            "items": {
-              "$ref": "#/$defs/SearchResult"
+            "type": "object",
+            "properties": {
+              "results": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "description": "The list of search results"
+              }
             },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
                 "type": "object",
                 "properties": {
                   "name": {
-                    "description": "The name of the tool (format: \"server__tool\")",
-                    "type": "string"
+                    "type": "string",
+                    "description": "The name of the tool (format: \"server__tool\")"
                   },
                   "description": {
-                    "description": "Description of what the tool does",
-                    "type": "string"
+                    "type": "string",
+                    "description": "Description of what the tool does"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
                   "score": {
-                    "description": "The relevance score for this result (higher is more relevant)",
                     "type": "number",
-                    "format": "float"
+                    "description": "The relevance score for this result (higher is more relevant)"
                   }
                 },
                 "required": [

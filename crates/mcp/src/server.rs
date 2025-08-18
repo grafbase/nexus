@@ -13,7 +13,7 @@ use rmcp::{
         CallToolRequestMethod, CallToolRequestParam, CallToolResult, Content, ErrorCode, ErrorData,
         GetPromptRequestParam, GetPromptResult, Implementation, ListPromptsResult, ListResourcesResult,
         ListToolsResult, PaginatedRequestParam, ReadResourceRequestParam, ReadResourceResult, ServerCapabilities,
-        ServerInfo,
+        ServerInfo, Tool,
     },
     service::RequestContext,
 };
@@ -43,6 +43,8 @@ pub(crate) struct McpServerInner {
     rate_limit_manager: Option<Arc<rate_limit::RateLimitManager>>,
     // Configuration for structured content responses
     enable_structured_content: bool,
+    // List of tools
+    tools: Vec<Tool>,
 }
 
 impl Deref for McpServer {
@@ -120,6 +122,7 @@ impl McpServer {
             cache,
             rate_limit_manager,
             enable_structured_content: config.mcp.enable_structured_content,
+            tools: vec![search::rmcp_tool(), execute::rmcp_tool()],
         };
 
         Ok(Self {
@@ -265,7 +268,7 @@ impl ServerHandler for McpServer {
     ) -> Result<ListToolsResult, ErrorData> {
         Ok(ListToolsResult {
             next_cursor: None,
-            tools: vec![search::rmcp_tool(), execute::rmcp_tool()],
+            tools: self.shared.tools.clone(),
         })
     }
 
@@ -301,16 +304,17 @@ impl ServerHandler for McpServer {
                 // Choose response format based on configuration
                 if self.enable_structured_content {
                     // Modern format: structuredContent only (better performance)
-                    let structured_content =
-                        serde_json::to_value(&tools).map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+                    // Use SearchResponse wrapper type to match the output schema
+                    let response = search::SearchResponse { results: tools };
 
                     Ok(CallToolResult {
                         content: None,
-                        structured_content: Some(structured_content),
+                        structured_content: Some(serde_json::to_value(response).unwrap()),
                         is_error: None,
                     })
                 } else {
                     // Legacy format: content field with Content::json objects
+                    // For legacy format, keep individual tool objects for backward compatibility
                     let mut content = Vec::with_capacity(tools.len());
                     for tool in tools {
                         content.push(Content::json(tool)?);

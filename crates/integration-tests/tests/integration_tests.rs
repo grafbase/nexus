@@ -238,43 +238,51 @@ async fn no_tools_by_default() {
             "type": "object",
             "properties": {
               "keywords": {
-                "description": "A list of keywords to search with.",
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "description": "A list of keywords to search with."
               }
             },
             "required": [
               "keywords"
-            ]
+            ],
+            "title": "SearchParameters"
           },
           "outputSchema": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "Array_of_SearchResult",
-            "type": "array",
-            "items": {
-              "$ref": "#/$defs/SearchResult"
+            "type": "object",
+            "properties": {
+              "results": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "description": "The list of search results"
+              }
             },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
                 "type": "object",
                 "properties": {
                   "name": {
-                    "description": "The name of the tool (format: \"server__tool\")",
-                    "type": "string"
+                    "type": "string",
+                    "description": "The name of the tool (format: \"server__tool\")"
                   },
                   "description": {
-                    "description": "Description of what the tool does",
-                    "type": "string"
+                    "type": "string",
+                    "description": "Description of what the tool does"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
                   "score": {
-                    "description": "The relevance score for this result (higher is more relevant)",
                     "type": "number",
-                    "format": "float"
+                    "description": "The relevance score for this result (higher is more relevant)"
                   }
                 },
                 "required": [
