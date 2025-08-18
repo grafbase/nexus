@@ -22,13 +22,16 @@ async fn search_tool_output_schema_validation() {
     let tools_result = mcp_client.list_tools().await;
 
     // Find the search tool
-    let search_tool = tools_result.tools
+    let search_tool = tools_result
+        .tools
         .iter()
         .find(|t| t.name == "search")
         .expect("search tool should exist");
 
     // Verify outputSchema exists and has the correct structure
-    let output_schema = search_tool.output_schema.as_ref()
+    let output_schema = search_tool
+        .output_schema
+        .as_ref()
         .expect("search tool should have outputSchema");
 
     // Snapshot the outputSchema to ensure:
@@ -102,12 +105,15 @@ async fn execute_tool_has_no_output_schema() {
     let tools_result = mcp_client.list_tools().await;
 
     // Find the execute tool
-    let execute_tool = tools_result.tools
+    let execute_tool = tools_result
+        .tools
         .iter()
         .find(|t| t.name == "execute")
         .expect("execute tool should exist");
 
     // Execute tool should not have outputSchema since responses are dynamic
-    assert!(execute_tool.output_schema.is_none(), 
-            "execute tool should not have outputSchema");
+    assert!(
+        execute_tool.output_schema.is_none(),
+        "execute tool should not have outputSchema"
+    );
 }
