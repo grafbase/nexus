@@ -1,5 +1,6 @@
 mod cors;
 mod csrf;
+mod header_rules;
 mod llm;
 mod oauth2;
 mod prompts_resources;

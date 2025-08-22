@@ -6,6 +6,7 @@ use indoc::indoc;
 use integration_tests::tools::{AdderTool, CalculatorTool, TextProcessorTool};
 use integration_tests::{TestServer, TestService, TestTool};
 use rmcp::model::{CallToolRequestParam, CallToolResult, Content, ErrorData, Tool};
+use rmcp::service::{RequestContext, RoleServer};
 use serde_json::json;
 use std::{future::Future, pin::Pin, sync::Arc};
 use tokio::sync::Mutex;
@@ -71,6 +72,7 @@ impl TestTool for TokenTrackingTool {
     fn call(
         &self,
         params: CallToolRequestParam,
+        _ctx: RequestContext<RoleServer>,
     ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, ErrorData>> + Send + '_>> {
         let call_count = self.call_count.clone();
         let call_timestamps = self.call_timestamps.clone();

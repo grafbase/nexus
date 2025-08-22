@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use axum::{
     Router,
     extract::State,
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json, Response, Sse, sse::Event},
     routing::{get, post},
 };
@@ -16,6 +16,7 @@ use tokio::net::TcpListener;
 
 use super::common::find_custom_response;
 use super::provider::{LlmProviderConfig, TestLlmProvider};
+use crate::headers::HeaderRecorder;
 
 /// Model configuration for tests
 #[derive(Clone)]
@@ -52,6 +53,7 @@ pub struct OpenAIMock {
     streaming_error: Option<String>,
     tool_response: Option<ToolCallResponse>,
     parallel_tool_calls: Option<Vec<(String, String)>>,
+    captured_headers: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 /// Tool call response configuration for testing
@@ -90,7 +92,13 @@ impl OpenAIMock {
             streaming_error: None,
             tool_response: None,
             parallel_tool_calls: None,
+            captured_headers: Arc::new(Mutex::new(Vec::new())),
         }
+    }
+
+    /// Get a header recorder that can be used to inspect headers after the mock is moved
+    pub fn header_recorder(&self) -> HeaderRecorder {
+        HeaderRecorder::new(self.captured_headers.clone())
     }
 
     pub fn with_models(mut self, models: Vec<String>) -> Self {
@@ -239,6 +247,7 @@ impl TestLlmProvider for OpenAIMock {
             streaming_error: self.streaming_error,
             tool_response: self.tool_response,
             parallel_tool_calls: self.parallel_tool_calls,
+            captured_headers: self.captured_headers.clone(),
         });
 
         let app = Router::new()
@@ -300,6 +309,7 @@ struct TestLlmState {
     streaming_error: Option<String>,
     tool_response: Option<ToolCallResponse>,
     parallel_tool_calls: Option<Vec<(String, String)>>,
+    captured_headers: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 impl Default for TestLlmState {
@@ -317,6 +327,7 @@ impl Default for TestLlmState {
             streaming_error: None,
             tool_response: None,
             parallel_tool_calls: None,
+            captured_headers: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
@@ -336,8 +347,17 @@ impl IntoResponse for ErrorResponse {
 /// Handle chat completion requests
 async fn chat_completions(
     State(state): State<Arc<TestLlmState>>,
+    headers: HeaderMap,
     Json(request): Json<ChatCompletionRequest>,
 ) -> Result<Response, ErrorResponse> {
+    // Capture headers
+    let mut captured = Vec::new();
+    for (name, value) in &headers {
+        if let Ok(value_str) = value.to_str() {
+            captured.push((name.to_string(), value_str.to_string()));
+        }
+    }
+    *state.captured_headers.lock().unwrap() = captured;
     // Check for configured error responses
     if let Some(error_type) = &state.error_type {
         return Err(match error_type {

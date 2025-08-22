@@ -2,7 +2,11 @@ use std::{future::Future, pin::Pin};
 
 use crate::TestTool;
 use rmcp::model::{CallToolRequestParam, CallToolResult, Content, ErrorData, Tool};
+use rmcp::service::{RequestContext, RoleServer};
 use serde_json::json;
+
+mod header_inspector;
+pub use header_inspector::HeaderInspectorTool;
 
 /// A simple test tool that adds two numbers
 #[derive(Debug)]
@@ -39,6 +43,7 @@ impl TestTool for AdderTool {
     fn call(
         &self,
         params: CallToolRequestParam,
+        _ctx: RequestContext<RoleServer>,
     ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, ErrorData>> + Send + '_>> {
         Box::pin(async move {
             let args = params.arguments.ok_or_else(|| ErrorData {
@@ -95,6 +100,7 @@ impl TestTool for FailingTool {
     fn call(
         &self,
         _params: CallToolRequestParam,
+        _ctx: RequestContext<RoleServer>,
     ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, ErrorData>> + Send + '_>> {
         Box::pin(async move {
             Err(ErrorData {
@@ -152,6 +158,7 @@ impl TestTool for CalculatorTool {
     fn call(
         &self,
         params: CallToolRequestParam,
+        _ctx: RequestContext<RoleServer>,
     ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, ErrorData>> + Send + '_>> {
         Box::pin(async move {
             let args = params.arguments.ok_or_else(|| ErrorData {
@@ -251,6 +258,7 @@ impl TestTool for TextProcessorTool {
     fn call(
         &self,
         params: CallToolRequestParam,
+        _ctx: RequestContext<RoleServer>,
     ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, ErrorData>> + Send + '_>> {
         Box::pin(async move {
             let args = params.arguments.ok_or_else(|| ErrorData {
@@ -331,6 +339,7 @@ impl TestTool for FileSystemTool {
     fn call(
         &self,
         params: CallToolRequestParam,
+        _ctx: RequestContext<RoleServer>,
     ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, ErrorData>> + Send + '_>> {
         Box::pin(async move {
             let args = params.arguments.ok_or_else(|| ErrorData {

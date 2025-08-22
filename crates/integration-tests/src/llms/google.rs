@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow;
 use axum::{
     Router,
     extract::{Json, Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response, Sse, sse::Event},
     routing::{get, post},
 };
@@ -16,6 +16,7 @@ use tokio::net::TcpListener;
 
 use super::provider::{LlmProviderConfig, TestLlmProvider};
 use super::{common::find_custom_response_in_text, openai::ModelConfig};
+use crate::headers::HeaderRecorder;
 
 /// Builder for Google test server
 pub struct GoogleMock {
@@ -27,6 +28,7 @@ pub struct GoogleMock {
     tool_calls: Vec<(String, String)>, // (function_name, arguments)
     parallel_tool_calls: Vec<(String, String)>,
     streaming_tool_calls: Option<(String, String)>,
+    captured_headers: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 impl GoogleMock {
@@ -45,7 +47,13 @@ impl GoogleMock {
             tool_calls: Vec::new(),
             parallel_tool_calls: Vec::new(),
             streaming_tool_calls: None,
+            captured_headers: Arc::new(Mutex::new(Vec::new())),
         }
+    }
+
+    /// Get a header recorder that can be used to inspect headers after the mock is moved
+    pub fn header_recorder(&self) -> HeaderRecorder {
+        HeaderRecorder::new(self.captured_headers.clone())
     }
 
     pub fn with_models(mut self, models: Vec<String>) -> Self {
@@ -136,6 +144,7 @@ impl TestLlmProvider for GoogleMock {
             tool_calls: self.tool_calls,
             parallel_tool_calls: self.parallel_tool_calls,
             streaming_tool_calls: self.streaming_tool_calls,
+            captured_headers: self.captured_headers.clone(),
         });
 
         let app = Router::new()
@@ -171,6 +180,7 @@ struct TestGoogleState {
     tool_calls: Vec<(String, String)>,
     parallel_tool_calls: Vec<(String, String)>,
     streaming_tool_calls: Option<(String, String)>,
+    captured_headers: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 /// Legacy compatibility server
@@ -197,8 +207,17 @@ impl TestGoogleServer {
 async fn generate_content(
     State(state): State<Arc<TestGoogleState>>,
     Path(path): Path<String>,
+    headers: HeaderMap,
     Json(request): Json<GoogleGenerateRequest>,
 ) -> Response {
+    // Capture headers
+    let mut captured = Vec::new();
+    for (name, value) in &headers {
+        if let Ok(value_str) = value.to_str() {
+            captured.push((name.to_string(), value_str.to_string()));
+        }
+    }
+    *state.captured_headers.lock().unwrap() = captured;
     // Ensure we're handling a generateContent or streamGenerateContent request
     if !path.ends_with(":generateContent") && !path.ends_with(":streamGenerateContent") {
         eprintln!(

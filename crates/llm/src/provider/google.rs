@@ -3,7 +3,7 @@ mod output;
 
 use async_trait::async_trait;
 use config::ApiProviderConfig;
-use reqwest::Client;
+use reqwest::{Client, Method};
 use secrecy::ExposeSecret;
 
 use self::{
@@ -17,9 +17,10 @@ use futures::StreamExt;
 use crate::{
     error::LlmError,
     messages::{ChatCompletionRequest, ChatCompletionResponse, Model},
-    provider::{ModelManager, Provider, openai::extract_model_from_full_name, token},
+    provider::{HttpProvider, ModelManager, Provider, openai::extract_model_from_full_name, token},
     request::RequestContext,
 };
+use config::HeaderRule;
 
 const DEFAULT_GOOGLE_API_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -46,7 +47,14 @@ impl GoogleProvider {
             .clone()
             .unwrap_or_else(|| DEFAULT_GOOGLE_API_URL.to_string());
 
-        let model_manager = ModelManager::new(config.models.clone(), "google");
+        // Convert ApiModelConfig to unified ModelConfig for ModelManager
+        let models = config
+            .models
+            .clone()
+            .into_iter()
+            .map(|(k, v)| (k, config::ModelConfig::Api(v)))
+            .collect();
+        let model_manager = ModelManager::new(models, "google");
 
         Ok(Self {
             client,
@@ -73,6 +81,9 @@ impl Provider for GoogleProvider {
             .resolve_model(&model_name)
             .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", model_name)))?;
 
+        // Get the model config to access headers
+        let model_config = self.model_manager.get_model_config(&model_name);
+
         let temp_api_key = self.config.api_key.clone();
         let api_key = token::get(self.config.forward_token, &temp_api_key, context)?;
 
@@ -88,9 +99,10 @@ impl Provider for GoogleProvider {
         // Convert to Google format
         let google_request = GoogleGenerateRequest::from(request);
 
-        let response = self
-            .client
-            .post(&url)
+        // Use create_post_request to ensure headers are applied
+        let request_builder = self.request_builder(Method::POST, &url, context, model_config);
+
+        let response = request_builder
             .json(&google_request)
             .send()
             .await
@@ -161,6 +173,9 @@ impl Provider for GoogleProvider {
             .resolve_model(&model_name)
             .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", model_name)))?;
 
+        // Get the model config to access headers
+        let model_config = self.model_manager.get_model_config(&model_name);
+
         let temp_api_key = self.config.api_key.clone();
         let api_key = token::get(self.config.forward_token, &temp_api_key, context)?;
 
@@ -172,9 +187,10 @@ impl Provider for GoogleProvider {
 
         let google_request = GoogleGenerateRequest::from(request);
 
-        let response = self
-            .client
-            .post(&url)
+        // Use create_post_request to ensure headers are applied
+        let request_builder = self.request_builder(Method::POST, &url, context, model_config);
+
+        let response = request_builder
             .json(&google_request)
             .send()
             .await
@@ -234,5 +250,15 @@ impl Provider for GoogleProvider {
 
     fn name(&self) -> &str {
         &self.name
+    }
+}
+
+impl HttpProvider for GoogleProvider {
+    fn get_provider_headers(&self) -> &[HeaderRule] {
+        &self.config.headers
+    }
+
+    fn get_http_client(&self) -> &Client {
+        &self.client
     }
 }

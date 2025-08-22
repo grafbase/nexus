@@ -15,6 +15,8 @@ use crate::{
     messages::{ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, Model},
     request::RequestContext,
 };
+use config::{HeaderRule, ModelConfig};
+use reqwest::{Client, Method, RequestBuilder};
 
 /// Type alias for a stream of chat completion chunks.
 ///
@@ -69,4 +71,47 @@ pub(crate) trait Provider: Send + Sync {
 
     /// Get the provider name.
     fn name(&self) -> &str;
+}
+
+/// Trait for HTTP-based LLM providers.
+///
+/// This trait extends Provider and adds HTTP-specific functionality for providers
+/// that use HTTP APIs (OpenAI, Anthropic, Google). Providers that implement this
+/// trait MUST also implement Provider.
+///
+/// Bedrock doesn't implement this trait since it uses AWS SDK instead of HTTP.
+pub(crate) trait HttpProvider: Provider {
+    /// Get the provider's header rules configuration.
+    ///
+    /// This must return the header rules from the provider's configuration.
+    fn get_provider_headers(&self) -> &[HeaderRule];
+
+    /// Get the HTTP client for this provider.
+    fn get_http_client(&self) -> &Client;
+
+    /// Create a POST request with header rules automatically applied.
+    ///
+    /// This method ensures that header rules are always applied when making requests.
+    /// It combines provider-level and model-level headers according to the hierarchy.
+    fn request_builder(
+        &self,
+        method: Method,
+        url: &str,
+        context: &RequestContext,
+        model_config: Option<&ModelConfig>,
+    ) -> RequestBuilder {
+        let client = self.get_http_client();
+
+        // Apply header rules
+        let provider_headers = self.get_provider_headers();
+        let model_headers = model_config.map(|c| c.headers()).unwrap_or(&[]);
+
+        // Combine provider and model headers (model overrides provider)
+        let mut all_rules = Vec::with_capacity(provider_headers.len() + model_headers.len());
+        all_rules.extend_from_slice(provider_headers);
+        all_rules.extend_from_slice(model_headers);
+
+        let headers = header_rules::apply(&context.headers, &all_rules);
+        client.request(method, url).headers(headers)
+    }
 }

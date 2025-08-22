@@ -50,11 +50,15 @@ impl Downstream {
     pub async fn new(config: &config::McpConfig, token: Option<&SecretString>) -> anyhow::Result<Self> {
         struct DownstreamError(String, anyhow::Error);
 
+        // Clone global headers to pass to each downstream client
+        let global_headers = config.headers.clone();
+
         // Create futures for initializing each server concurrently
         let mut server_futures = FuturesUnordered::new();
 
         for (name, server_config) in &config.servers {
             let name = name.clone();
+            let global_headers = global_headers.clone();
 
             match server_config.finalize(token) {
                 McpServer::Stdio(stdio_config) if token.is_none() => {
@@ -87,7 +91,7 @@ impl Downstream {
                 McpServer::Http(http_config) if token.is_some() || !http_config.forwards_authentication() => {
                     server_futures.push(
                         async move {
-                            let server = DownstreamClient::new_http(&name, &http_config)
+                            let server = DownstreamClient::new_http(&name, &http_config, &global_headers)
                                 .await
                                 .map_err(|err| DownstreamError(name.clone(), err))?;
 

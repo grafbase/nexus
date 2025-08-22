@@ -76,9 +76,13 @@ impl DownstreamClient {
         })
     }
 
-    pub async fn new_http(name: &str, config: &HttpConfig) -> anyhow::Result<Self> {
+    pub async fn new_http(
+        name: &str,
+        config: &HttpConfig,
+        global_headers: &[config::McpHeaderRule],
+    ) -> anyhow::Result<Self> {
         log::debug!("Creating HTTP downstream service for server '{name}'");
-        let service = http_service(config).await?;
+        let service = http_service(config, global_headers).await?;
 
         Ok(Self {
             inner: Arc::new(Inner {
@@ -143,35 +147,45 @@ impl DownstreamClient {
 /// This function handles protocol detection and fallback between streamable-http and SSE protocols.
 /// If the configuration explicitly specifies a protocol, it will use that protocol directly.
 /// Otherwise, it will attempt streamable-http first and fall back to SSE if that fails.
-async fn http_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>> {
+async fn http_service(
+    config: &HttpConfig,
+    global_headers: &[config::McpHeaderRule],
+) -> anyhow::Result<RunningService<RoleClient, ()>> {
     if config.uses_streamable_http() {
         log::debug!("Configuration explicitly requests streamable-http protocol");
-        return streamable_http_service(config).await;
+        return streamable_http_service(config, global_headers).await;
     }
 
     if config.uses_sse() {
         log::debug!("Configuration explicitly requests SSE protocol");
-        return sse_service(config).await;
+        return sse_service(config, global_headers).await;
     }
 
     log::debug!("Auto-detecting protocol: attempting streamable-http first");
-    match streamable_http_service(config).await {
+    match streamable_http_service(config, global_headers).await {
         Ok(service) => Ok(service),
         Err(_) => {
             log::warn!(
                 "Streamable-http connection failed for URL '{}', falling back to SSE protocol",
                 config.url
             );
-            sse_service(config).await
+            sse_service(config, global_headers).await
         }
     }
 }
 
 /// Creates a running service for streamable-http protocol.
-async fn streamable_http_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>> {
+async fn streamable_http_service(
+    config: &HttpConfig,
+    global_headers: &[config::McpHeaderRule],
+) -> anyhow::Result<RunningService<RoleClient, ()>> {
     log::debug!("Initializing streamable-http downstream service");
 
-    let client = create_client(config.tls.as_ref(), config.auth.as_ref())?;
+    // Combine global and server-specific headers
+    let mut combined_headers = global_headers.to_vec();
+    combined_headers.extend(config.get_effective_header_rules());
+
+    let client = create_client(config.tls.as_ref(), config.auth.as_ref(), &combined_headers)?;
     let config = StreamableHttpClientTransportConfig::with_uri(config.url.to_string());
     let transport = StreamableHttpClientTransport::with_client(client, config);
 
@@ -179,7 +193,10 @@ async fn streamable_http_service(config: &HttpConfig) -> anyhow::Result<RunningS
 }
 
 /// Creates a running service for SSE (Server-Sent Events) protocol.
-async fn sse_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleClient, ()>> {
+async fn sse_service(
+    config: &HttpConfig,
+    global_headers: &[config::McpHeaderRule],
+) -> anyhow::Result<RunningService<RoleClient, ()>> {
     log::debug!("Initializing SSE (Server-Sent Events) downstream service");
 
     let client_config = SseClientConfig {
@@ -194,7 +211,11 @@ async fn sse_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleC
         config.message_url
     );
 
-    let client = create_client(config.tls.as_ref(), config.auth.as_ref())?;
+    // Combine global and server-specific headers
+    let mut combined_headers = global_headers.to_vec();
+    combined_headers.extend(config.get_effective_header_rules());
+
+    let client = create_client(config.tls.as_ref(), config.auth.as_ref(), &combined_headers)?;
     log::debug!("Successfully created HTTP client for SSE transport");
 
     let transport = SseClientTransport::start_with_client(client, client_config).await?;
@@ -207,7 +228,11 @@ async fn sse_service(config: &HttpConfig) -> anyhow::Result<RunningService<RoleC
 }
 
 /// Creates a configured reqwest HTTP client with optional TLS settings.
-fn create_client(tls: Option<&TlsClientConfig>, auth: Option<&ClientAuthConfig>) -> anyhow::Result<reqwest::Client> {
+fn create_client(
+    tls: Option<&TlsClientConfig>,
+    auth: Option<&ClientAuthConfig>,
+    header_rules: &[config::McpHeaderRule],
+) -> anyhow::Result<reqwest::Client> {
     let mut builder = reqwest::Client::builder();
 
     if let Some(tls) = tls {
@@ -249,12 +274,24 @@ fn create_client(tls: Option<&TlsClientConfig>, auth: Option<&ClientAuthConfig>)
         }
     }
 
+    // Apply default headers based on auth and header rules
+    let mut headers = HeaderMap::new();
+
     if let Some(ClientAuthConfig::Token { token }) = auth {
-        let mut headers = HeaderMap::new();
         let auth_value = HeaderValue::from_str(&format!("Bearer {}", token.expose_secret()))?;
-
         headers.insert(AUTHORIZATION, auth_value);
+    }
 
+    // Apply static header insertion rules
+    for rule in header_rules {
+        match rule {
+            config::McpHeaderRule::Insert(insert_rule) => {
+                headers.insert(insert_rule.name.as_ref().clone(), insert_rule.value.as_ref().clone());
+            }
+        }
+    }
+
+    if !headers.is_empty() {
         builder = builder.default_headers(headers);
     }
 

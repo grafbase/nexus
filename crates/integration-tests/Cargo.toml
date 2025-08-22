@@ -24,6 +24,7 @@ integration-test-macros = { path = "../integration-test-macros" }
 itertools.workspace = true
 log.workspace = true
 logforth = { workspace = true, features = ["colored"] }
+regex.workspace = true
 reqwest = { workspace = true, features = ["json"] }
 rmcp = { workspace = true, features = [
     "client",

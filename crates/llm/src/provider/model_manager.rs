@@ -33,7 +33,7 @@ impl ModelManager {
         // Check if the requested model is explicitly configured
         self.models
             .get(requested_model)
-            .map(|model_config| model_config.rename.as_deref().unwrap_or(requested_model).to_string())
+            .map(|model_config| model_config.rename().unwrap_or(requested_model).to_string())
     }
 
     /// Get list of configured models for the /models endpoint.
@@ -49,6 +49,13 @@ impl ModelManager {
                 owned_by: self.owner.clone(),
             })
             .collect()
+    }
+
+    /// Get the configuration for a specific model.
+    ///
+    /// Returns None if the model is not configured.
+    pub fn get_model_config(&self, model_name: &str) -> Option<&ModelConfig> {
+        self.models.get(model_name)
     }
 }
 
@@ -72,10 +79,11 @@ mod tests {
         let mut models = BTreeMap::new();
         models.insert(
             "gpt-4".to_string(),
-            ModelConfig {
+            ModelConfig::Api(config::ApiModelConfig {
                 rename: None,
                 rate_limits: None,
-            },
+                headers: Vec::new(),
+            }),
         );
 
         let manager = ModelManager::new(models, "test");
@@ -89,10 +97,11 @@ mod tests {
         let mut models = BTreeMap::new();
         models.insert(
             "claude".to_string(),
-            ModelConfig {
+            ModelConfig::Api(config::ApiModelConfig {
                 rename: Some("claude-3-opus-20240229".to_string()),
                 rate_limits: None,
-            },
+                headers: Vec::new(),
+            }),
         );
 
         let manager = ModelManager::new(models, "anthropic");
@@ -109,17 +118,19 @@ mod tests {
         let mut models = BTreeMap::new();
         models.insert(
             "gpt-4".to_string(),
-            ModelConfig {
+            ModelConfig::Api(config::ApiModelConfig {
                 rename: None,
                 rate_limits: None,
-            },
+                headers: Vec::new(),
+            }),
         );
         models.insert(
             "gpt-3.5-turbo".to_string(),
-            ModelConfig {
+            ModelConfig::Api(config::ApiModelConfig {
                 rename: None,
                 rate_limits: None,
-            },
+                headers: Vec::new(),
+            }),
         );
 
         let manager = ModelManager::new(models, "openai");
