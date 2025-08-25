@@ -14,6 +14,7 @@ duration-str.workspace = true
 http.workspace = true
 indoc.workspace = true
 log.workspace = true
+regex.workspace = true
 secrecy = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 serde-dynamic-string.workspace = true

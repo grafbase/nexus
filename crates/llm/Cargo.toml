@@ -20,9 +20,11 @@ axum.workspace = true
 config.workspace = true
 eventsource-stream.workspace = true
 futures.workspace = true
+header-rules.workspace = true
 itertools.workspace = true
 log.workspace = true
 rate-limit.workspace = true
+regex.workspace = true
 reqwest = { workspace = true, features = ["json", "stream"] }
 secrecy.workspace = true
 serde.workspace = true

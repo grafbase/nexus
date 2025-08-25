@@ -6,7 +6,7 @@ use axum::http::HeaderMap;
 use config::ApiProviderConfig;
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
-use reqwest::Client;
+use reqwest::{Client, Method};
 use secrecy::ExposeSecret;
 
 use self::{
@@ -17,9 +17,10 @@ use self::{
 use crate::{
     error::LlmError,
     messages::{ChatCompletionRequest, ChatCompletionResponse, Model},
-    provider::{ChatCompletionStream, ModelManager, Provider, token},
+    provider::{ChatCompletionStream, HttpProvider, ModelManager, Provider, token},
     request::RequestContext,
 };
+use config::HeaderRule;
 
 const DEFAULT_ANTHROPIC_API_URL: &str = "https://api.anthropic.com/v1";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
@@ -66,7 +67,14 @@ impl AnthropicProvider {
             .clone()
             .unwrap_or_else(|| DEFAULT_ANTHROPIC_API_URL.to_string());
 
-        let model_manager = ModelManager::new(config.models.clone(), "anthropic");
+        // Convert ApiModelConfig to unified ModelConfig for ModelManager
+        let models = config
+            .models
+            .clone()
+            .into_iter()
+            .map(|(k, v)| (k, config::ModelConfig::Api(v)))
+            .collect();
+        let model_manager = ModelManager::new(models, "anthropic");
 
         Ok(Self {
             client,
@@ -97,10 +105,16 @@ impl Provider for AnthropicProvider {
             .resolve_model(&request.model)
             .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", request.model)))?;
 
+        // Get the model config to access headers
+        let model_config = self.model_manager.get_model_config(&request.model);
+
         request.model = actual_model;
         let anthropic_request = AnthropicRequest::from(request);
 
-        let mut request_builder = self.client.post(&url);
+        // Use create_post_request to ensure headers are applied
+        let mut request_builder = self.request_builder(Method::POST, &url, context, model_config);
+
+        // Add API key header (can be overridden by header rules)
         request_builder = request_builder.header("x-api-key", api_key.expose_secret());
 
         let response = request_builder
@@ -166,6 +180,9 @@ impl Provider for AnthropicProvider {
             .resolve_model(&request.model)
             .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", request.model)))?;
 
+        // Get the model config to access headers
+        let model_config = self.model_manager.get_model_config(&request.model);
+
         request.model = actual_model;
         let temp_api_key = self.config.api_key.clone();
         let api_key = token::get(self.config.forward_token, &temp_api_key, context)?;
@@ -173,14 +190,16 @@ impl Provider for AnthropicProvider {
         let mut anthropic_request = AnthropicRequest::from(request);
         anthropic_request.stream = Some(true);
 
-        let response = self
-            .client
-            .post(&url)
-            .header("x-api-key", api_key.expose_secret())
-            .json(&anthropic_request)
-            .send()
-            .await
-            .map_err(|e| LlmError::ConnectionError(format!("Failed to send streaming request to Anthropic: {e}")))?;
+        // Use create_post_request to ensure headers are applied
+        let mut request_builder = self.request_builder(Method::POST, &url, context, model_config);
+
+        // Add API key header (can be overridden by header rules)
+        request_builder = request_builder.header("x-api-key", api_key.expose_secret());
+
+        let response =
+            request_builder.json(&anthropic_request).send().await.map_err(|e| {
+                LlmError::ConnectionError(format!("Failed to send streaming request to Anthropic: {e}"))
+            })?;
 
         let status = response.status();
 
@@ -245,5 +264,15 @@ impl Provider for AnthropicProvider {
 
     fn name(&self) -> &str {
         &self.name
+    }
+}
+
+impl HttpProvider for AnthropicProvider {
+    fn get_provider_headers(&self) -> &[HeaderRule] {
+        &self.config.headers
+    }
+
+    fn get_http_client(&self) -> &Client {
+        &self.client
     }
 }

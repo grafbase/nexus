@@ -65,7 +65,7 @@ impl LlmServer {
         let has_token_rate_limits = config
             .providers
             .values()
-            .any(|p| p.rate_limits().is_some() || p.models().values().any(|m| m.rate_limits.is_some()));
+            .any(|p| p.rate_limits().is_some() || p.models().values().any(|m| m.rate_limits().is_some()));
 
         let token_rate_limiter = if has_token_rate_limits {
             Some(TokenRateLimitManager::new(storage_config).await.map_err(|e| {
@@ -135,7 +135,8 @@ impl LlmServer {
         let provider_config = self.shared.config.providers.get(provider_name)?;
 
         // Get model config if it exists
-        let model_config = provider_config.models().get(model_name);
+        let models = provider_config.models();
+        let model_config = models.get(model_name);
 
         // Check rate limit if token rate limiter is configured
         let Some(ref token_rate_limiter) = self.shared.token_rate_limiter else {
@@ -149,7 +150,7 @@ impl LlmServer {
         // Gather provider and model rate limit configurations
         let (provider_limits, model_limits) = (
             provider_config.rate_limits(),
-            model_config.and_then(|m| m.rate_limits.as_ref()),
+            model_config.and_then(|m| m.rate_limits()),
         );
 
         // Count request tokens (input only, no output buffering)

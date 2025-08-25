@@ -164,10 +164,19 @@ impl McpServer {
     async fn execute(
         &self,
         params: CallToolRequestParam,
-        token: Option<&SecretString>,
+        ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
+        // Extract token first (clone to avoid borrow issues)
+        let token = ctx
+            .extensions
+            .get::<Parts>()
+            .and_then(|parts| parts.extensions.get::<SecretString>())
+            .cloned();
+
+        // MCP header rules are static (applied at client initialization), no per-request transformation needed
+
         // Get the search tool to access all tools
-        let search_tool = self.get_search_tool(token).await?;
+        let search_tool = self.get_search_tool(token.as_ref()).await?;
 
         // Use binary search to find the tool
         search_tool.find_exact(&params.name).ok_or_else(|| {
@@ -176,14 +185,14 @@ impl McpServer {
         })?;
 
         // Extract server name from tool name
-        let (server_name, tool_name) = params
-            .name
+        let tool_name_str = params.name.to_string(); // Clone the name to avoid borrowing issues
+        let (server_name, tool_name) = tool_name_str
             .split_once("__")
             .ok_or_else(|| ErrorData::invalid_params("Invalid tool name format", None))?;
 
         log::debug!(
             "Parsing tool name '{}': server='{server_name}', tool='{tool_name}'",
-            params.name
+            tool_name_str
         );
 
         // Check rate limits for the specific server/tool
@@ -202,10 +211,13 @@ impl McpServer {
             log::debug!("Rate limit manager not configured - skipping rate limit checks");
         }
 
+        // MCP header rules are applied at client initialization time, not per-request
+        // No dynamic header transformation needed here
+
         // Route to appropriate downstream
         if self.dynamic_server_names.contains(server_name) {
             // Dynamic server - need token
-            let token = token.ok_or_else(|| {
+            let token_ref = token.as_ref().ok_or_else(|| {
                 ErrorData::new(
                     ErrorCode::INVALID_REQUEST,
                     "Authentication required for this tool",
@@ -215,7 +227,7 @@ impl McpServer {
 
             let cached = self
                 .cache
-                .get_or_create(token)
+                .get_or_create(token_ref)
                 .await
                 .map_err(|e| ErrorData::internal_error(format!("Failed to initialize: {e}"), None))?;
 
@@ -343,7 +355,7 @@ impl ServerHandler for McpServer {
                 };
 
                 // Execute the tool with proper routing
-                self.execute(params, token).await
+                self.execute(params, ctx).await
             }
             tool_name => {
                 log::debug!("Unknown tool requested: '{tool_name}' - returning method not found");

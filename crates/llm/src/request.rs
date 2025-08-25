@@ -8,7 +8,8 @@ const PROVIDER_API_KEY_HEADER: &str = "X-Provider-API-Key";
 ///
 /// This struct carries runtime information that may override provider configuration,
 /// such as user-provided API keys for BYOK (Bring Your Own Key) support,
-/// and client identity information for rate limiting.
+/// client identity information for rate limiting, and incoming request headers
+/// for header transformation rules.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RequestContext {
     /// User-provided API key that overrides the configured key.
@@ -20,6 +21,9 @@ pub(crate) struct RequestContext {
 
     /// Group identifier for hierarchical rate limiting.
     pub group: Option<String>,
+
+    /// Incoming request headers for header transformation rules.
+    pub headers: HeaderMap,
 }
 
 /// Extract request context from request headers and client identity.
@@ -44,5 +48,6 @@ pub(super) fn extract_context(headers: &HeaderMap, client_identity: Option<&conf
         api_key,
         client_id,
         group,
+        headers: headers.clone(),
     }
 }

@@ -9,7 +9,9 @@ mod output;
 use async_trait::async_trait;
 use aws_config::Region;
 use aws_credential_types::Credentials;
-use aws_sdk_bedrockruntime::{Client as BedrockRuntimeClient, error::ProvideErrorMetadata};
+use aws_sdk_bedrockruntime::{
+    Client as BedrockRuntimeClient, error::ProvideErrorMetadata, operation::converse_stream::ConverseStreamInput,
+};
 use aws_smithy_runtime_api::client::result::SdkError;
 use futures::stream;
 use secrecy::ExposeSecret;
@@ -44,7 +46,14 @@ impl BedrockProvider {
     pub async fn new(name: String, config: BedrockProviderConfig) -> crate::Result<Self> {
         let sdk_config = create_aws_config(&config).await?;
         let client = BedrockRuntimeClient::new(&sdk_config);
-        let model_manager = ModelManager::new(config.models.clone(), &name);
+        // Convert BedrockModelConfig to unified ModelConfig for ModelManager
+        let models = config
+            .models
+            .clone()
+            .into_iter()
+            .map(|(k, v)| (k, config::ModelConfig::Bedrock(v)))
+            .collect();
+        let model_manager = ModelManager::new(models, &name);
 
         Ok(Self {
             client,
@@ -94,6 +103,7 @@ impl Provider for BedrockProvider {
         // Convert response using From trait
         let mut response = ChatCompletionResponse::from(output);
         response.model = original_model;
+
         Ok(response)
     }
 
@@ -113,7 +123,7 @@ impl Provider for BedrockProvider {
         let original_model = request.model.clone();
 
         // Convert request to Bedrock streaming format - moves request
-        let mut converse_input = aws_sdk_bedrockruntime::operation::converse_stream::ConverseStreamInput::from(request);
+        let mut converse_input = ConverseStreamInput::from(request);
         converse_input.model_id = Some(actual_model_id);
 
         let stream_output = self

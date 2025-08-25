@@ -3,13 +3,14 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
+use crate::headers::HeaderRule;
 use crate::rate_limit::TokenRateLimitsConfig;
 use secrecy::SecretString;
 use serde::{Deserialize, Deserializer};
 
-/// Configuration for an individual model within a provider.
+/// Configuration for an individual model within API-based providers.
 #[derive(Debug, Clone, Deserialize)]
-pub struct ModelConfig {
+pub struct ApiModelConfig {
     /// Optional rename - the actual provider model name.
     /// If not specified, the model ID (map key) is used.
     #[serde(default)]
@@ -17,6 +18,58 @@ pub struct ModelConfig {
     /// Rate limits for this model.
     #[serde(default)]
     pub rate_limits: Option<TokenRateLimitsConfig>,
+    /// Header transformation rules for this model.
+    #[serde(default)]
+    pub headers: Vec<HeaderRule>,
+}
+
+/// Configuration for an individual model within Bedrock provider.
+/// Note: Bedrock models don't support custom headers due to SigV4 signing.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BedrockModelConfig {
+    /// Optional rename - the actual provider model name.
+    /// If not specified, the model ID (map key) is used.
+    #[serde(default)]
+    pub rename: Option<String>,
+    /// Rate limits for this model.
+    #[serde(default)]
+    pub rate_limits: Option<TokenRateLimitsConfig>,
+    // No headers field - Bedrock uses SigV4 signing
+}
+
+/// Unified model configuration that can be either API or Bedrock.
+#[derive(Debug, Clone)]
+pub enum ModelConfig {
+    /// API-based model configuration (OpenAI, Anthropic, Google).
+    Api(ApiModelConfig),
+    /// Bedrock model configuration.
+    Bedrock(BedrockModelConfig),
+}
+
+impl ModelConfig {
+    /// Get the optional rename for this model.
+    pub fn rename(&self) -> Option<&str> {
+        match self {
+            Self::Api(config) => config.rename.as_deref(),
+            Self::Bedrock(config) => config.rename.as_deref(),
+        }
+    }
+
+    /// Get the rate limits for this model.
+    pub fn rate_limits(&self) -> Option<&TokenRateLimitsConfig> {
+        match self {
+            Self::Api(config) => config.rate_limits.as_ref(),
+            Self::Bedrock(config) => config.rate_limits.as_ref(),
+        }
+    }
+
+    /// Get the headers for this model (only available for API models).
+    pub fn headers(&self) -> &[HeaderRule] {
+        match self {
+            Self::Api(config) => &config.headers,
+            Self::Bedrock(_) => &[], // Bedrock doesn't support headers
+        }
+    }
 }
 
 /// LLM configuration for AI model integration.
@@ -86,12 +139,16 @@ pub struct ApiProviderConfig {
 
     /// Explicitly configured models for this provider.
     /// Phase 3: At least one model must be configured.
-    #[serde(deserialize_with = "deserialize_non_empty_models_with_default")]
-    pub models: BTreeMap<String, ModelConfig>,
+    #[serde(deserialize_with = "deserialize_non_empty_api_models_with_default")]
+    pub models: BTreeMap<String, ApiModelConfig>,
 
     /// Provider-level rate limits.
     #[serde(default)]
     pub rate_limits: Option<TokenRateLimitsConfig>,
+
+    /// Header transformation rules for this provider.
+    #[serde(default)]
+    pub headers: Vec<HeaderRule>,
 }
 
 /// Configuration specific to AWS Bedrock.
@@ -121,8 +178,9 @@ pub struct BedrockProviderConfig {
     pub base_url: Option<String>,
 
     /// Explicitly configured models for this provider.
-    #[serde(deserialize_with = "deserialize_non_empty_models_with_default")]
-    pub models: BTreeMap<String, ModelConfig>,
+    /// Bedrock models don't support custom headers due to SigV4 signing.
+    #[serde(deserialize_with = "deserialize_non_empty_bedrock_models_with_default")]
+    pub models: BTreeMap<String, BedrockModelConfig>,
 }
 
 /// Complete LLM provider configuration.
@@ -183,13 +241,29 @@ impl LlmProviderConfig {
         }
     }
 
-    /// Get the configured models for this provider.
-    pub fn models(&self) -> &BTreeMap<String, ModelConfig> {
+    /// Get the configured models for this provider as unified ModelConfig.
+    pub fn models(&self) -> BTreeMap<String, ModelConfig> {
         match self {
-            Self::Openai(config) => &config.models,
-            Self::Anthropic(config) => &config.models,
-            Self::Google(config) => &config.models,
-            Self::Bedrock(config) => &config.models,
+            Self::Openai(config) => config
+                .models
+                .iter()
+                .map(|(k, v)| (k.clone(), ModelConfig::Api(v.clone())))
+                .collect(),
+            Self::Anthropic(config) => config
+                .models
+                .iter()
+                .map(|(k, v)| (k.clone(), ModelConfig::Api(v.clone())))
+                .collect(),
+            Self::Google(config) => config
+                .models
+                .iter()
+                .map(|(k, v)| (k.clone(), ModelConfig::Api(v.clone())))
+                .collect(),
+            Self::Bedrock(config) => config
+                .models
+                .iter()
+                .map(|(k, v)| (k.clone(), ModelConfig::Bedrock(v.clone())))
+                .collect(),
         }
     }
 
@@ -204,16 +278,42 @@ impl LlmProviderConfig {
     }
 }
 
-/// Custom deserializer that ensures at least one model is configured.
+/// Custom deserializer for API models that ensures at least one model is configured.
 /// This handles both missing field (uses default) and empty map cases.
-fn deserialize_non_empty_models_with_default<'de, D>(deserializer: D) -> Result<BTreeMap<String, ModelConfig>, D::Error>
+fn deserialize_non_empty_api_models_with_default<'de, D>(
+    deserializer: D,
+) -> Result<BTreeMap<String, ApiModelConfig>, D::Error>
 where
     D: Deserializer<'de>,
 {
     use serde::de::Error;
 
     // First deserialize as Option to handle missing field
-    let models_opt = Option::<BTreeMap<String, ModelConfig>>::deserialize(deserializer)?;
+    let models_opt = Option::<BTreeMap<String, ApiModelConfig>>::deserialize(deserializer)?;
+
+    // Get the models map, using empty map if field was missing
+    let models = models_opt.unwrap_or_default();
+
+    // Now validate that we have at least one model
+    if models.is_empty() {
+        Err(Error::custom("At least one model must be configured for each provider"))
+    } else {
+        Ok(models)
+    }
+}
+
+/// Custom deserializer for Bedrock models that ensures at least one model is configured.
+/// This handles both missing field (uses default) and empty map cases.
+fn deserialize_non_empty_bedrock_models_with_default<'de, D>(
+    deserializer: D,
+) -> Result<BTreeMap<String, BedrockModelConfig>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    // First deserialize as Option to handle missing field
+    let models_opt = Option::<BTreeMap<String, BedrockModelConfig>>::deserialize(deserializer)?;
 
     // Get the models map, using empty map if field was missing
     let models = models_opt.unwrap_or_default();
@@ -275,16 +375,19 @@ mod tests {
                         base_url: None,
                         forward_token: false,
                         models: {
-                            "gpt-3-5-turbo": ModelConfig {
+                            "gpt-3-5-turbo": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
-                            "gpt-4": ModelConfig {
+                            "gpt-4": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
                         },
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
             },
@@ -322,16 +425,19 @@ mod tests {
                         base_url: None,
                         forward_token: false,
                         models: {
-                            "claude-3-opus": ModelConfig {
+                            "claude-3-opus": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
-                            "claude-3-sonnet": ModelConfig {
+                            "claude-3-sonnet": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
                         },
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
             },
@@ -366,16 +472,19 @@ mod tests {
                         base_url: None,
                         forward_token: false,
                         models: {
-                            "gemini-pro": ModelConfig {
+                            "gemini-pro": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
-                            "gemini-pro-vision": ModelConfig {
+                            "gemini-pro-vision": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
                         },
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
             },
@@ -423,12 +532,14 @@ mod tests {
                         base_url: None,
                         forward_token: false,
                         models: {
-                            "claude-3-opus": ModelConfig {
+                            "claude-3-opus": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
                         },
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
                 "google": Google(
@@ -439,12 +550,14 @@ mod tests {
                         base_url: None,
                         forward_token: false,
                         models: {
-                            "gemini-pro": ModelConfig {
+                            "gemini-pro": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
                         },
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
                 "openai": Openai(
@@ -455,12 +568,14 @@ mod tests {
                         base_url: None,
                         forward_token: false,
                         models: {
-                            "gpt-4": ModelConfig {
+                            "gpt-4": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
                         },
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
             },
@@ -542,12 +657,14 @@ mod tests {
                         base_url: None,
                         forward_token: false,
                         models: {
-                            "gpt-4": ModelConfig {
+                            "gpt-4": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
                         },
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
             },
@@ -584,20 +701,23 @@ mod tests {
                         base_url: None,
                         forward_token: false,
                         models: {
-                            "gpt-3-5": ModelConfig {
+                            "gpt-3-5": ApiModelConfig {
                                 rename: Some(
                                     "gpt-3.5-turbo",
                                 ),
                                 rate_limits: None,
+                                headers: [],
                             },
-                            "gpt-4": ModelConfig {
+                            "gpt-4": ApiModelConfig {
                                 rename: Some(
                                     "gpt-4-turbo-preview",
                                 ),
                                 rate_limits: None,
+                                headers: [],
                             },
                         },
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
             },
@@ -634,16 +754,19 @@ mod tests {
                         base_url: None,
                         forward_token: false,
                         models: {
-                            "custom-model": ModelConfig {
+                            "custom-model": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
-                            "gpt-4": ModelConfig {
+                            "gpt-4": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
                         },
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
             },
@@ -687,18 +810,21 @@ mod tests {
                         base_url: None,
                         forward_token: false,
                         models: {
-                            "claude-3": ModelConfig {
+                            "claude-3": ApiModelConfig {
                                 rename: Some(
                                     "claude-3-opus-20240229",
                                 ),
                                 rate_limits: None,
+                                headers: [],
                             },
-                            "claude-instant": ModelConfig {
+                            "claude-instant": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
                         },
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
                 "openai": Openai(
@@ -709,14 +835,16 @@ mod tests {
                         base_url: None,
                         forward_token: false,
                         models: {
-                            "gpt-4": ModelConfig {
+                            "gpt-4": ApiModelConfig {
                                 rename: Some(
                                     "gpt-4-turbo",
                                 ),
                                 rate_limits: None,
+                                headers: [],
                             },
                         },
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
             },
@@ -786,7 +914,7 @@ mod tests {
 
         let config: LlmConfig = toml::from_str(config).unwrap();
 
-        assert_debug_snapshot!(&config.providers["openai"].models()["gpt-4"].rate_limits, @r#"
+        assert_debug_snapshot!(&config.providers["openai"].models().get("gpt-4").unwrap().rate_limits(), @r#"
         Some(
             TokenRateLimitsConfig {
                 per_user: Some(
@@ -848,12 +976,14 @@ mod tests {
                         base_url: None,
                         forward_token: true,
                         models: {
-                            "claude-3-opus": ModelConfig {
+                            "claude-3-opus": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
                         },
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
                 "google": Google(
@@ -864,12 +994,14 @@ mod tests {
                         base_url: None,
                         forward_token: false,
                         models: {
-                            "gemini-pro": ModelConfig {
+                            "gemini-pro": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
                         },
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
                 "openai": Openai(
@@ -880,12 +1012,14 @@ mod tests {
                         base_url: None,
                         forward_token: true,
                         models: {
-                            "gpt-4": ModelConfig {
+                            "gpt-4": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
                         },
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
             },

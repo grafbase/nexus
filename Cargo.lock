@@ -1403,6 +1403,7 @@ dependencies = [
  "indoc",
  "insta",
  "log",
+ "regex",
  "secrecy",
  "serde",
  "serde-dynamic-string",
@@ -2847,6 +2848,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "header-rules"
+version = "0.1.0"
+dependencies = [
+ "ascii",
+ "config",
+ "regex",
+ "reqwest",
+ "serde",
+]
+
+[[package]]
 name = "heck"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3431,6 +3443,7 @@ dependencies = [
  "itertools 0.14.0",
  "log",
  "logforth",
+ "regex",
  "reqwest",
  "rmcp",
  "rustls 0.23.31",
@@ -3710,10 +3723,12 @@ dependencies = [
  "config",
  "eventsource-stream",
  "futures",
+ "header-rules",
  "insta",
  "itertools 0.14.0",
  "log",
  "rate-limit",
+ "regex",
  "reqwest",
  "secrecy",
  "serde",
@@ -3852,12 +3867,14 @@ dependencies = [
  "config",
  "convert_case",
  "futures-util",
+ "header-rules",
  "http 1.3.1",
  "indoc",
  "itertools 0.14.0",
  "log",
  "mini-moka",
  "rate-limit",
+ "regex",
  "reqwest",
  "rmcp",
  "schemars 1.0.4",
@@ -5820,10 +5837,12 @@ name = "server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ascii",
  "axum",
  "axum-server",
  "config",
  "fast-glob",
+ "header-rules",
  "http 1.3.1",
  "http-body 1.0.1",
  "jwt-compact",
@@ -5831,6 +5850,7 @@ dependencies = [
  "log",
  "mcp",
  "rate-limit",
+ "regex",
  "reqwest",
  "secrecy",
  "serde",

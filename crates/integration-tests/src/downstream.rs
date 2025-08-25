@@ -30,6 +30,7 @@ pub trait TestTool: Send + Sync + 'static + std::fmt::Debug {
     fn call(
         &self,
         params: CallToolRequestParam,
+        ctx: RequestContext<RoleServer>,
     ) -> Pin<Box<dyn Future<Output = Result<CallToolResult, ErrorData>> + Send + '_>>;
 }
 
@@ -347,7 +348,7 @@ impl ServerHandler for TestService {
     async fn call_tool(
         &self,
         params: CallToolRequestParam,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let tool = self.tools.get(params.name.as_ref()).ok_or_else(|| ErrorData {
             code: ErrorCode(-32601),
@@ -355,7 +356,7 @@ impl ServerHandler for TestService {
             data: None,
         })?;
 
-        tool.call(params).await
+        tool.call(params, context).await
     }
 
     async fn list_prompts(

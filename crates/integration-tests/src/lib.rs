@@ -1,4 +1,5 @@
 mod downstream;
+pub mod headers;
 pub mod llms;
 pub mod tools;
 
@@ -145,36 +146,33 @@ impl McpTestClient {
 
     /// Create a new MCP test client with OAuth2 authentication
     pub async fn new_with_auth(mcp_url: String, auth_token: Option<&str>) -> Self {
+        let mut headers = HeaderMap::new();
+        if let Some(token) = auth_token {
+            let auth_value = HeaderValue::from_str(&format!("Bearer {token}")).unwrap();
+            headers.insert(AUTHORIZATION, auth_value);
+        }
+        Self::new_with_headers(mcp_url, headers).await
+    }
+
+    /// Create a new MCP test client with custom headers
+    pub async fn new_with_headers(mcp_url: String, headers: HeaderMap) -> Self {
         let transport = if mcp_url.starts_with("https") {
             // For HTTPS, create a client that accepts self-signed certificates
-            let mut builder = reqwest::Client::builder().danger_accept_invalid_certs(true);
-
-            // Add OAuth2 authentication if provided
-            if let Some(token) = auth_token {
-                let mut headers = HeaderMap::new();
-                let auth_value = HeaderValue::from_str(&format!("Bearer {token}")).unwrap();
-
-                headers.insert(AUTHORIZATION, auth_value);
-                builder = builder.default_headers(headers);
-            }
-
-            let client = builder.build().unwrap();
+            let client = reqwest::Client::builder()
+                .danger_accept_invalid_certs(true)
+                .default_headers(headers)
+                .build()
+                .unwrap();
             let config = StreamableHttpClientTransportConfig::with_uri(mcp_url.clone());
             StreamableHttpClientTransport::with_client(client, config)
         } else {
-            // For HTTP, create a client with optional authentication
-            if let Some(token) = auth_token {
-                let mut headers = HeaderMap::new();
-                let auth_value = HeaderValue::from_str(&format!("Bearer {token}")).unwrap();
-
-                headers.insert(AUTHORIZATION, auth_value);
-
+            // For HTTP, create a client with custom headers
+            if headers.is_empty() {
+                StreamableHttpClientTransport::from_uri(mcp_url)
+            } else {
                 let client = reqwest::Client::builder().default_headers(headers).build().unwrap();
                 let config = StreamableHttpClientTransportConfig::with_uri(mcp_url.clone());
-
                 StreamableHttpClientTransport::with_client(client, config)
-            } else {
-                StreamableHttpClientTransport::from_uri(mcp_url)
             }
         };
 
@@ -587,6 +585,19 @@ impl TestServer {
         let mcp_url = format!("{protocol}://{}{}", self.address, path);
 
         McpTestClient::new_with_auth(mcp_url, Some(auth_token)).await
+    }
+
+    /// Create an MCP client with custom headers
+    pub async fn mcp_client_with_headers(&self, path: &str, headers: HeaderMap) -> McpTestClient {
+        let protocol = if self.client.base_url.starts_with("https") {
+            "https"
+        } else {
+            "http"
+        };
+
+        let mcp_url = format!("{protocol}://{}{}", self.address, path);
+
+        McpTestClient::new_with_headers(mcp_url, headers).await
     }
 
     /// Create an LLM client for testing LLM API endpoints

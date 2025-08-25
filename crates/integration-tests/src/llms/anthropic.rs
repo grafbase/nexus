@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow;
 use axum::{
@@ -16,6 +16,7 @@ use tokio::net::TcpListener;
 
 use super::provider::{LlmProviderConfig, TestLlmProvider};
 use super::{common::find_custom_response, openai::ModelConfig};
+use crate::headers::HeaderRecorder;
 
 /// Builder for Anthropic test server
 pub struct AnthropicMock {
@@ -24,6 +25,7 @@ pub struct AnthropicMock {
     custom_responses: HashMap<String, String>,
     streaming_enabled: bool,
     tool_response: Option<ToolCallResponse>,
+    captured_headers: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 /// Tool call response configuration for testing
@@ -47,7 +49,13 @@ impl AnthropicMock {
             custom_responses: HashMap::new(),
             streaming_enabled: false,
             tool_response: None,
+            captured_headers: Arc::new(Mutex::new(Vec::new())),
         }
+    }
+
+    /// Get a header recorder that can be used to inspect headers after the mock is moved
+    pub fn header_recorder(&self) -> HeaderRecorder {
+        HeaderRecorder::new(self.captured_headers.clone())
     }
 
     pub fn with_models(mut self, models: Vec<String>) -> Self {
@@ -107,6 +115,7 @@ impl TestLlmProvider for AnthropicMock {
             custom_responses: self.custom_responses,
             streaming_enabled: self.streaming_enabled,
             tool_response: self.tool_response,
+            captured_headers: self.captured_headers.clone(),
         });
 
         let app = Router::new()
@@ -139,6 +148,7 @@ struct TestAnthropicState {
     custom_responses: HashMap<String, String>,
     streaming_enabled: bool,
     tool_response: Option<ToolCallResponse>,
+    captured_headers: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 /// Spawn a test Anthropic server on a random port (legacy compatibility)
@@ -167,6 +177,15 @@ async fn create_message(
     headers: axum::http::HeaderMap,
     Json(request): Json<AnthropicMessageRequest>,
 ) -> Response {
+    // Capture headers
+    let mut captured = Vec::new();
+    for (name, value) in &headers {
+        if let Ok(value_str) = value.to_str() {
+            captured.push((name.to_string(), value_str.to_string()));
+        }
+    }
+    *state.captured_headers.lock().unwrap() = captured;
+
     // Validate required headers
     if !headers.contains_key("x-api-key") {
         return (

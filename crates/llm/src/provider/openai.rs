@@ -6,7 +6,7 @@ use axum::http::HeaderMap;
 use config::ApiProviderConfig;
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
-use reqwest::{Client, header::AUTHORIZATION};
+use reqwest::{Client, Method, header::AUTHORIZATION};
 use secrecy::ExposeSecret;
 
 use self::{
@@ -17,9 +17,10 @@ use self::{
 use crate::{
     error::LlmError,
     messages::{ChatCompletionRequest, ChatCompletionResponse, Model},
-    provider::{ChatCompletionStream, ModelManager, Provider, token},
+    provider::{ChatCompletionStream, HttpProvider, ModelManager, Provider, token},
     request::RequestContext,
 };
+use config::HeaderRule;
 
 const DEFAULT_OPENAI_API_URL: &str = "https://api.openai.com/v1";
 
@@ -50,7 +51,14 @@ impl OpenAIProvider {
             .clone()
             .unwrap_or_else(|| DEFAULT_OPENAI_API_URL.to_string());
 
-        let model_manager = ModelManager::new(config.models.clone(), "openai");
+        // Convert ApiModelConfig to unified ModelConfig for ModelManager
+        let models = config
+            .models
+            .clone()
+            .into_iter()
+            .map(|(k, v)| (k, config::ModelConfig::Api(v)))
+            .collect();
+        let model_manager = ModelManager::new(models, "openai");
 
         Ok(Self {
             client,
@@ -80,11 +88,17 @@ impl Provider for OpenAIProvider {
             .resolve_model(&model_name)
             .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", model_name)))?;
 
+        // Get the model config to access headers
+        let model_config = self.model_manager.get_model_config(&model_name);
+
         let mut openai_request = OpenAIRequest::from(request);
         openai_request.model = actual_model;
         openai_request.stream = false; // Always false for now
 
-        let mut request_builder = self.client.post(&url);
+        // Use create_post_request to ensure headers are applied
+        let mut request_builder = self.request_builder(Method::POST, &url, context, model_config);
+
+        // Add authorization header (can be overridden by header rules)
         let temp_api_key = self.config.api_key.clone();
         let key = token::get(self.config.forward_token, &temp_api_key, context)?;
         request_builder = request_builder.header(AUTHORIZATION, format!("Bearer {}", key.expose_secret()));
@@ -152,6 +166,9 @@ impl Provider for OpenAIProvider {
             .resolve_model(&model_name)
             .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", model_name)))?;
 
+        // Get the model config to access headers
+        let model_config = self.model_manager.get_model_config(&model_name);
+
         let mut openai_request = OpenAIRequest::from(request);
         openai_request.model = actual_model;
         openai_request.stream = true;
@@ -159,11 +176,13 @@ impl Provider for OpenAIProvider {
         let temp_api_key = self.config.api_key.clone();
         let key = token::get(self.config.forward_token, &temp_api_key, context)?;
 
-        // Build request with dynamic authorization header
-        let response = self
-            .client
-            .post(&url)
-            .header(AUTHORIZATION, format!("Bearer {}", key.expose_secret()))
+        // Use create_post_request to ensure headers are applied
+        let mut request_builder = self.request_builder(Method::POST, &url, context, model_config);
+
+        // Add authorization header (can be overridden by header rules)
+        request_builder = request_builder.header(AUTHORIZATION, format!("Bearer {}", key.expose_secret()));
+
+        let response = request_builder
             .json(&openai_request)
             .send()
             .await
@@ -231,6 +250,16 @@ impl Provider for OpenAIProvider {
 
     fn name(&self) -> &str {
         &self.name
+    }
+}
+
+impl HttpProvider for OpenAIProvider {
+    fn get_provider_headers(&self) -> &[HeaderRule] {
+        &self.config.headers
+    }
+
+    fn get_http_client(&self) -> &Client {
+        &self.client
     }
 }
 

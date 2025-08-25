@@ -4,6 +4,8 @@
 
 mod client_identity;
 mod cors;
+mod headers;
+mod http_types;
 mod llm;
 mod loader;
 mod mcp;
@@ -20,7 +22,15 @@ use std::{
 pub use client_identity::ClientIdentity;
 pub use cors::*;
 use duration_str::deserialize_option_duration;
-pub use llm::{ApiProviderConfig, BedrockProviderConfig, LlmConfig, LlmProviderConfig, ModelConfig, ProviderType};
+pub use headers::{
+    HeaderForward, HeaderInsert, HeaderRemove, HeaderRenameDuplicate, HeaderRule, McpHeaderRule, NameOrPattern,
+    NamePattern,
+};
+pub use http_types::{HeaderName, HeaderValue};
+pub use llm::{
+    ApiModelConfig, ApiProviderConfig, BedrockModelConfig, BedrockProviderConfig, LlmConfig, LlmProviderConfig,
+    ModelConfig, ProviderType,
+};
 pub use mcp::{
     ClientAuthConfig, HttpConfig, HttpProtocol, McpConfig, McpServer, McpServerRateLimit, StdioConfig, StdioTarget,
     StdioTargetType, TlsClientConfig,
@@ -288,6 +298,7 @@ mod tests {
                 },
                 servers: {},
                 enable_structured_content: true,
+                headers: [],
             },
             llm: LlmConfig {
                 enabled: true,
@@ -335,6 +346,7 @@ mod tests {
                 },
                 servers: {},
                 enable_structured_content: true,
+                headers: [],
             },
             llm: LlmConfig {
                 enabled: true,
@@ -524,6 +536,7 @@ mod tests {
                     message_url: None,
                     auth: None,
                     rate_limits: None,
+                    headers: [],
                 },
             ),
             "stdio_server": Stdio(
@@ -686,6 +699,7 @@ mod tests {
                     ),
                     auth: None,
                     rate_limits: None,
+                    headers: [],
                 },
             ),
         }
@@ -742,6 +756,7 @@ mod tests {
                     message_url: None,
                     auth: None,
                     rate_limits: None,
+                    headers: [],
                 },
             ),
         }
@@ -842,6 +857,7 @@ mod tests {
                         message_url: None,
                         auth: None,
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
                 "sse_api2": Http(
@@ -886,6 +902,7 @@ mod tests {
                         ),
                         auth: None,
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
                 "streaming_api": Http(
@@ -914,10 +931,12 @@ mod tests {
                         message_url: None,
                         auth: None,
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
             },
             enable_structured_content: true,
+            headers: [],
         }
         "#);
     }
@@ -1258,6 +1277,7 @@ mod tests {
                         },
                     ),
                     rate_limits: None,
+                    headers: [],
                 },
             ),
         }
@@ -1307,6 +1327,7 @@ mod tests {
                         },
                     ),
                     rate_limits: None,
+                    headers: [],
                 },
             ),
         }
@@ -1861,12 +1882,14 @@ mod tests {
                         base_url: None,
                         forward_token: false,
                         models: {
-                            "claude-3-opus": ModelConfig {
+                            "claude-3-opus": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
                         },
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
                 "openai": Openai(
@@ -1877,12 +1900,14 @@ mod tests {
                         base_url: None,
                         forward_token: false,
                         models: {
-                            "gpt-4": ModelConfig {
+                            "gpt-4": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
+                                headers: [],
                             },
                         },
                         rate_limits: None,
+                        headers: [],
                     },
                 ),
             },
@@ -1897,7 +1922,7 @@ mod tests {
             enabled = true
             client_id.jwt_claim = "sub"
             group_id.jwt_claim = "plan"
-            
+
             [server.client_identification.validation]
             group_values = ["free", "pro", "enterprise"]
         "#};
@@ -1935,7 +1960,7 @@ mod tests {
             enabled = true
             client_id.http_header = "X-Client-Id"
             group_id.http_header = "X-Plan"
-            
+
             [server.client_identification.validation]
             group_values = ["basic", "premium"]
         "#};
@@ -1972,7 +1997,7 @@ mod tests {
             enabled = true
             client_id.jwt_claim = "sub"
             group_id.jwt_claim = "plan"
-            
+
             [server.client_identification.validation]
             group_values = ["free", "pro"]
 
@@ -2128,7 +2153,7 @@ mod tests {
             enabled = true
             client_id.jwt_claim = "sub"
             group_id.jwt_claim = "plan"
-            
+
             [server.client_identification.validation]
             group_values = ["free", "pro"]
 
@@ -2215,6 +2240,7 @@ mod tests {
                             },
                         },
                     ),
+                    headers: [],
                 },
             ),
             "local_tool": Stdio(
@@ -2487,5 +2513,906 @@ mod tests {
         let config: Config = toml::from_str(config_str).unwrap();
         let result = crate::loader::validate_has_downstreams(&config);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn llm_provider_header_rules() {
+        let config = indoc! {r#"
+            [llm.providers.openai]
+            type = "openai"
+            api_key = "test-key"
+
+            [[llm.providers.openai.headers]]
+            rule = "insert"
+            name = "x-custom-header"
+            value = "provider-value"
+
+            [[llm.providers.openai.headers]]
+            rule = "forward"
+            name = "x-request-id"
+
+            [[llm.providers.openai.headers]]
+            rule = "remove"
+            name = "x-internal-header"
+
+            [llm.providers.openai.models.gpt-4]
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+
+        insta::assert_debug_snapshot!(&config.llm.providers["openai"], @r#"
+        Openai(
+            ApiProviderConfig {
+                api_key: Some(
+                    SecretBox<str>([REDACTED]),
+                ),
+                base_url: None,
+                forward_token: false,
+                models: {
+                    "gpt-4": ApiModelConfig {
+                        rename: None,
+                        rate_limits: None,
+                        headers: [],
+                    },
+                },
+                rate_limits: None,
+                headers: [
+                    Insert(
+                        HeaderInsert {
+                            name: HeaderName(
+                                "x-custom-header",
+                            ),
+                            value: HeaderValue(
+                                "provider-value",
+                            ),
+                        },
+                    ),
+                    Forward(
+                        HeaderForward {
+                            name: Name(
+                                HeaderName(
+                                    "x-request-id",
+                                ),
+                            ),
+                            default: None,
+                            rename: None,
+                        },
+                    ),
+                    Remove(
+                        HeaderRemove {
+                            name: Name(
+                                HeaderName(
+                                    "x-internal-header",
+                                ),
+                            ),
+                        },
+                    ),
+                ],
+            },
+        )
+        "#);
+    }
+
+    #[test]
+    fn llm_model_header_rules_override() {
+        let config = indoc! {r#"
+            [llm.providers.openai]
+            type = "openai"
+            api_key = "test-key"
+
+            [[llm.providers.openai.headers]]
+            rule = "insert"
+            name = "x-tier"
+            value = "basic"
+
+            [llm.providers.openai.models.gpt-3]
+
+            [llm.providers.openai.models.gpt-4]
+            [[llm.providers.openai.models.gpt-4.headers]]
+            rule = "insert"
+            name = "x-tier"
+            value = "premium"
+
+            [[llm.providers.openai.models.gpt-4.headers]]
+            rule = "insert"
+            name = "x-model-specific"
+            value = "gpt4-only"
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+
+        insta::assert_debug_snapshot!(&config.llm.providers["openai"], @r#"
+        Openai(
+            ApiProviderConfig {
+                api_key: Some(
+                    SecretBox<str>([REDACTED]),
+                ),
+                base_url: None,
+                forward_token: false,
+                models: {
+                    "gpt-3": ApiModelConfig {
+                        rename: None,
+                        rate_limits: None,
+                        headers: [],
+                    },
+                    "gpt-4": ApiModelConfig {
+                        rename: None,
+                        rate_limits: None,
+                        headers: [
+                            Insert(
+                                HeaderInsert {
+                                    name: HeaderName(
+                                        "x-tier",
+                                    ),
+                                    value: HeaderValue(
+                                        "premium",
+                                    ),
+                                },
+                            ),
+                            Insert(
+                                HeaderInsert {
+                                    name: HeaderName(
+                                        "x-model-specific",
+                                    ),
+                                    value: HeaderValue(
+                                        "gpt4-only",
+                                    ),
+                                },
+                            ),
+                        ],
+                    },
+                },
+                rate_limits: None,
+                headers: [
+                    Insert(
+                        HeaderInsert {
+                            name: HeaderName(
+                                "x-tier",
+                            ),
+                            value: HeaderValue(
+                                "basic",
+                            ),
+                        },
+                    ),
+                ],
+            },
+        )
+        "#);
+    }
+
+    #[test]
+    fn mcp_header_rules_hierarchy() {
+        let config = indoc! {r#"
+            # Service-level headers (MCP only supports insert)
+            [[mcp.headers]]
+            rule = "insert"
+            name = "x-service"
+            value = "nexus"
+
+            [[mcp.headers]]
+            rule = "insert"
+            name = "x-trace-id"
+            value = "{{ env.TRACE_ID }}"
+
+            # Server-level headers (HTTP server for tool support)
+            [mcp.servers.database]
+            url = "http://localhost:8080/mcp"
+
+            [[mcp.servers.database.headers]]
+            rule = "insert"
+            name = "x-server"
+            value = "database"
+
+            [[mcp.servers.database.headers]]
+            rule = "insert"
+            name = "x-env"
+            value = "prod"
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+
+        // Snapshot the entire MCP config including all header rules at different levels
+        insta::assert_debug_snapshot!(&config.mcp, @r#"
+        McpConfig {
+            enabled: true,
+            path: "/mcp",
+            downstream_cache: McpDownstreamCacheConfig {
+                max_size: 1000,
+                idle_timeout: 600s,
+            },
+            servers: {
+                "database": Http(
+                    HttpConfig {
+                        protocol: None,
+                        url: Url {
+                            scheme: "http",
+                            cannot_be_a_base: false,
+                            username: "",
+                            password: None,
+                            host: Some(
+                                Domain(
+                                    "localhost",
+                                ),
+                            ),
+                            port: Some(
+                                8080,
+                            ),
+                            path: "/mcp",
+                            query: None,
+                            fragment: None,
+                        },
+                        tls: None,
+                        message_url: None,
+                        auth: None,
+                        rate_limits: None,
+                        headers: [
+                            Insert(
+                                HeaderInsert {
+                                    name: HeaderName(
+                                        "x-server",
+                                    ),
+                                    value: HeaderValue(
+                                        "database",
+                                    ),
+                                },
+                            ),
+                            Insert(
+                                HeaderInsert {
+                                    name: HeaderName(
+                                        "x-env",
+                                    ),
+                                    value: HeaderValue(
+                                        "prod",
+                                    ),
+                                },
+                            ),
+                        ],
+                    },
+                ),
+            },
+            enable_structured_content: true,
+            headers: [
+                Insert(
+                    HeaderInsert {
+                        name: HeaderName(
+                            "x-service",
+                        ),
+                        value: HeaderValue(
+                            "nexus",
+                        ),
+                    },
+                ),
+                Insert(
+                    HeaderInsert {
+                        name: HeaderName(
+                            "x-trace-id",
+                        ),
+                        value: HeaderValue(
+                            "{{ env.TRACE_ID }}",
+                        ),
+                    },
+                ),
+            ],
+        }
+        "#);
+    }
+
+    #[test]
+    fn llm_header_forward_with_rename() {
+        // Test forward with rename for LLM providers (not MCP)
+        let config = indoc! {r#"
+            [llm.providers.openai]
+            type = "openai"
+            api_key = "test"
+
+            [[llm.providers.openai.headers]]
+            rule = "forward"
+            name = "x-old-header"
+            rename = "x-new-header"
+
+            [[llm.providers.openai.headers]]
+            rule = "forward"
+            pattern = "^x-custom-"
+            rename = "x-forwarded-custom-"
+
+            [llm.providers.openai.models.gpt-4]
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+
+        insta::assert_debug_snapshot!(&config.llm.providers["openai"], @r#"
+        Openai(
+            ApiProviderConfig {
+                api_key: Some(
+                    SecretBox<str>([REDACTED]),
+                ),
+                base_url: None,
+                forward_token: false,
+                models: {
+                    "gpt-4": ApiModelConfig {
+                        rename: None,
+                        rate_limits: None,
+                        headers: [],
+                    },
+                },
+                rate_limits: None,
+                headers: [
+                    Forward(
+                        HeaderForward {
+                            name: Name(
+                                HeaderName(
+                                    "x-old-header",
+                                ),
+                            ),
+                            default: None,
+                            rename: Some(
+                                HeaderName(
+                                    "x-new-header",
+                                ),
+                            ),
+                        },
+                    ),
+                    Forward(
+                        HeaderForward {
+                            name: Pattern(
+                                NamePattern(
+                                    Regex(
+                                        "^x-custom-",
+                                    ),
+                                ),
+                            ),
+                            default: None,
+                            rename: Some(
+                                HeaderName(
+                                    "x-forwarded-custom-",
+                                ),
+                            ),
+                        },
+                    ),
+                ],
+            },
+        )
+        "#);
+    }
+
+    #[test]
+    fn llm_header_remove_patterns() {
+        // Test remove patterns for LLM providers (not MCP)
+        let config = indoc! {r#"
+            [llm.providers.anthropic]
+            type = "anthropic"
+            api_key = "test"
+
+            [[llm.providers.anthropic.headers]]
+            rule = "remove"
+            name = "x-specific-header"
+
+            [[llm.providers.anthropic.headers]]
+            rule = "remove"
+            pattern = "^x-internal-"
+
+            [[llm.providers.anthropic.headers]]
+            rule = "remove"
+            pattern = "^x-debug-.*-temp$"
+
+            [llm.providers.anthropic.models.claude-3]
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+
+        insta::assert_debug_snapshot!(&config.llm.providers["anthropic"], @r#"
+        Anthropic(
+            ApiProviderConfig {
+                api_key: Some(
+                    SecretBox<str>([REDACTED]),
+                ),
+                base_url: None,
+                forward_token: false,
+                models: {
+                    "claude-3": ApiModelConfig {
+                        rename: None,
+                        rate_limits: None,
+                        headers: [],
+                    },
+                },
+                rate_limits: None,
+                headers: [
+                    Remove(
+                        HeaderRemove {
+                            name: Name(
+                                HeaderName(
+                                    "x-specific-header",
+                                ),
+                            ),
+                        },
+                    ),
+                    Remove(
+                        HeaderRemove {
+                            name: Pattern(
+                                NamePattern(
+                                    Regex(
+                                        "^x-internal-",
+                                    ),
+                                ),
+                            ),
+                        },
+                    ),
+                    Remove(
+                        HeaderRemove {
+                            name: Pattern(
+                                NamePattern(
+                                    Regex(
+                                        "^x-debug-.*-temp$",
+                                    ),
+                                ),
+                            ),
+                        },
+                    ),
+                ],
+            },
+        )
+        "#);
+    }
+
+    #[test]
+    fn llm_header_rename_duplicate_with_default() {
+        // Test rename_duplicate for LLM providers (not MCP)
+        let config = indoc! {r#"
+            [llm.providers.google]
+            type = "google"
+            api_key = "test"
+
+            [[llm.providers.google.headers]]
+            rule = "rename_duplicate"
+            name = "authorization"
+            rename = "x-original-auth"
+            default = "Bearer default-token"
+
+            [llm.providers.google.models."gemini-1.5-flash"]
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+
+        insta::assert_debug_snapshot!(&config.llm.providers["google"], @r#"
+        Google(
+            ApiProviderConfig {
+                api_key: Some(
+                    SecretBox<str>([REDACTED]),
+                ),
+                base_url: None,
+                forward_token: false,
+                models: {
+                    "gemini-1.5-flash": ApiModelConfig {
+                        rename: None,
+                        rate_limits: None,
+                        headers: [],
+                    },
+                },
+                rate_limits: None,
+                headers: [
+                    RenameDuplicate(
+                        HeaderRenameDuplicate {
+                            name: HeaderName(
+                                "authorization",
+                            ),
+                            default: Some(
+                                HeaderValue(
+                                    "Bearer default-token",
+                                ),
+                            ),
+                            rename: HeaderName(
+                                "x-original-auth",
+                            ),
+                        },
+                    ),
+                ],
+            },
+        )
+        "#);
+    }
+
+    #[test]
+    fn complex_header_rules_combination() {
+        let config = indoc! {r#"
+            # Global MCP headers (only insert supported)
+            [[mcp.headers]]
+            rule = "insert"
+            name = "x-global"
+            value = "mcp-global"
+
+            [[mcp.headers]]
+            rule = "insert"
+            name = "x-trace"
+            value = "enabled"
+
+            # HTTP server with headers and tools
+            [mcp.servers.http_api]
+            url = "https://api.example.com/mcp"
+
+            [[mcp.servers.http_api.headers]]
+            rule = "insert"
+            name = "x-api-key"
+            value = "{{ env.API_KEY }}"
+
+            [[mcp.servers.http_api.headers]]
+            rule = "insert"
+            name = "x-source"
+            value = "nexus"
+
+            # STDIO server (headers not supported for STDIO transport)
+            [mcp.servers.local_tool]
+            cmd = ["python", "tool.py"]
+        "#};
+
+        let config: Config = toml::from_str(config).unwrap();
+
+        // Snapshot the entire MCP config to verify all header rules
+        insta::assert_debug_snapshot!(&config.mcp, @r#"
+        McpConfig {
+            enabled: true,
+            path: "/mcp",
+            downstream_cache: McpDownstreamCacheConfig {
+                max_size: 1000,
+                idle_timeout: 600s,
+            },
+            servers: {
+                "http_api": Http(
+                    HttpConfig {
+                        protocol: None,
+                        url: Url {
+                            scheme: "https",
+                            cannot_be_a_base: false,
+                            username: "",
+                            password: None,
+                            host: Some(
+                                Domain(
+                                    "api.example.com",
+                                ),
+                            ),
+                            port: None,
+                            path: "/mcp",
+                            query: None,
+                            fragment: None,
+                        },
+                        tls: None,
+                        message_url: None,
+                        auth: None,
+                        rate_limits: None,
+                        headers: [
+                            Insert(
+                                HeaderInsert {
+                                    name: HeaderName(
+                                        "x-api-key",
+                                    ),
+                                    value: HeaderValue(
+                                        "{{ env.API_KEY }}",
+                                    ),
+                                },
+                            ),
+                            Insert(
+                                HeaderInsert {
+                                    name: HeaderName(
+                                        "x-source",
+                                    ),
+                                    value: HeaderValue(
+                                        "nexus",
+                                    ),
+                                },
+                            ),
+                        ],
+                    },
+                ),
+                "local_tool": Stdio(
+                    StdioConfig {
+                        cmd: [
+                            "python",
+                            "tool.py",
+                        ],
+                        env: {},
+                        cwd: None,
+                        stderr: Simple(
+                            Null,
+                        ),
+                        rate_limits: None,
+                    },
+                ),
+            },
+            enable_structured_content: true,
+            headers: [
+                Insert(
+                    HeaderInsert {
+                        name: HeaderName(
+                            "x-global",
+                        ),
+                        value: HeaderValue(
+                            "mcp-global",
+                        ),
+                    },
+                ),
+                Insert(
+                    HeaderInsert {
+                        name: HeaderName(
+                            "x-trace",
+                        ),
+                        value: HeaderValue(
+                            "enabled",
+                        ),
+                    },
+                ),
+            ],
+        }
+        "#);
+    }
+
+    #[test]
+    fn stdio_server_rejects_headers() {
+        // Test that STDIO servers cannot have headers configured
+        let config = indoc! {r#"
+            [mcp.servers.local_tool]
+            cmd = ["python", "tool.py"]
+
+            [[mcp.servers.local_tool.headers]]
+            rule = "insert"
+            name = "x-not-allowed"
+            value = "should-fail"
+        "#};
+
+        // This should fail to parse because STDIO servers don't support headers
+        let result: Result<Config, _> = toml::from_str(config);
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("did not match any variant"));
+    }
+
+    #[test]
+    fn parse_full_header_rules_config() {
+        let config = indoc! {r#"
+            [mcp]
+            enabled = true
+
+            # Global MCP header rules (only insert supported)
+            [[mcp.headers]]
+            rule = "insert"
+            name = "x-system"
+            value = "nexus"
+
+            [[mcp.headers]]
+            rule = "insert"
+            name = "x-service"
+            value = "nexus"
+
+            [mcp.servers.test_server]
+            url = "http://localhost:8080"
+
+            # Server-specific headers (only insert supported)
+            [[mcp.servers.test_server.headers]]
+            rule = "insert"
+            name = "x-server"
+            value = "test_server"
+
+            [[mcp.servers.test_server.headers]]
+            rule = "insert"
+            name = "x-tier"
+            value = "premium"
+
+            [llm]
+            enabled = true
+
+            [llm.providers.openai]
+            type = "openai"
+            api_key = "test-key"
+
+            # Provider-level headers
+            [[llm.providers.openai.headers]]
+            rule = "insert"
+            name = "x-provider"
+            value = "openai"
+
+            [llm.providers.openai.models.gpt-4]
+
+            # Model-specific headers
+            [[llm.providers.openai.models.gpt-4.headers]]
+            rule = "insert"
+            name = "x-model-tier"
+            value = "advanced"
+
+            [llm.providers.anthropic]
+            type = "anthropic"
+            api_key = "test-key"
+
+            # Using environment variable template
+            [[llm.providers.anthropic.headers]]
+            rule = "insert"
+            name = "x-api-key"
+            value = "{{ env.ANTHROPIC_KEY }}"
+
+            [llm.providers.anthropic.models.claude-3]
+        "#};
+
+        let parsed: Config = toml::from_str(config).unwrap();
+
+        // Snapshot entire config to verify all header rules
+        insta::assert_debug_snapshot!(parsed, @r#"
+        Config {
+            server: ServerConfig {
+                listen_address: None,
+                tls: None,
+                health: HealthConfig {
+                    enabled: true,
+                    listen: None,
+                    path: "/health",
+                },
+                cors: None,
+                csrf: CsrfConfig {
+                    enabled: false,
+                    header_name: "X-Nexus-CSRF-Protection",
+                },
+                oauth: None,
+                rate_limits: RateLimitConfig {
+                    enabled: false,
+                    storage: Memory,
+                    global: None,
+                    per_ip: None,
+                },
+                client_identification: None,
+            },
+            mcp: McpConfig {
+                enabled: true,
+                path: "/mcp",
+                downstream_cache: McpDownstreamCacheConfig {
+                    max_size: 1000,
+                    idle_timeout: 600s,
+                },
+                servers: {
+                    "test_server": Http(
+                        HttpConfig {
+                            protocol: None,
+                            url: Url {
+                                scheme: "http",
+                                cannot_be_a_base: false,
+                                username: "",
+                                password: None,
+                                host: Some(
+                                    Domain(
+                                        "localhost",
+                                    ),
+                                ),
+                                port: Some(
+                                    8080,
+                                ),
+                                path: "/",
+                                query: None,
+                                fragment: None,
+                            },
+                            tls: None,
+                            message_url: None,
+                            auth: None,
+                            rate_limits: None,
+                            headers: [
+                                Insert(
+                                    HeaderInsert {
+                                        name: HeaderName(
+                                            "x-server",
+                                        ),
+                                        value: HeaderValue(
+                                            "test_server",
+                                        ),
+                                    },
+                                ),
+                                Insert(
+                                    HeaderInsert {
+                                        name: HeaderName(
+                                            "x-tier",
+                                        ),
+                                        value: HeaderValue(
+                                            "premium",
+                                        ),
+                                    },
+                                ),
+                            ],
+                        },
+                    ),
+                },
+                enable_structured_content: true,
+                headers: [
+                    Insert(
+                        HeaderInsert {
+                            name: HeaderName(
+                                "x-system",
+                            ),
+                            value: HeaderValue(
+                                "nexus",
+                            ),
+                        },
+                    ),
+                    Insert(
+                        HeaderInsert {
+                            name: HeaderName(
+                                "x-service",
+                            ),
+                            value: HeaderValue(
+                                "nexus",
+                            ),
+                        },
+                    ),
+                ],
+            },
+            llm: LlmConfig {
+                enabled: true,
+                path: "/llm",
+                providers: {
+                    "anthropic": Anthropic(
+                        ApiProviderConfig {
+                            api_key: Some(
+                                SecretBox<str>([REDACTED]),
+                            ),
+                            base_url: None,
+                            forward_token: false,
+                            models: {
+                                "claude-3": ApiModelConfig {
+                                    rename: None,
+                                    rate_limits: None,
+                                    headers: [],
+                                },
+                            },
+                            rate_limits: None,
+                            headers: [
+                                Insert(
+                                    HeaderInsert {
+                                        name: HeaderName(
+                                            "x-api-key",
+                                        ),
+                                        value: HeaderValue(
+                                            "{{ env.ANTHROPIC_KEY }}",
+                                        ),
+                                    },
+                                ),
+                            ],
+                        },
+                    ),
+                    "openai": Openai(
+                        ApiProviderConfig {
+                            api_key: Some(
+                                SecretBox<str>([REDACTED]),
+                            ),
+                            base_url: None,
+                            forward_token: false,
+                            models: {
+                                "gpt-4": ApiModelConfig {
+                                    rename: None,
+                                    rate_limits: None,
+                                    headers: [
+                                        Insert(
+                                            HeaderInsert {
+                                                name: HeaderName(
+                                                    "x-model-tier",
+                                                ),
+                                                value: HeaderValue(
+                                                    "advanced",
+                                                ),
+                                            },
+                                        ),
+                                    ],
+                                },
+                            },
+                            rate_limits: None,
+                            headers: [
+                                Insert(
+                                    HeaderInsert {
+                                        name: HeaderName(
+                                            "x-provider",
+                                        ),
+                                        value: HeaderValue(
+                                            "openai",
+                                        ),
+                                    },
+                                ),
+                            ],
+                        },
+                    ),
+                },
+            },
+        }
+        "#);
     }
 }
