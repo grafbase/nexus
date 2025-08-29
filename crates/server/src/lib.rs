@@ -109,7 +109,7 @@ pub async fn serve(
     // Apply CORS to LLM router before merging
     // Only expose LLM endpoint if enabled AND has configured providers
     if config.llm.enabled() && config.llm.has_providers() {
-        match llm::router(config.llm.clone(), &config.server.rate_limits.storage).await {
+        match llm::router(&config).await {
             Ok(llm_router) => {
                 protected_router = protected_router.merge(llm_router.layer(cors.clone()));
                 llm_actually_exposed = true;
