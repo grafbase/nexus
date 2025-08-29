@@ -175,7 +175,7 @@ services:
 
   # ClickHouse for storing OpenTelemetry data
   clickhouse:
-    image: clickhouse/clickhouse-server:25.7-alpine
+    image: clickhouse/clickhouse-server:25.8-alpine
     ports:
       - "9000:9000"   # Native protocol port
       - "8123:8123"   # HTTP port
