@@ -3791,6 +3791,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sonic-rs",
+ "telemetry",
  "thiserror 2.0.16",
  "tiktoken-rs",
  "tokio",

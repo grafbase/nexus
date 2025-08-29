@@ -20,3 +20,17 @@ pub const MCP_PROMPT_REQUEST_DURATION: &str = "mcp.prompt.request.duration";
 /// MCP resource request duration in milliseconds  
 /// Tracks the duration of resource-related operations (list/read)
 pub const MCP_RESOURCE_REQUEST_DURATION: &str = "mcp.resource.request.duration";
+
+/// LLM operation duration in milliseconds
+/// Tracks the total duration of LLM chat completion operations
+/// Follows OpenTelemetry GenAI semantic conventions
+pub const GEN_AI_CLIENT_OPERATION_DURATION: &str = "gen_ai.client.operation.duration";
+
+/// LLM token usage count
+/// Tracks token consumption for LLM operations (input and output separately)
+/// Note: This uses a histogram which provides count, sum, min, max, and distribution
+pub const GEN_AI_CLIENT_TOKEN_USAGE: &str = "gen_ai.client.token.usage";
+
+/// Time to first token in milliseconds (streaming only)
+/// Tracks the duration until the first token is received in a streaming response
+pub const GEN_AI_CLIENT_TIME_TO_FIRST_TOKEN: &str = "gen_ai.client.time_to_first_token";

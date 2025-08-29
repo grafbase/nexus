@@ -1,6 +1,13 @@
+mod builder;
+mod handler;
+mod metrics;
+
+pub(crate) use builder::LlmServerBuilder;
+pub(crate) use handler::LlmHandler;
+
 use std::sync::Arc;
 
-use config::{LlmConfig, StorageConfig};
+use config::LlmConfig;
 use futures::stream::StreamExt;
 use itertools::Itertools;
 use rate_limit::{TokenRateLimitManager, TokenRateLimitRequest};
@@ -8,10 +15,7 @@ use rate_limit::{TokenRateLimitManager, TokenRateLimitRequest};
 use crate::{
     error::LlmError,
     messages::{ChatCompletionRequest, ChatCompletionResponse, Model, ModelsResponse, ObjectType},
-    provider::{
-        ChatCompletionStream, Provider, anthropic::AnthropicProvider, bedrock::BedrockProvider, google::GoogleProvider,
-        openai::OpenAIProvider,
-    },
+    provider::{ChatCompletionStream, Provider},
     request::RequestContext,
 };
 
@@ -20,103 +24,52 @@ pub(crate) struct LlmServer {
     shared: Arc<LlmServerInner>,
 }
 
-struct LlmServerInner {
-    providers: Vec<Box<dyn Provider>>,
-    config: LlmConfig,
-    token_rate_limiter: Option<TokenRateLimitManager>,
+pub(crate) struct LlmServerInner {
+    pub(crate) providers: Vec<Box<dyn Provider>>,
+    pub(crate) config: LlmConfig,
+    pub(crate) token_rate_limiter: Option<TokenRateLimitManager>,
 }
 
 impl LlmServer {
-    pub async fn new(config: LlmConfig, storage_config: &StorageConfig) -> crate::Result<Self> {
-        log::debug!("Initializing LLM server with {} providers", config.providers.len());
-        let mut providers = Vec::with_capacity(config.providers.len());
+    /// Get a provider by name.
+    fn get_provider(&self, name: &str) -> Option<&dyn Provider> {
+        self.shared.providers.iter().find(|p| p.name() == name).map(|v| &**v)
+    }
 
-        for (name, provider_config) in config.providers.clone().into_iter() {
-            log::debug!("Initializing provider: {name}");
-
-            let provider: Box<dyn Provider> = match provider_config {
-                config::LlmProviderConfig::Openai(api_config) => {
-                    Box::new(OpenAIProvider::new(name.clone(), api_config)?)
-                }
-                config::LlmProviderConfig::Anthropic(api_config) => {
-                    Box::new(AnthropicProvider::new(name.clone(), api_config)?)
-                }
-                config::LlmProviderConfig::Google(api_config) => {
-                    Box::new(GoogleProvider::new(name.clone(), api_config)?)
-                }
-                config::LlmProviderConfig::Bedrock(bedrock_config) => {
-                    Box::new(BedrockProvider::new(name.clone(), bedrock_config).await?)
-                }
-            };
-
-            providers.push(provider);
-        }
-
-        // Check if any providers were successfully initialized
-        if providers.is_empty() {
-            return Err(LlmError::InternalError(Some(
-                "Failed to initialize any LLM providers.".to_string(),
-            )));
-        } else {
-            log::debug!("LLM server initialized with {} active provider(s)", providers.len());
-        }
-
-        // Initialize token rate limiter if any provider has rate limits configured
-        let has_token_rate_limits = config
+    /// List all available models from all providers.
+    pub fn models(&self) -> ModelsResponse {
+        let models: Vec<Model> = self
+            .shared
             .providers
-            .values()
-            .any(|p| p.rate_limits().is_some() || p.models().values().any(|m| m.rate_limits().is_some()));
+            .iter()
+            .flat_map(|provider| {
+                provider.list_models().into_iter().map(|mut model| {
+                    // Prefix model ID with provider name
+                    model.id = format!("{}/{}", provider.name(), model.id);
+                    model
+                })
+            })
+            .collect();
 
-        let token_rate_limiter = if has_token_rate_limits {
-            Some(TokenRateLimitManager::new(storage_config).await.map_err(|e| {
-                log::error!("Failed to initialize token rate limiter: {e}");
-                LlmError::InternalError(None)
-            })?)
-        } else {
-            None
-        };
-
-        Ok(Self {
-            shared: Arc::new(LlmServerInner {
-                providers,
-                config: config.clone(),
-                token_rate_limiter,
-            }),
-        })
+        ModelsResponse {
+            object: ObjectType::List,
+            data: models,
+        }
     }
 
     /// Check token rate limits for a request.
     ///
-    /// Returns `Some(Duration)` indicating how long to wait if rate limited, or `None` if allowed.
-    ///
-    /// # Token Counting Algorithm
-    ///
-    /// Rate limiting is based solely on input tokens:
-    /// - Input tokens: Counted from request messages using tiktoken
-    /// - Output tokens are NOT considered in rate limiting calculations
-    ///
-    /// # Rate Limiting Behavior
-    ///
-    /// Token rate limiting is only enforced when:
-    /// - Client identification is enabled and a client_id is present
-    /// - The provider or model has rate limits configured
-    /// - The token rate limiter is initialized
-    ///
-    /// When these conditions aren't met, the request is allowed (returns `None`).
-    /// This is safe because the middleware layer enforces client identification
-    /// when it's required by the configuration. And configuration enforces
-    /// client identification when rate limiting is enabled.
-    pub async fn check_rate_limit(
+    /// Returns the duration to wait before retrying if rate limited, or None if the request can proceed.
+    pub async fn check_token_rate_limit(
         &self,
-        context: &RequestContext,
         request: &ChatCompletionRequest,
+        context: &RequestContext,
     ) -> Option<std::time::Duration> {
-        // If no client identity, can't apply token rate limits
-        // This is safe because middleware enforces client identification when required
-        let Some(client_id) = context.client_id.as_ref() else {
+        // Check if client identification is available
+        let Some(ref client_id) = context.client_id else {
             log::debug!(
-                "No client identity available for rate limiting - allowing request. \
-                Token rate limits require client identification to be enabled."
+                "No client_id found in request context. \
+                Token rate limiting requires client identification to be enabled and a client_id to be present."
             );
             return None;
         };
@@ -262,30 +215,5 @@ impl LlmServer {
         });
 
         Ok(Box::pin(transformed_stream))
-    }
-
-    /// List available models.
-    pub fn list_models(&self) -> ModelsResponse {
-        let mut data = Vec::new();
-
-        for provider in &self.shared.providers {
-            for model in provider.list_models() {
-                data.push(Model {
-                    id: format!("{}/{}", provider.name(), model.id),
-                    object: model.object,
-                    created: model.created,
-                    owned_by: model.owned_by,
-                })
-            }
-        }
-
-        ModelsResponse {
-            object: ObjectType::List,
-            data,
-        }
-    }
-
-    fn get_provider(&self, name: &str) -> Option<&dyn Provider> {
-        self.shared.providers.iter().find(|p| p.name() == name).map(|v| &**v)
     }
 }
