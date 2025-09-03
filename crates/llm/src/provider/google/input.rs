@@ -143,12 +143,41 @@ pub(super) struct GoogleFunctionDeclaration {
 
 impl From<Tool> for GoogleFunctionDeclaration {
     fn from(tool: Tool) -> Self {
+        // Google's API doesn't support additionalProperties in JSON schemas
+        // We need to strip it from the parameters
+        let parameters = Some(strip_additional_properties(tool.function.parameters));
+
         Self {
             name: tool.function.name,
             description: Some(tool.function.description),
-            parameters: Some(tool.function.parameters),
+            parameters,
         }
     }
+}
+
+/// Recursively removes 'additionalProperties' from JSON schema objects
+/// as Google's API doesn't support this JSON Schema feature
+fn strip_additional_properties(mut value: serde_json::Value) -> serde_json::Value {
+    if let Some(obj) = value.as_object_mut() {
+        // Remove additionalProperties at this level
+        obj.remove("additionalProperties");
+
+        // Recursively process nested properties
+        if let Some(properties) = obj.get_mut("properties")
+            && let Some(props_obj) = properties.as_object_mut()
+        {
+            for (_, prop_value) in props_obj.iter_mut() {
+                *prop_value = strip_additional_properties(prop_value.take());
+            }
+        }
+
+        // Process items for array types
+        if let Some(items) = obj.get_mut("items") {
+            *items = strip_additional_properties(items.take());
+        }
+    }
+
+    value
 }
 
 /// Google's function calling mode.

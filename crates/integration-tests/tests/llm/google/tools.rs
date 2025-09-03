@@ -318,6 +318,102 @@ async fn google_no_tools_regular_response() {
 }
 
 #[tokio::test]
+async fn google_tool_with_additional_properties_stripped() {
+    // This test ensures that additionalProperties is stripped from tool parameters
+    // since Google's API doesn't support this JSON Schema feature
+    let mock = GoogleMock::new("google")
+        .with_models(vec!["gemini-1.5-flash".to_string()])
+        .with_tool_call(
+            "execute",
+            r#"{"name": "search", "arguments": {"keywords": ["github", "user"]}}"#,
+        );
+
+    let mut builder = TestServer::builder();
+    builder.spawn_llm(mock).await;
+
+    let config = indoc! {r#"
+        [llm]
+        enabled = true
+    "#};
+
+    let server = builder.build(config).await;
+    let llm = server.llm_client("/llm");
+
+    // This mimics the MCP execute tool which has additionalProperties: true
+    let request = json!({
+        "model": "google/gemini-1.5-flash",
+        "messages": [{
+            "role": "user",
+            "content": "Execute the search tool"
+        }],
+        "tools": [{
+            "type": "function",
+            "function": {
+                "name": "execute",
+                "description": "Executes a tool with the given parameters",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "The name of the tool to execute"
+                        },
+                        "arguments": {
+                            "type": "object",
+                            "description": "The arguments to pass to the tool",
+                            "additionalProperties": true
+                        }
+                    },
+                    "required": ["name", "arguments"],
+                    "additionalProperties": false
+                }
+            }
+        }],
+        "tool_choice": "auto"
+    });
+
+    // This should succeed - Google API should not receive additionalProperties
+    let response = llm.completions(request).await;
+
+    insta::assert_json_snapshot!(response, {
+        ".id" => "[id]",
+        ".created" => "[timestamp]",
+        ".choices[0].message.tool_calls[0].id" => "[call_id]"
+    }, @r#"
+    {
+      "id": "[id]",
+      "object": "chat.completion",
+      "created": "[timestamp]",
+      "model": "google/gemini-1.5-flash",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "tool_calls": [
+              {
+                "id": "[call_id]",
+                "type": "function",
+                "function": {
+                  "name": "execute",
+                  "arguments": "{\"name\":\"search\",\"arguments\":{\"keywords\":[\"github\",\"user\"]}}"
+                }
+              }
+            ]
+          },
+          "finish_reason": "tool_calls"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 10,
+        "completion_tokens": 15,
+        "total_tokens": 25
+      }
+    }
+    "#);
+}
+
+#[tokio::test]
 async fn google_tool_calling_streaming() {
     let mock = GoogleMock::new("google")
         .with_models(vec!["gemini-1.5-flash".to_string()])

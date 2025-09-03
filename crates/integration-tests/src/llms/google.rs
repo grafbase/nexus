@@ -203,6 +203,33 @@ impl TestGoogleServer {
     }
 }
 
+/// Validates that a JSON schema doesn't contain additionalProperties
+/// This simulates Google's actual API behavior which rejects this JSON Schema feature
+fn validate_no_additional_properties(value: &serde_json::Value) -> Result<(), String> {
+    if let Some(obj) = value.as_object() {
+        // Check for additionalProperties at this level
+        if obj.contains_key("additionalProperties") {
+            return Err("additionalProperties is not supported in Google function parameters".to_string());
+        }
+
+        // Recursively check nested properties
+        if let Some(properties) = obj.get("properties")
+            && let Some(props_obj) = properties.as_object()
+        {
+            for (prop_name, prop_value) in props_obj {
+                validate_no_additional_properties(prop_value).map_err(|e| format!("In property '{prop_name}': {e}"))?;
+            }
+        }
+
+        // Check items for array types
+        if let Some(items) = obj.get("items") {
+            validate_no_additional_properties(items).map_err(|e| format!("In items: {e}"))?;
+        }
+    }
+
+    Ok(())
+}
+
 /// Handle Google generateContent requests in native format
 async fn generate_content(
     State(state): State<Arc<TestGoogleState>>,
@@ -218,6 +245,42 @@ async fn generate_content(
         }
     }
     *state.captured_headers.lock().unwrap() = captured;
+
+    // Validate tools don't contain additionalProperties (Google rejects this)
+    if let Some(tools) = &request.tools {
+        for (tool_i, tool) in tools.iter().enumerate() {
+            let Some(func_decls) = &tool.function_declarations else {
+                continue;
+            };
+
+            for (decl_i, func_decl) in func_decls.iter().enumerate() {
+                let Some(parameters) = &func_decl.parameters else {
+                    continue;
+                };
+
+                if let Err(e) = validate_no_additional_properties(parameters) {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(serde_json::json!({
+                            "error": {
+                                "code": 400,
+                                "message": format!("Invalid function parameters for '{}': {}", func_decl.name, e),
+                                "status": "INVALID_ARGUMENT",
+                                "details": [{
+                                    "@type": "type.googleapis.com/google.rpc.BadRequest",
+                                    "field_violations": [{
+                                        "field": format!("tools[{tool_i}].function_declarations[{decl_i}].parameters"),
+                                        "description": e
+                                    }]
+                                }]
+                            }
+                        })),
+                    )
+                        .into_response();
+                }
+            }
+        }
+    }
     // Ensure we're handling a generateContent or streamGenerateContent request
     if !path.ends_with(":generateContent") && !path.ends_with(":streamGenerateContent") {
         eprintln!(
