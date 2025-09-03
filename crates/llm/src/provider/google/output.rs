@@ -493,10 +493,8 @@ impl<'a> GoogleStreamChunk<'a> {
 
             // Process parts to extract text and function calls
             for part in &candidate.content.parts {
-                // Handle text content
-                if let Some(text) = &part.text
-                    && !text.is_empty()
-                {
+                // Handle text content - include empty strings to ensure TTFT metrics work
+                if let Some(text) = &part.text {
                     text_content = Some(text.clone().into_owned());
                 }
 
