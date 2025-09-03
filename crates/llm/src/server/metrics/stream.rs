@@ -104,13 +104,19 @@ impl Stream for MetricsStream {
             Poll::Ready(Some(Ok(chunk))) => {
                 // Record time to first token if this is the first chunk with content
                 if let Some(ttft_recorder) = self.ttft_recorder.take() {
-                    if let Some(choice) = chunk.choices.first()
-                        && choice.delta.content.is_some()
-                    {
-                        // Record the time to first token - the recorder already has the start time
-                        ttft_recorder.record();
+                    if let Some(choice) = chunk.choices.first() {
+                        let has_content = choice.delta.content.is_some();
+                        let has_tool_calls = choice.delta.tool_calls.is_some();
+                        
+                        // Record TTFT for either text content or tool calls (first model output)
+                        if has_content || has_tool_calls {
+                            // Record the time to first token/decision - the recorder already has the start time
+                            ttft_recorder.record();
+                        } else {
+                            // Not a content chunk yet, keep the recorder for the next chunk
+                            self.ttft_recorder = Some(ttft_recorder);
+                        }
                     } else {
-                        // Not a content chunk yet, keep the recorder for the next chunk
                         self.ttft_recorder = Some(ttft_recorder);
                     }
                 }

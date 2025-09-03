@@ -490,7 +490,7 @@ impl<'a> GoogleStreamChunk<'a> {
         let (content, tool_calls, finish_reason) = if let Some(candidate) = candidate {
             let mut text_content = None;
             let mut streaming_tool_calls = None;
-
+            
             // Process parts to extract text and function calls
             for part in &candidate.content.parts {
                 // Handle text content - include empty strings to ensure TTFT metrics work
