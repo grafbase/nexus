@@ -107,7 +107,7 @@ impl Stream for MetricsStream {
                     if let Some(choice) = chunk.choices.first() {
                         let has_content = choice.delta.content.is_some();
                         let has_tool_calls = choice.delta.tool_calls.is_some();
-                        
+
                         // Record TTFT for either text content or tool calls (first model output)
                         if has_content || has_tool_calls {
                             // Record the time to first token/decision - the recorder already has the start time
