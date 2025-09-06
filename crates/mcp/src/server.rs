@@ -322,6 +322,7 @@ impl ServerHandler for McpServer {
                         content: Vec::new(),
                         structured_content: Some(serde_json::to_value(response).unwrap()),
                         is_error: None,
+                        meta: None,
                     })
                 } else {
                     // Legacy format: content field with Content::json objects
@@ -335,6 +336,7 @@ impl ServerHandler for McpServer {
                         content,
                         structured_content: None,
                         is_error: None,
+                        meta: None,
                     })
                 }
             }

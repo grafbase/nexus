@@ -371,7 +371,7 @@ async fn server_info_with_downstream_servers() {
     let server_info = mcp_client.get_server_info();
 
     // Assert protocol version
-    insta::assert_json_snapshot!(&server_info.protocol_version, @r#""2025-03-26""#);
+    insta::assert_json_snapshot!(&server_info.protocol_version, @r#""2025-06-18""#);
 
     // Assert nexus server name shows all downstream servers
     insta::assert_snapshot!(&server_info.server_info.name, @"Tool Aggregator (filesystem_server, math_server, text_server)");

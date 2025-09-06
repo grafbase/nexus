@@ -63,7 +63,7 @@ reqwest = { version = "0.12", default-features = false, features = [
     "http2",
     "macos-system-configuration",
 ] }
-rmcp = "0.6.0"
+rmcp = "0.6.3"
 rustls = { version = "0.23", features = ["aws-lc-rs"] }
 schemars = "1.0"
 secrecy = "0.10.3"
