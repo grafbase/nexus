@@ -21,7 +21,7 @@ use server::McpServer;
 
 pub use config::{RouterConfig, RouterConfigBuilder};
 
-pub(crate) const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V_2025_03_26;
+pub(crate) const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V_2025_06_18;
 
 /// Creates an axum router for MCP.
 pub async fn router(

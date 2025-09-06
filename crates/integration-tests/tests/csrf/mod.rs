@@ -10,7 +10,7 @@ async fn disabled_by_default() {
 
         [mcp]
         enabled = true
-        
+
         # Dummy server to ensure MCP endpoint is exposed
         [mcp.servers.dummy]
         cmd = ["echo", "dummy"]
@@ -44,7 +44,7 @@ async fn enabled_blocks_requests_without_header() {
 
         [mcp]
         enabled = true
-        
+
         # Dummy server to ensure MCP endpoint is exposed
         [mcp.servers.dummy]
         cmd = ["echo", "dummy"]
@@ -70,7 +70,7 @@ async fn enabled_allows_requests_with_header() {
 
         [mcp]
         enabled = true
-        
+
         # Dummy server to ensure MCP endpoint is exposed
         [mcp.servers.dummy]
         cmd = ["echo", "dummy"]
@@ -107,7 +107,7 @@ async fn enabled_allows_options_requests() {
 
         [mcp]
         enabled = true
-        
+
         # Dummy server to ensure MCP endpoint is exposed
         [mcp.servers.dummy]
         cmd = ["echo", "dummy"]
@@ -139,7 +139,7 @@ async fn custom_header_name() {
 
         [mcp]
         enabled = true
-        
+
         # Dummy server to ensure MCP endpoint is exposed
         [mcp.servers.dummy]
         cmd = ["echo", "dummy"]
@@ -179,7 +179,7 @@ async fn header_value_doesnt_matter() {
 
         [mcp]
         enabled = true
-        
+
         # Dummy server to ensure MCP endpoint is exposed
         [mcp.servers.dummy]
         cmd = ["echo", "dummy"]
@@ -224,7 +224,7 @@ async fn works_with_cors() {
 
         [mcp]
         enabled = true
-        
+
         # Dummy server to ensure MCP endpoint is exposed
         [mcp.servers.dummy]
         cmd = ["echo", "dummy"]
@@ -282,7 +282,7 @@ async fn applies_to_all_endpoints() {
 
         [mcp]
         enabled = true
-        
+
         # Dummy server to ensure MCP endpoint is exposed
         [mcp.servers.dummy]
         cmd = ["echo", "dummy"]
@@ -337,7 +337,7 @@ async fn different_http_methods() {
 
         [mcp]
         enabled = true
-        
+
         # Dummy server to ensure MCP endpoint is exposed
         [mcp.servers.dummy]
         cmd = ["echo", "dummy"]
@@ -415,7 +415,7 @@ async fn blocks_mcp_protocol() {
 
         [mcp]
         enabled = true
-        
+
         # Dummy server to ensure MCP endpoint is exposed
         [mcp.servers.dummy]
         cmd = ["echo", "dummy"]
@@ -453,7 +453,7 @@ async fn disabled_allows_mcp_protocol() {
 
         [mcp]
         enabled = true
-        
+
         # Dummy server to ensure MCP endpoint is exposed
         [mcp.servers.dummy]
         cmd = ["echo", "dummy"]
@@ -464,7 +464,7 @@ async fn disabled_allows_mcp_protocol() {
     let mcp_client = server.mcp_client("/mcp").await;
 
     let server_info = mcp_client.get_server_info();
-    assert_eq!(server_info.protocol_version.to_string(), "2025-03-26");
+    assert_eq!(server_info.protocol_version.to_string(), "2025-06-18");
 
     let tools = mcp_client.list_tools().await;
     let _ = tools.tools.len();
