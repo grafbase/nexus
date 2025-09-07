@@ -316,7 +316,14 @@ impl ServerHandler for McpServer {
                 if self.enable_structured_content {
                     // Modern format: structuredContent only (better performance)
                     // Use SearchResponse wrapper type to match the output schema
-                    let response = search::SearchResponse { results: tools };
+                    let response = search::SearchResponse { results: tools.clone() };
+
+                    // Legacy format: content field with Content::json objects
+                    // For legacy format, keep individual tool objects for backward compatibility
+                    let mut content = Vec::with_capacity(tools.len());
+                    for tool in tools {
+                        content.push(Content::json(tool)?);
+                    }
 
                     Ok(CallToolResult {
                         content: Vec::new(),
