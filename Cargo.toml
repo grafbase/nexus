@@ -58,7 +58,7 @@ opentelemetry-semantic-conventions = "0.30"
 opentelemetry_sdk = { version = "0.30", features = ["logs", "metrics", "trace", "rt-tokio"] }
 proc-macro2 = "1.0"
 quote = "1.0"
-rand = "0.8"
+rand = "0.9"
 rate-limit = { version = "0.1.0", path = "crates/rate-limit" }
 redis = { version = "0.32.0", features = ["tokio-rustls-comp", "connection-manager"] }
 regex = "1.11.1"
