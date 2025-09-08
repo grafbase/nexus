@@ -10,6 +10,7 @@ use std::time::Duration;
 use std::{net::SocketAddr, path::PathBuf};
 
 use config::Config;
+use logforth::append::Stderr;
 use logforth::filter::EnvFilter;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 use rmcp::{
@@ -52,16 +53,13 @@ fn init_logger() {
         // Only initialize logger if TEST_LOG is set
         // This allows running tests with `TEST_LOG=1 cargo test` to see logs
         if std::env::var("TEST_LOG").is_ok() {
+            let filter = EnvFilter::from_str(
+                "warn,server=debug,mcp=debug,config=debug,llm=debug,rate_limit=debug,telemetry=debug",
+            )
+            .unwrap();
+
             logforth::builder()
-                .dispatch(|d| {
-                    d.filter(
-                        EnvFilter::from_str(
-                            "warn,server=debug,mcp=debug,config=debug,llm=debug,rate_limit=debug,telemetry=debug",
-                        )
-                        .unwrap(),
-                    )
-                    .append(logforth::append::Stderr::default())
-                })
+                .dispatch(|d| d.filter(filter).append(Stderr::default()))
                 .apply();
         }
     });

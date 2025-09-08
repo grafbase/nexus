@@ -11,7 +11,7 @@ use crate::{
         Provider, anthropic::AnthropicProvider, bedrock::BedrockProvider, google::GoogleProvider,
         openai::OpenAIProvider,
     },
-    server::{LlmHandler, LlmServer, LlmServerInner, metrics::LlmServerWithMetrics},
+    server::{LlmHandler, LlmServer, LlmServerInner, metrics::LlmServerWithMetrics, tracing::LlmServerWithTracing},
 };
 
 pub(crate) struct LlmServerBuilder<'a> {
@@ -90,13 +90,28 @@ impl<'a> LlmServerBuilder<'a> {
             }),
         };
 
-        // Create handler with or without metrics
-        let handler = if self.config.telemetry.is_some() {
-            log::debug!("Telemetry enabled, wrapping LLM server with metrics middleware");
-            LlmHandler::WithMetrics(LlmServerWithMetrics::new(server))
-        } else {
-            log::debug!("Telemetry disabled, using direct LLM server");
-            LlmHandler::WithoutMetrics(server)
+        // Create handler with metrics and/or tracing based on configuration
+        let has_telemetry = self.config.telemetry.is_some();
+        let has_tracing = self.config.telemetry.as_ref().is_some_and(|t| t.tracing().enabled);
+
+        let handler = match (has_telemetry, has_tracing) {
+            (true, true) => {
+                log::debug!("Telemetry and tracing enabled, wrapping LLM server with both middlewares");
+                LlmHandler::WithMetricsAndTracing(LlmServerWithTracing::new(LlmServerWithMetrics::new(server)))
+            }
+            (true, false) => {
+                log::debug!("Telemetry enabled, wrapping LLM server with metrics middleware");
+                LlmHandler::WithMetrics(LlmServerWithMetrics::new(server))
+            }
+            (false, true) => {
+                // This shouldn't happen (tracing requires telemetry), but handle it gracefully
+                log::debug!("Tracing enabled without metrics, wrapping LLM server with tracing middleware only");
+                LlmHandler::WithTracing(LlmServerWithTracing::new(server))
+            }
+            (false, false) => {
+                log::debug!("Telemetry disabled, using direct LLM server");
+                LlmHandler::Direct(server)
+            }
         };
 
         Ok(handler)

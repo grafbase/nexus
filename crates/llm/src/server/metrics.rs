@@ -110,8 +110,7 @@ where
             output_token_counter: self.output_token_counter.clone(),
             total_token_counter: self.total_token_counter.clone(),
             model: request.model.clone(),
-            client_id: context.client_id.clone(),
-            group: context.group.clone(),
+            client_identity: context.client_identity.clone(),
         };
 
         let metrics_stream = MetricsStream::new(stream, operation_recorder, ttft_recorder, token_config);
@@ -129,12 +128,12 @@ fn create_recorder(metric_name: &'static str, model: &str, context: &RequestCont
     recorder.push_attribute("gen_ai.request.model", model.to_string());
 
     // Add client identity if available
-    if let Some(ref client_id) = context.client_id {
-        recorder.push_attribute("client.id", client_id.clone());
-    }
+    if let Some(ref client_identity) = context.client_identity {
+        recorder.push_attribute("client.id", client_identity.client_id.clone());
 
-    if let Some(ref group) = context.group {
-        recorder.push_attribute("client.group", group.clone());
+        if let Some(ref group) = client_identity.group {
+            recorder.push_attribute("client.group", group.clone());
+        }
     }
 
     recorder
@@ -149,12 +148,15 @@ fn create_base_attributes(model: &str, context: &RequestContext) -> Vec<opentele
         KeyValue::new(Key::from("gen_ai.request.model"), Value::from(model.to_string())),
     ];
 
-    if let Some(ref client_id) = context.client_id {
-        attributes.push(KeyValue::new(Key::from("client.id"), Value::from(client_id.clone())));
-    }
+    if let Some(ref client_identity) = context.client_identity {
+        attributes.push(KeyValue::new(
+            Key::from("client.id"),
+            Value::from(client_identity.client_id.clone()),
+        ));
 
-    if let Some(ref group) = context.group {
-        attributes.push(KeyValue::new(Key::from("client.group"), Value::from(group.clone())));
+        if let Some(ref group) = client_identity.group {
+            attributes.push(KeyValue::new(Key::from("client.group"), Value::from(group.clone())));
+        }
     }
 
     attributes

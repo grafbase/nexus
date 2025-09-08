@@ -2,6 +2,7 @@ mod builder;
 mod handler;
 mod metrics;
 mod service;
+mod tracing;
 
 pub(crate) use builder::LlmServerBuilder;
 pub(crate) use handler::LlmHandler;
@@ -94,7 +95,7 @@ impl LlmServer {
         context: &RequestContext,
     ) -> Option<std::time::Duration> {
         // Check if client identification is available
-        let Some(ref client_id) = context.client_id else {
+        let Some(ref client_identity) = context.client_identity else {
             log::debug!(
                 "No client_id found in request context. \
                 Token rate limiting requires client identification to be enabled and a client_id to be present."
@@ -103,8 +104,9 @@ impl LlmServer {
         };
 
         log::debug!(
-            "Checking token rate limit for client_id={client_id}, group={:?}, model={}",
-            context.group,
+            "Checking token rate limit for client_id={}, group={:?}, model={}",
+            client_identity.client_id,
+            client_identity.group,
             request.model
         );
 
@@ -141,8 +143,8 @@ impl LlmServer {
 
         // Create token rate limit request
         let token_request = TokenRateLimitRequest {
-            client_id: client_id.to_string(),
-            group: context.group.clone(),
+            client_id: client_identity.client_id.clone(),
+            group: client_identity.group.clone(),
             provider: provider_name.to_string(),
             model: Some(model_name.to_string()),
             input_tokens,

@@ -48,20 +48,25 @@ async fn chat_completions(
     State(server): State<Arc<LlmHandler>>,
     headers: HeaderMap,
     client_identity: Option<Extension<config::ClientIdentity>>,
+    span_context: Option<Extension<fastrace::collector::SpanContext>>,
     Json(request): Json<ChatCompletionRequest>,
 ) -> Result<impl IntoResponse> {
     log::info!("LLM chat completions handler called for model: {}", request.model);
     log::debug!("Request has {} messages", request.messages.len());
     log::debug!("Streaming: {}", request.stream.unwrap_or(false));
 
-    // Extract request context including client identity
-    let context = request::extract_context(&headers, client_identity.as_ref().map(|ext| &ext.0));
+    // Extract request context including clien it identity and span context
+    let context = request::extract_context(
+        &headers,
+        client_identity.map(|ext| ext.0),
+        span_context.as_ref().map(|ext| ext.0),
+    );
 
-    if let Some(ref client_id) = context.client_id {
+    if let Some(ref client_identity) = context.client_identity {
         log::debug!(
             "Client identity extracted: client_id={}, group={:?}",
-            client_id,
-            context.group
+            client_identity.client_id,
+            client_identity.group
         );
     } else {
         log::debug!("No client identity found in request extensions");
