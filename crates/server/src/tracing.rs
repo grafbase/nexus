@@ -370,7 +370,7 @@ fn should_sample_trace(parent_sampled: Option<bool>, telemetry_config: Option<&T
     }
 
     // Random sampling based on rate
-    let sampled = rand::thread_rng().gen_bool(sample_rate);
+    let sampled = rand::rng().random_bool(sample_rate);
     log::debug!("Random sampling with rate {}, sampled={}", sample_rate, sampled);
     sampled
 }
