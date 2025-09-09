@@ -1312,7 +1312,7 @@ Example error response:
 
 ### Telemetry
 
-Nexus supports OpenTelemetry metrics export for monitoring system performance and usage. Metrics are collected via middleware and have zero overhead when disabled.
+Nexus provides comprehensive observability through OpenTelemetry metrics and distributed tracing. Both have zero overhead when disabled.
 
 #### Metrics Configuration
 
@@ -1339,6 +1339,38 @@ max_queue_size = 2048                # Default: 2048
 max_export_batch_size = 512          # Default: 512
 max_concurrent_exports = 1           # Default: 1
 ```
+
+**See [Available Metrics](#available-metrics) for detailed metric definitions.**
+
+#### Tracing Configuration
+
+```toml
+[telemetry.tracing]
+enabled = true                    # Enable/disable tracing (default: true)
+sampling = 0.15                   # Sample 15% of requests (0.0 to 1.0)
+
+# Collection limits (per span)
+[telemetry.tracing.collect]
+max_events_per_span = 128
+max_attributes_per_span = 128
+max_links_per_span = 128
+max_attributes_per_event = 128
+max_attributes_per_link = 128
+
+# Trace context propagation formats
+[telemetry.tracing.propagation]
+trace_context = true              # W3C Trace Context
+aws_xray = false                  # AWS X-Ray format
+
+# Optional: Override global OTLP exporter for traces
+[telemetry.tracing.exporters.otlp]
+enabled = true
+endpoint = "http://localhost:4317"
+protocol = "grpc"                 # or "http"
+timeout = "60s"
+```
+
+**See [Distributed Tracing](#distributed-tracing) for span hierarchy and attributes.**
 
 #### Available Metrics
 
@@ -1433,35 +1465,9 @@ All histograms also function as counters (count field tracks number of observati
 
 ### Distributed Tracing
 
-Nexus supports distributed tracing using OpenTelemetry, providing detailed insights into request flows across all components. Traces help you understand latency, identify bottlenecks, and debug issues in production.
+**Configuration**: See [Tracing Configuration](#tracing-configuration) in the Telemetry section.
 
-#### Tracing Configuration
-
-```toml
-[telemetry.tracing]
-enabled = true                    # Enable/disable tracing (default: true)
-sampling = 0.15                   # Sample 15% of requests (0.0 to 1.0)
-
-# Collection limits (per span)
-[telemetry.tracing.collect]
-max_events_per_span = 128
-max_attributes_per_span = 128
-max_links_per_span = 128
-max_attributes_per_event = 128
-max_attributes_per_link = 128
-
-# Trace context propagation formats
-[telemetry.tracing.propagation]
-trace_context = true              # W3C Trace Context
-aws_xray = false                  # AWS X-Ray format
-
-# Optional: Override global OTLP exporter for traces
-[telemetry.tracing.exporters.otlp]
-enabled = true
-endpoint = "http://localhost:4317"
-protocol = "grpc"                 # or "http"
-timeout = "60s"
-```
+Distributed tracing provides detailed insights into request flows across all components, helping you understand latency, identify bottlenecks, and debug issues in production.
 
 #### Trace Context Propagation
 
