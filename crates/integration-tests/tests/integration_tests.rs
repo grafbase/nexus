@@ -180,6 +180,7 @@ async fn health_endpoint_separate_listener() {
         listen_address: main_addr,
         config,
         shutdown_signal: shutdown_signal.clone(),
+        log_filter: None,
     };
 
     drop(main_listener);

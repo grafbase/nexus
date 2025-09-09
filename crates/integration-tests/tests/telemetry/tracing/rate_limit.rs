@@ -39,7 +39,6 @@ fn create_rate_limit_tracing_config(service_name: &str, key_prefix: &str) -> Str
         deployment = "integration-test"
 
         [telemetry.tracing]
-        enabled = true
         sampling = 1.0
         parent_based_sampler = false
 
@@ -368,7 +367,6 @@ async fn redis_token_rate_limit_creates_span() {
         service_name = "{service_name}"
 
         [telemetry.tracing]
-        enabled = true
         sampling = 1.0
 
         [telemetry.exporters.otlp]
@@ -528,7 +526,6 @@ async fn redis_rate_limit_exceeded_span_has_error() {
         service_name = "{service_name}"
 
         [telemetry.tracing]
-        enabled = true
         sampling = 1.0
 
         [telemetry.exporters.otlp]

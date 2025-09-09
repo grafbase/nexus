@@ -1312,7 +1312,14 @@ Example error response:
 
 ### Telemetry
 
-Nexus provides comprehensive observability through OpenTelemetry metrics and distributed tracing. Both have zero overhead when disabled.
+Nexus provides comprehensive observability through OpenTelemetry metrics, distributed tracing, and logs export. All telemetry features have zero overhead when the `[telemetry]` section is absent from configuration.
+
+**Telemetry activation is controlled by exporters configuration:**
+- **Metrics**: Enabled when OTLP exporters are configured
+- **Tracing**: Enabled when OTLP exporters are configured  
+- **Logs**: Enabled when OTLP exporters are configured
+
+Each telemetry signal (metrics, tracing, logs) can override the global exporters configuration with their own specific exporters.
 
 #### Metrics Configuration
 
@@ -1346,8 +1353,7 @@ max_concurrent_exports = 1           # Default: 1
 
 ```toml
 [telemetry.tracing]
-enabled = true                    # Enable/disable tracing (default: true)
-sampling = 0.15                   # Sample 15% of requests (0.0 to 1.0)
+sampling = 0.15                   # Sample 15% of requests (default: 0.15)
 
 # Collection limits (per span)
 [telemetry.tracing.collect]
@@ -1371,6 +1377,32 @@ timeout = "60s"
 ```
 
 **See [Distributed Tracing](#distributed-tracing) for span hierarchy and attributes.**
+
+#### Logs Configuration
+
+Nexus can export application logs to OpenTelemetry collectors, automatically correlating them with distributed traces. Logs are enabled when OTLP exporters are configured (either globally or specifically for logs).
+
+```toml
+# Option 1: Use global OTLP exporter for all telemetry signals
+# (logs will use the same endpoint as metrics and traces)
+
+# Option 2: Configure a separate OTLP endpoint specifically for logs
+[telemetry.logs.exporters.otlp]
+enabled = true
+endpoint = "http://logs-collector:4317"  # Different endpoint for logs
+protocol = "grpc"                         # or "http"
+timeout = "30s"
+
+# Logs are automatically correlated with active trace and span IDs
+```
+
+When logs export is enabled, logs include:
+- Automatic trace and span ID correlation for distributed debugging
+- Log severity levels mapped from Rust log levels
+- Source code location attributes (file, line, module)
+- All logs from Nexus and its dependencies
+
+**Note**: OpenTelemetry's own internal logs are filtered out to prevent recursion.
 
 #### Available Metrics
 
@@ -1575,7 +1607,7 @@ When a parent trace context is provided in request headers (via W3C Trace Contex
 
 #### Performance Considerations
 
-- **Zero Overhead When Disabled**: When `telemetry.tracing.enabled = false`, no spans are created
+- **Zero Overhead When Disabled**: When no OTLP exporters are configured, no spans are created
 - **Efficient Sampling**: Unsampled traces have minimal overhead
 - **Batched Export**: Traces are batched before export to reduce network overhead
 - **Configurable Limits**: Adjust collection limits to balance detail vs. resource usage

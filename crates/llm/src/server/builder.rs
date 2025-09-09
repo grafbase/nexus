@@ -92,7 +92,7 @@ impl<'a> LlmServerBuilder<'a> {
 
         // Create handler with metrics and/or tracing based on configuration
         let has_telemetry = self.config.telemetry.is_some();
-        let has_tracing = self.config.telemetry.as_ref().is_some_and(|t| t.tracing().enabled);
+        let has_tracing = self.config.telemetry.as_ref().is_some_and(|t| t.tracing_enabled());
 
         let handler = match (has_telemetry, has_tracing) {
             (true, true) => {

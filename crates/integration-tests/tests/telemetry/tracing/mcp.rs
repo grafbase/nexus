@@ -46,7 +46,6 @@ fn create_mcp_tracing_config(service_name: &str) -> String {
         environment = "test"
 
         [telemetry.tracing]
-        enabled = true
         sampling = 1.0
         parent_based_sampler = false
 
@@ -527,7 +526,6 @@ async fn mcp_auth_forwarding_tracked() {
         service_name = "{service_name}"
 
         [telemetry.tracing]
-        enabled = true
         sampling = 1.0
 
         [telemetry.exporters.otlp]
@@ -646,7 +644,6 @@ async fn mcp_error_tracking() {
         service_name = "{service_name}"
 
         [telemetry.tracing]
-        enabled = true
         sampling = 1.0
 
         [telemetry.exporters.otlp]

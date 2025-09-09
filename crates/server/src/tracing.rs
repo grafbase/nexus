@@ -99,7 +99,8 @@ where
         // Clone the service for the async block
         let mut next = self.next.clone();
 
-        // Create the root span with properties
+        // Create the root span with the parent context
+        // This will use the trace ID from the parent if it came from a W3C traceparent header
         let root = Span::root(span_name.clone(), parent);
 
         // Store the trace context in request extensions so downstream services can access it

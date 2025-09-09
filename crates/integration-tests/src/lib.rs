@@ -4,14 +4,11 @@ pub mod llms;
 pub mod telemetry;
 pub mod tools;
 
-use std::str::FromStr;
 use std::sync::Once;
 use std::time::Duration;
 use std::{net::SocketAddr, path::PathBuf};
 
 use config::Config;
-use logforth::append::Stderr;
-use logforth::filter::EnvFilter;
 use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
 use rmcp::{
     model::CallToolRequestParam,
@@ -34,7 +31,6 @@ pub fn get_test_cert_paths() -> (PathBuf, PathBuf) {
 }
 
 static INIT: Once = Once::new();
-static LOGGER_INIT: Once = Once::new();
 
 #[ctor::ctor]
 fn init_crypto_provider() {
@@ -42,26 +38,6 @@ fn init_crypto_provider() {
         rustls::crypto::aws_lc_rs::default_provider()
             .install_default()
             .expect("Failed to install default crypto provider");
-    });
-}
-
-/// Initialize logger for integration tests
-/// Logs will only be shown when TEST_LOG environment variable is set
-#[ctor::ctor]
-fn init_logger() {
-    LOGGER_INIT.call_once(|| {
-        // Only initialize logger if TEST_LOG is set
-        // This allows running tests with `TEST_LOG=1 cargo test` to see logs
-        if std::env::var("TEST_LOG").is_ok() {
-            let filter = EnvFilter::from_str(
-                "warn,server=debug,mcp=debug,config=debug,llm=debug,rate_limit=debug,telemetry=debug",
-            )
-            .unwrap();
-
-            logforth::builder()
-                .dispatch(|d| d.filter(filter).append(Stderr::default()))
-                .apply();
-        }
     });
 }
 
@@ -537,16 +513,7 @@ impl TestServer {
         // Use the proper config loader which includes validation
         let config = Config::load(&config_path).unwrap();
 
-        // Debug log telemetry config
-        if let Some(telemetry) = &config.telemetry {
-            log::info!(
-                "Test telemetry config loaded - tracing: {}, otlp: {}",
-                telemetry.tracing().enabled,
-                telemetry.global_exporters().otlp.enabled
-            );
-        } else {
-            log::warn!("No telemetry config in test!");
-        }
+        // The server crate will handle telemetry and logger initialization
 
         // Find an available port
         let mut listener = TcpListener::bind("127.0.0.1:0").await;
@@ -571,11 +538,12 @@ impl TestServer {
         let nexus_shutdown_signal = CancellationToken::new();
         let nexus_shutdown_signal_clone = nexus_shutdown_signal.clone();
 
-        // Create the server configuration
+        // Create the server configuration with telemetry guard
         let serve_config = ServeConfig {
             listen_address: address,
             config,
             shutdown_signal: nexus_shutdown_signal_clone,
+            log_filter: None, // Tests will use the default debug level
         };
 
         // Start the server in a background task

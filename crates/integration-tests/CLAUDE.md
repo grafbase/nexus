@@ -81,12 +81,22 @@ docker compose up -d  # Start OAuth2 server
 - No `test_` prefix
 
 ## Debugging
+
+The server crate automatically uses debug log level for tests. To see debug logs:
+
 ```bash
-TEST_LOG=1 cargo test test_name -- --nocapture
+# Run specific test with logs visible
+cargo nextest run test_name --no-capture
+
+# Run with custom log level
+RUST_LOG=debug cargo nextest run test_name --no-capture
+
+# Run with logs for specific crates only
+RUST_LOG=mcp=debug,server=debug cargo nextest run test_name --no-capture
 ```
 
 ## Snapshot Management
 ```bash
-cargo insta review  # Review changes
-cargo insta accept  # Accept all
+cargo insta review  # Review changes  
+cargo insta approve  # Accept all (prefer this over review)
 ```
