@@ -327,7 +327,7 @@ impl ServerHandler for McpServer {
                     }
 
                     Ok(CallToolResult {
-                        content: Vec::new(),
+                        content,
                         structured_content: Some(serde_json::to_value(response).unwrap()),
                         is_error: None,
                         meta: None,
