@@ -1,5 +1,6 @@
 //! Distributed tracing integration tests
 
+mod llm;
 mod mcp;
 
 use clickhouse::Row;

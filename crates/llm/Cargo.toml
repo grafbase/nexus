@@ -18,6 +18,8 @@ aws-smithy-types.workspace = true
 axum.workspace = true
 config.workspace = true
 eventsource-stream.workspace = true
+fastrace = { workspace = true, features = ["enable"] }
+fastrace-futures.workspace = true
 futures.workspace = true
 header-rules.workspace = true
 itertools.workspace = true

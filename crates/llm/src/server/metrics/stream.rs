@@ -3,6 +3,7 @@ use std::{
     task::{Context, Poll},
 };
 
+use config::ClientIdentity;
 use futures::Stream;
 use opentelemetry::metrics::Counter;
 use telemetry::metrics::Recorder;
@@ -15,8 +16,7 @@ pub(super) struct TokenMetricsConfig {
     pub output_token_counter: Counter<u64>,
     pub total_token_counter: Counter<u64>,
     pub model: String,
-    pub client_id: Option<String>,
-    pub group: Option<String>,
+    pub client_identity: Option<ClientIdentity>,
 }
 
 /// Stream wrapper that records metrics for streaming responses
@@ -66,12 +66,15 @@ impl MetricsStream {
             ),
         ];
 
-        if let Some(ref client_id) = self.token_config.client_id {
-            attributes.push(KeyValue::new(Key::from("client.id"), Value::from(client_id.clone())));
-        }
+        if let Some(ref client_identity) = self.token_config.client_identity {
+            attributes.push(KeyValue::new(
+                Key::from("client.id"),
+                Value::from(client_identity.client_id.clone()),
+            ));
 
-        if let Some(ref group) = self.token_config.group {
-            attributes.push(KeyValue::new(Key::from("client.group"), Value::from(group.clone())));
+            if let Some(ref group) = client_identity.group {
+                attributes.push(KeyValue::new(Key::from("client.group"), Value::from(group.clone())));
+            }
         }
 
         // Use actual token counts from the LLM when available

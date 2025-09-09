@@ -138,7 +138,7 @@ impl Provider for OpenAIProvider {
         // Try to parse the response
         let openai_response: OpenAIResponse = sonic_rs::from_str(&response_text).map_err(|e| {
             log::error!("Failed to parse OpenAI chat completion response: {e}");
-            log::error!("Raw response that failed to parse: {response_text}");
+            log::debug!("Response parsing failed, length: {} bytes", response_text.len());
             LlmError::InternalError(None)
         })?;
 
