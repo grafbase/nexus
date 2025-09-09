@@ -7,8 +7,10 @@ license.workspace = true
 [dependencies]
 config.workspace = true
 deadpool.workspace = true
+fastrace = { workspace = true, features = ["enable"] }
 governor.workspace = true
 log.workspace = true
+md5.workspace = true
 mini-moka.workspace = true
 opentelemetry.workspace = true
 redis.workspace = true

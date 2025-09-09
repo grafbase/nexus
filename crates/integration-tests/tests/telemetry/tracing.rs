@@ -2,6 +2,7 @@
 
 mod llm;
 mod mcp;
+mod rate_limit;
 
 use clickhouse::Row;
 use indoc::formatdoc;

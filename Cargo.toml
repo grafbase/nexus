@@ -50,6 +50,7 @@ llm = { version = "0.1.0", path = "crates/llm" }
 log = "0.4.27"
 logforth = "0.27.0"
 mcp = { version = "0.1.0", path = "crates/mcp" }
+md5 = "0.8"
 mini-moka = "0.10"
 opentelemetry = "0.30"
 opentelemetry-otlp = { version = "0.30", features = ["metrics", "trace", "grpc-tonic"] }
