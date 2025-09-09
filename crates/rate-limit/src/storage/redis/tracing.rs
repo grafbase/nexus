@@ -125,14 +125,7 @@ impl RateLimitStorage for TracedRedisStorage {
             )
         });
 
-        // Add token context details (hash client_id for privacy)
-        let hashed_client_id = format!("{:x}", md5::compute(context.client_id.as_bytes()));
-        span.add_property(|| ("client.id_hash", hashed_client_id));
-
-        if let Some(group) = context.group {
-            span.add_property(|| ("client.group", group.to_string()));
-        }
-
+        // Add token context details
         span.add_property(|| ("llm.provider", context.provider.to_string()));
 
         if let Some(model) = context.model {

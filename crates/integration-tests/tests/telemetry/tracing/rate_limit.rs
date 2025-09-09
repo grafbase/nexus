@@ -455,7 +455,6 @@ async fn redis_token_rate_limit_creates_span() {
     let redis_spans: Vec<_> = spans
         .into_iter()
         .map(|span| {
-            let has_client_hash = span.span_attributes.iter().any(|(k, _)| k == "client.id_hash");
             let has_tokens = span.span_attributes.iter().any(|(k, _)| k == "rate_limit.tokens");
 
             let attrs: std::collections::BTreeMap<String, String> = span
@@ -464,17 +463,14 @@ async fn redis_token_rate_limit_creates_span() {
                 .filter(|(k, _)| {
                     k.starts_with("redis.")
                         || k.starts_with("rate_limit.")
-                        || k.starts_with("client.")
                         || k.starts_with("llm.")
                         || k == "error"
                         || k == "error.type"
+                    // Note: client.* attributes are no longer added to Redis spans
                 })
                 .filter(|(k, _)| {
                     // Remove dynamic values
-                    k != "redis.pool.available" && 
-                    k != "redis.pool.in_use" &&
-                    k != "client.id_hash" &&  // Hash will be different each time
-                    k != "rate_limit.tokens" // Actual token count may vary
+                    k != "redis.pool.available" && k != "redis.pool.in_use" && k != "rate_limit.tokens" // Actual token count may vary
                 })
                 .collect();
 
@@ -482,7 +478,6 @@ async fn redis_token_rate_limit_creates_span() {
                 "span_name": span.span_name,
                 "status": span.status_code,
                 "attributes": attrs,
-                "has_client_hash": has_client_hash,
                 "has_tokens": has_tokens,
             })
         })
@@ -494,7 +489,6 @@ async fn redis_token_rate_limit_creates_span() {
         "span_name": "redis:check_and_consume_tokens",
         "status": "Unset",
         "attributes": {
-          "client.group": "premium",
           "llm.model": "gpt-4",
           "llm.provider": "testprovider",
           "rate_limit.allowed": "true",
@@ -504,7 +498,6 @@ async fn redis_token_rate_limit_creates_span() {
           "redis.operation": "check_and_consume_tokens",
           "redis.pool.size": "1"
         },
-        "has_client_hash": true,
         "has_tokens": true
       }
     ]

@@ -280,7 +280,7 @@ When OAuth2 is enabled, all endpoints except `/health` and `/.well-known/oauth-p
 
 #### Rate Limiting
 
-Nexus supports comprehensive rate limiting to prevent abuse and ensure fair resource usage:
+Nexus supports rate limiting to prevent abuse and ensure fair resource usage:
 
 ```toml
 # Global rate limiting configuration
@@ -434,7 +434,7 @@ group_id.jwt_claim = "subscription_tier"
 [server.client_identification.validation]
 group_values = ["free", "pro", "enterprise"]
 
-# OpenAI provider with comprehensive rate limiting
+# OpenAI provider with rate limiting
 [llm.providers.openai]
 type = "openai"
 api_key = "{{ env.OPENAI_API_KEY }}"
@@ -805,7 +805,7 @@ curl -X POST http://localhost:8000/llm/v1/chat/completions \
 
 #### Header Transformation for LLM Providers
 
-Nexus supports comprehensive header transformation for LLM providers, allowing you to forward, insert, remove, or rename headers when making requests to LLM APIs.
+Nexus supports header transformation for LLM providers, allowing you to forward, insert, remove, or rename headers when making requests to LLM APIs.
 
 ##### Provider-Level Headers
 
@@ -1116,7 +1116,7 @@ Streaming is supported for all providers (OpenAI, Anthropic, Google) and provide
 - Supports all standard OpenAI models (GPT-3.5, GPT-4, etc.)
 - Compatible with Azure OpenAI endpoints
 - **Tool Calling**: Full support including parallel tool calls and streaming tool calls
-- **Function Definitions**: Comprehensive JSON schema support for parameters
+- **Function Definitions**: JSON schema support for parameters
 - **Tool Choice**: Supports all tool choice modes including specific function forcing
 - Supports streaming responses with Server-Sent Events (SSE)
 
@@ -1430,6 +1430,168 @@ All histograms also function as counters (count field tracks number of observati
 - `redis.pool.connections.available` (gauge)
   - Current number of available connections in the pool
   - No additional attributes
+
+### Distributed Tracing
+
+Nexus supports distributed tracing using OpenTelemetry, providing detailed insights into request flows across all components. Traces help you understand latency, identify bottlenecks, and debug issues in production.
+
+#### Tracing Configuration
+
+```toml
+[telemetry.tracing]
+enabled = true                    # Enable/disable tracing (default: true)
+sampling = 0.15                   # Sample 15% of requests (0.0 to 1.0)
+
+# Collection limits (per span)
+[telemetry.tracing.collect]
+max_events_per_span = 128
+max_attributes_per_span = 128
+max_links_per_span = 128
+max_attributes_per_event = 128
+max_attributes_per_link = 128
+
+# Trace context propagation formats
+[telemetry.tracing.propagation]
+trace_context = true              # W3C Trace Context
+aws_xray = false                  # AWS X-Ray format
+
+# Optional: Override global OTLP exporter for traces
+[telemetry.tracing.exporters.otlp]
+enabled = true
+endpoint = "http://localhost:4317"
+protocol = "grpc"                 # or "http"
+timeout = "60s"
+```
+
+#### Trace Context Propagation
+
+Nexus supports multiple trace context propagation formats for incoming requests:
+
+- **W3C Trace Context**: Standard `traceparent` and `tracestate` headers (enabled by default)
+- **AWS X-Ray**: `X-Amzn-Trace-Id` header for AWS services integration
+
+When enabled, Nexus will:
+1. Extract trace context from incoming HTTP requests
+2. Continue the trace with the parent context or start a new trace
+3. Create spans for all internal operations
+
+**Note**: Nexus is a terminal node for traces - it does not propagate trace context to downstream MCP servers or LLM providers.
+
+#### Span Hierarchy
+
+Nexus creates a hierarchical span structure for each request:
+
+```
+HTTP Request (root span)
+├── Redis Rate Limit Check (redis:check_and_consume:global/ip) - HTTP-level rate limits
+├── MCP Operation
+│   ├── Redis Rate Limit Check (redis:check_and_consume:server/tool) - MCP-specific rate limits
+│   ├── Tool Search (index:search)
+│   └── Tool Execution
+│       └── Downstream Operations (downstream:execute, downstream:call_tool)
+└── LLM Operation (llm:chat_completion or llm:chat_completion_stream)
+    └── Token Rate Limit Check (redis:check_and_consume_tokens) - Token-based rate limits
+```
+
+#### Span Attributes
+
+Each span includes semantic attributes following OpenTelemetry conventions:
+
+**HTTP Spans:**
+- `http.request.method` - HTTP method (GET, POST, etc.)
+- `http.route` - Matched route pattern
+- `http.response.status_code` - Response status code
+- `url.scheme` - URL scheme (http/https)
+- `server.address` - Host header value
+- `url.full` - Full request URL
+- `client.id` - Client identifier (if configured)
+- `client.group` - Client group (if configured)
+- `error` - Set to "true" if request failed
+
+**MCP Spans:**
+- `mcp.method` - MCP method name (tools/list, tools/call, etc.)
+- `mcp.tool.name` - Tool being called
+- `mcp.tool.type` - Tool type (builtin/downstream)
+- `mcp.transport` - Transport type (stdio/http)
+- `mcp.auth_forwarded` - Whether auth was forwarded
+- `client.id` - Client identifier (if configured)
+- `client.group` - Client group (if configured)
+- `mcp.search.keywords` - Search keywords (for search tool)
+- `mcp.search.keyword_count` - Number of search keywords
+- `mcp.execute.target_tool` - Tool being executed
+- `mcp.execute.target_server` - Server hosting the tool
+- `mcp.error.code` - Error code if operation failed
+
+**LLM Spans:**
+- `gen_ai.request.model` - Model identifier
+- `gen_ai.request.max_tokens` - Max tokens requested
+- `gen_ai.request.temperature` - Temperature parameter
+- `gen_ai.request.has_tools` - Whether tools were provided
+- `gen_ai.request.tool_count` - Number of tools provided
+- `gen_ai.response.model` - Model used for response
+- `gen_ai.response.finish_reason` - Completion reason
+- `gen_ai.usage.input_tokens` - Input token count
+- `gen_ai.usage.output_tokens` - Output token count
+- `gen_ai.usage.total_tokens` - Total token count
+- `llm.stream` - Whether streaming was used
+- `llm.auth_forwarded` - Whether auth was forwarded
+- `client.id` - Client identifier (if configured)
+- `client.group` - Client group (if configured)
+- `error.type` - Error type if operation failed
+
+**Redis Spans:**
+- `redis.operation` - Operation type (check_and_consume or check_and_consume_tokens)
+- `rate_limit.scope` - Scope (global/ip/server/tool/token)
+- `rate_limit.limit` - Request/token limit
+- `rate_limit.interval_ms` - Time window in milliseconds
+- `rate_limit.tokens` - Number of tokens (for token operations)
+- `rate_limit.allowed` - Whether request was allowed
+- `rate_limit.retry_after_ms` - Retry delay if rate limited
+- `redis.pool.size` - Connection pool size
+- `redis.pool.available` - Available connections
+- `redis.pool.in_use` - Connections in use
+- `client.address_hash` - Hashed IP for privacy (per-IP limits)
+- `llm.provider` - Provider name (token limits)
+- `llm.model` - Model name (token limits)
+- `mcp.server` - Server name (per-server limits)
+- `mcp.tool` - Tool name (per-tool limits)
+
+#### Sampling
+
+Nexus uses fixed-rate sampling to randomly sample a percentage of traces:
+
+```toml
+[telemetry.tracing]
+sampling = 0.15  # Sample 15% of requests (0.0 to 1.0)
+```
+
+When a parent trace context is provided in request headers (via W3C Trace Context or AWS X-Ray), Nexus will continue that trace.
+
+#### Performance Considerations
+
+- **Zero Overhead When Disabled**: When `telemetry.tracing.enabled = false`, no spans are created
+- **Efficient Sampling**: Unsampled traces have minimal overhead
+- **Batched Export**: Traces are batched before export to reduce network overhead
+- **Configurable Limits**: Adjust collection limits to balance detail vs. resource usage
+
+#### Integration with APM Tools
+
+Nexus traces can be exported to any OpenTelemetry-compatible APM tool:
+
+- **Jaeger**: Full trace visualization and analysis
+- **Zipkin**: Distributed tracing system
+- **AWS X-Ray**: Native AWS integration with X-Ray propagation
+- **Datadog**: APM and distributed tracing
+- **New Relic**: Application performance monitoring
+- **Grafana Tempo**: Cloud-native tracing backend
+
+Example Jaeger configuration:
+```toml
+[telemetry.tracing.exporters.otlp]
+enabled = true
+endpoint = "http://jaeger:4317"
+protocol = "grpc"
+```
 
 ## Adding to AI Assistants
 

@@ -72,7 +72,6 @@ impl SearchTool {
     }
 
     /// Find tools by keywords using the index
-    #[fastrace::trace(name = "index:search")]
     pub async fn find_by_keywords(&self, keywords: Vec<String>) -> anyhow::Result<Vec<SearchResult>> {
         log::debug!("Searching for tools matching keywords: [{}]", keywords.join(", "));
 

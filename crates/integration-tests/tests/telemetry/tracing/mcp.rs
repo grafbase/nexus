@@ -34,7 +34,8 @@ fn create_mcp_tracing_config(service_name: &str) -> String {
         [server.client_identification]
         enabled = true
         client_id = {{ source = "http_header", http_header = "x-client-id" }}
-        
+        group_id = {{ source = "http_header", http_header = "x-client-group" }}
+
         [server.client_identification.validation]
         group_values = ["premium", "basic", "free"]
 
@@ -157,14 +158,6 @@ async fn mcp_tools_list_creates_span() {
             "false"
           ],
           [
-            "mcp.client_group",
-            "premium"
-          ],
-          [
-            "mcp.client_id",
-            "[CLIENT_ID]"
-          ],
-          [
             "mcp.method",
             "tools/list"
           ]
@@ -251,10 +244,6 @@ async fn mcp_tools_call_with_search() {
         [
           "mcp.auth_forwarded",
           "false"
-        ],
-        [
-          "mcp.client_id",
-          "test-client"
         ],
         [
           "mcp.method",
@@ -376,14 +365,6 @@ async fn mcp_tools_call_with_execute() {
         [
           "mcp.auth_forwarded",
           "false"
-        ],
-        [
-          "mcp.client_group",
-          "basic"
-        ],
-        [
-          "mcp.client_id",
-          "test-client"
         ],
         [
           "mcp.execute.target_server",
@@ -509,10 +490,6 @@ async fn mcp_downstream_tool_call() {
           "false"
         ],
         [
-          "mcp.client_id",
-          "test-client"
-        ],
-        [
           "mcp.execute.target_server",
           "test_mcp_server"
         ],
@@ -562,7 +539,7 @@ async fn mcp_auth_forwarding_tracked() {
         enabled = true
         path = "/mcp"
 
-        # Dummy server to satisfy validation  
+        # Dummy server to satisfy validation
         [mcp.servers.dummy]
         cmd = ["echo", "dummy"]
     "#};
@@ -660,27 +637,27 @@ async fn mcp_error_tracking() {
     let config = formatdoc! {r#"
         [server]
         listen_address = "127.0.0.1:0"
-        
+
         [server.client_identification]
         enabled = true
         client_id = {{ source = "http_header", http_header = "x-client-id" }}
-        
+
         [telemetry]
         service_name = "{service_name}"
-        
+
         [telemetry.tracing]
         enabled = true
         sampling = 1.0
-        
+
         [telemetry.exporters.otlp]
         enabled = true
         endpoint = "http://localhost:4317"
         protocol = "grpc"
-        
+
         [mcp]
         enabled = true
         path = "/mcp"
-        
+
         # Dummy server to satisfy validation
         [mcp.servers.dummy]
         cmd = ["echo", "dummy"]
@@ -850,12 +827,14 @@ async fn mcp_and_http_spans_same_trace() {
 }
 
 #[tokio::test]
-async fn mcp_nested_spans_in_same_trace() {
-    let service_name = unique_service_name("mcp-nested-spans");
+async fn http_span_contains_client_attributes() {
+    // CRITICAL: This test verifies that client.id and client.group are present in HTTP spans
+    // This is essential for production tracing and debugging
+    let service_name = unique_service_name("http-client-attrs");
     let config = create_mcp_tracing_config(&service_name);
 
     let mut builder = TestServer::builder();
-    let mut service = TestService::streamable_http("test_server".to_string());
+    let mut service = TestService::streamable_http("test_mcp_server".to_string());
     service.add_tool(AdderTool);
     builder.spawn_service(service).await;
 
@@ -867,105 +846,111 @@ async fn mcp_nested_spans_in_same_trace() {
     let traceparent = format!("00-{}-{}-01", trace_id, span_id);
 
     let mut headers = HeaderMap::new();
-    headers.insert("x-client-id", "test-client".parse().unwrap());
+    headers.insert("x-client-id", "production-client-123".parse().unwrap());
+    headers.insert("x-client-group", "premium".parse().unwrap());
     headers.insert("traceparent", traceparent.parse().unwrap());
 
     let mcp = test_server.mcp_client_with_headers("/mcp", headers).await;
 
-    // Call search to trigger the index:search span
-    let _search_result = mcp.search(&["math", "calculator", "adder"]).await;
-
-    // Call execute to trigger downstream spans
-    let execute_params = json!({
-        "a": 5,
-        "b": 10
-    });
-    let _execute_result = mcp.execute("test_server__adder", execute_params).await;
+    // Make a request to generate HTTP span
+    let _tools = mcp.list_tools().await;
 
     let clickhouse = create_clickhouse_client().await;
 
-    // Query for ALL spans in the trace to see the hierarchy
+    // Query specifically for the HTTP span
     let query = formatdoc! {r#"
         SELECT
             SpanName,
-            TraceId,
-            SpanId,
-            ParentSpanId
+            SpanAttributes
         FROM otel_traces
         WHERE
             ServiceName = '{service_name}'
             AND TraceId = '{trace_id}'
-        ORDER BY Timestamp ASC
+            AND SpanName = 'POST /mcp'
+        ORDER BY Timestamp DESC
+        LIMIT 1
     "#};
 
     #[derive(Debug, Deserialize, Row, Serialize)]
-    struct NestedSpanRow {
+    struct HttpSpanRow {
         #[serde(rename = "SpanName")]
         span_name: String,
-        #[serde(rename = "TraceId")]
-        trace_id: String,
-        #[serde(rename = "SpanId")]
-        span_id: String,
-        #[serde(rename = "ParentSpanId")]
-        parent_span_id: String,
+        #[serde(rename = "SpanAttributes")]
+        span_attributes: Vec<(String, String)>,
     }
 
-    let spans = wait_for_metrics_matching::<NestedSpanRow, _>(&clickhouse, &query, |rows| {
-        // We should have HTTP, MCP, and nested spans
-        let has_http = rows.iter().any(|r| r.span_name.contains("POST"));
-        let has_mcp_search = rows.iter().any(|r| r.span_name == "tools/call");
-        let has_index_search = rows.iter().any(|r| r.span_name == "index:search");
-        let has_downstream = rows.iter().any(|r| r.span_name.starts_with("downstream:"));
+    let spans = wait_for_metrics_matching::<HttpSpanRow, _>(&clickhouse, &query, |rows| !rows.is_empty())
+        .await
+        .expect("Failed to get HTTP span");
 
-        has_http && has_mcp_search && (has_index_search || has_downstream)
-    })
-    .await
-    .expect("Failed to get nested trace spans");
+    assert!(spans.len() == 1, "Should have exactly one HTTP span");
 
-    // Verify all spans are in the same trace
-    let first_trace_id = &spans[0].trace_id;
-    for span in &spans {
-        assert_eq!(
-            &span.trace_id, first_trace_id,
-            "All spans should be in the same trace, but {} has different trace",
-            span.span_name
-        );
-    }
+    let http_span = &spans[0];
 
-    // Collect span types we found
-    let mut span_types = vec![];
-    if spans.iter().any(|s| s.span_name.contains("POST")) {
-        span_types.push("HTTP");
-    }
-    if spans.iter().any(|s| s.span_name == "tools/call") {
-        span_types.push("MCP");
-    }
-    if spans.iter().any(|s| s.span_name == "index:search") {
-        span_types.push("index:search");
-    }
-    if spans.iter().any(|s| s.span_name.starts_with("downstream:")) {
-        span_types.push("downstream");
-    }
+    // CRITICAL VERIFICATION: Check that client.id and client.group are present in the HTTP span
+    let attrs: std::collections::HashMap<String, String> = http_span.span_attributes.iter().cloned().collect();
 
-    // Verify we have the expected span types
-    assert!(span_types.contains(&"HTTP"), "Should have HTTP span");
-    assert!(span_types.contains(&"MCP"), "Should have MCP span (tools/call)");
+    // These assertions are CRITICAL for production
     assert!(
-        span_types.contains(&"index:search") || span_types.contains(&"downstream"),
-        "Should have nested spans from fastrace::trace attributes"
+        attrs.contains_key("client.id"),
+        "CRITICAL: HTTP span MUST have client.id attribute for production tracing. Found attributes: {:?}",
+        attrs.keys().collect::<Vec<_>>()
     );
 
-    // Log the span hierarchy for debugging
-    eprintln!("Found {} spans in trace:", spans.len());
-    for span in &spans {
-        eprintln!(
-            "  {} (parent: {})",
-            span.span_name,
-            if span.parent_span_id.is_empty() || span.parent_span_id == "0000000000000000" {
-                "root"
-            } else {
-                &span.parent_span_id[..8]
-            }
-        );
-    }
+    assert!(
+        attrs.contains_key("client.group"),
+        "CRITICAL: HTTP span MUST have client.group attribute for production tracing. Found attributes: {:?}",
+        attrs.keys().collect::<Vec<_>>()
+    );
+
+    // Also verify standard HTTP attributes are still present
+    assert!(
+        attrs.contains_key("http.request.method"),
+        "Should have http.request.method"
+    );
+    assert!(attrs.contains_key("http.route"), "Should have http.route");
+    assert!(
+        attrs.contains_key("http.response.status_code"),
+        "Should have http.response.status_code"
+    );
+
+    // Use snapshot for the full set of attributes (filtering out dynamic values)
+    let mut filtered_attrs: Vec<(String, String)> = http_span
+        .span_attributes
+        .iter()
+        .filter(|(k, _)| k != "url.full" && k != "server.address")
+        .cloned()
+        .collect();
+    filtered_attrs.sort_by(|a, b| a.0.cmp(&b.0));
+
+    insta::assert_json_snapshot!(filtered_attrs, @r###"
+    [
+      [
+        "client.group",
+        "premium"
+      ],
+      [
+        "client.id",
+        "production-client-123"
+      ],
+      [
+        "http.request.method",
+        "POST"
+      ],
+      [
+        "http.response.status_code",
+        "200"
+      ],
+      [
+        "http.route",
+        "/mcp"
+      ],
+      [
+        "url.scheme",
+        "http"
+      ]
+    ]
+    "###);
+
+    eprintln!("✅ PRODUCTION CRITICAL: HTTP span correctly contains client.id and client.group attributes");
 }

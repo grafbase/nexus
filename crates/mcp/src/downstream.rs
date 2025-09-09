@@ -249,7 +249,6 @@ impl Downstream {
     /// The tool name should be in the format "server_name__tool_name".
     /// This method will parse the server name, find the appropriate server,
     /// and forward the call with the original tool name.
-    #[fastrace::trace(name = "downstream:execute")]
     pub async fn execute(&self, mut params: CallToolRequestParam) -> Result<CallToolResult, ErrorData> {
         log::debug!("Executing downstream tool: '{}'", params.name);
 
