@@ -373,8 +373,11 @@ cargo nextest run
 # The .cargo/config.toml aliases 'cargo test' to 'cargo nextest run' for safety
 # But always explicitly use nextest in commands and documentation
 
-# Run tests with debug output
-env TEST_LOG=1 cargo nextest run
+# Run tests with debug logs visible  
+cargo nextest run --no-capture
+
+# Or with specific log level
+RUST_LOG=debug cargo nextest run --no-capture
 
 # Run integration tests specifically
 cargo nextest run -p integration-tests

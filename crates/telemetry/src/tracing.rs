@@ -33,9 +33,9 @@ pub async fn init_tracing(config: &TelemetryConfig) -> anyhow::Result<TracingGua
     log::info!("init_tracing called");
     let tracing_config = config.tracing();
 
-    // Only initialize if tracing is enabled
-    if !tracing_config.enabled {
-        log::debug!("Tracing is disabled in configuration");
+    // Only initialize if tracing is enabled (has exporters configured)
+    if !config.tracing_enabled() {
+        log::debug!("Tracing is disabled (no exporters configured)");
         return Ok(TracingGuard);
     }
 

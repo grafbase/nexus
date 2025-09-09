@@ -5,10 +5,6 @@ use serde::{Deserialize, Deserializer};
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct TracingConfig {
-    /// Whether tracing is enabled
-    #[serde(default = "default_enabled")]
-    pub enabled: bool,
-
     /// Sampling rate (0.0 to 1.0)
     #[serde(deserialize_with = "validate_sampling_rate")]
     pub sampling: f64,
@@ -39,7 +35,6 @@ impl TracingConfig {
 impl Default for TracingConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
             sampling: 0.15,
             parent_based_sampler: false,
             collect: CollectConfig::default(),
@@ -47,10 +42,6 @@ impl Default for TracingConfig {
             exporters: None,
         }
     }
-}
-
-fn default_enabled() -> bool {
-    true
 }
 
 /// Validate that sampling rate is between 0.0 and 1.0
@@ -121,7 +112,6 @@ mod tests {
         let config: TracingConfig = toml::from_str("").unwrap();
         assert_debug_snapshot!(config, @r###"
         TracingConfig {
-            enabled: true,
             sampling: 0.15,
             parent_based_sampler: false,
             collect: CollectConfig {
@@ -144,7 +134,6 @@ mod tests {
     fn tracing_config_minimal() {
         let config: TracingConfig = toml::from_str(
             r#"
-            enabled = false
             sampling = 0.5
         "#,
         )
@@ -152,7 +141,6 @@ mod tests {
 
         assert_debug_snapshot!(config, @r###"
         TracingConfig {
-            enabled: false,
             sampling: 0.5,
             parent_based_sampler: false,
             collect: CollectConfig {
@@ -175,7 +163,6 @@ mod tests {
     fn tracing_config_full() {
         let config: TracingConfig = toml::from_str(
             r#"
-            enabled = true
             sampling = 1.0
             parent_based_sampler = true
 
@@ -199,7 +186,6 @@ mod tests {
 
         assert_debug_snapshot!(config, @r###"
         TracingConfig {
-            enabled: true,
             sampling: 1.0,
             parent_based_sampler: true,
             collect: CollectConfig {

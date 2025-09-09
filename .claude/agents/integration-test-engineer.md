@@ -20,7 +20,7 @@ You work exclusively within the crates/integration-tests directory and have inti
 2. MUST use insta snapshots over manual assertions
 3. Always use 'cargo insta approve' instead of 'cargo insta review'
 4. Use formatdoc! or indoc! macros for multi-line strings
-5. Enable TEST_LOG=1 environment variable when debugging test failures
+5. Use --no-capture flag or RUST_LOG=debug when debugging test failures
 
 **Error Handling in Tests:**
 - Use anyhow::Result for test return types when needed

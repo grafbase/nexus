@@ -53,8 +53,9 @@ mcp = { version = "0.1.0", path = "crates/mcp" }
 md5 = "0.8"
 mini-moka = "0.10"
 opentelemetry = "0.30"
-opentelemetry-otlp = { version = "0.30", features = ["metrics", "trace", "grpc-tonic"] }
-opentelemetry_sdk = { version = "0.30", features = ["metrics", "trace", "rt-tokio"] }
+opentelemetry-otlp = { version = "0.30", features = ["logs", "metrics", "trace", "grpc-tonic", "http-proto"] }
+opentelemetry-semantic-conventions = "0.30"
+opentelemetry_sdk = { version = "0.30", features = ["logs", "metrics", "trace", "rt-tokio"] }
 proc-macro2 = "1.0"
 quote = "1.0"
 rand = "0.8"

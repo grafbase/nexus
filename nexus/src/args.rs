@@ -1,8 +1,7 @@
-use std::{borrow::Cow, fmt, io::IsTerminal, net::SocketAddr, path::PathBuf, str::FromStr};
+use std::{fmt, io::IsTerminal, net::SocketAddr, path::PathBuf};
 
 use clap::{Parser, ValueEnum};
 use config::Config;
-use logforth::filter::EnvFilter;
 
 #[derive(Debug, Parser)]
 #[command(name = "Grafbase Nexus", version, long_about = concat!("Grafbase Nexus v", env!("CARGO_PKG_VERSION")))]
@@ -91,17 +90,15 @@ pub(crate) enum LogLevel {
 }
 
 impl LogLevel {
-    pub fn env_filter(self) -> EnvFilter {
-        let filter_str = match self {
-            LogLevel::Off => Cow::Borrowed("off"),
+    pub fn env_filter(self) -> String {
+        match self {
+            LogLevel::Off => "off".to_string(),
             // For other levels, set the default to 'warn' for all crates,
             // but use the selected level for workspace crates
-            level => Cow::Owned(format!(
-                "warn,nexus={level},server={level},mcp={level},config={level},llm={level}"
-            )),
-        };
-
-        EnvFilter::from_str(&filter_str).expect("These all are valid env filters.")
+            level => format!(
+                "warn,nexus={level},server={level},mcp={level},config={level},llm={level},telemetry={level},rate_limit={level}"
+            ),
+        }
     }
 }
 

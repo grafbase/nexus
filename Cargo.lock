@@ -3529,6 +3529,7 @@ dependencies = [
  "serde",
  "serde_json",
  "server",
+ "telemetry",
  "tempfile",
  "tokio",
  "tokio-util",
@@ -4170,6 +4171,7 @@ dependencies = [
  "log",
  "logforth",
  "server",
+ "telemetry",
  "tokio",
  "tokio-util",
 ]
@@ -4413,6 +4415,12 @@ dependencies = [
  "prost",
  "tonic 0.13.1",
 ]
+
+[[package]]
+name = "opentelemetry-semantic-conventions"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83d059a296a47436748557a353c5e6c5705b9470ef6c95cfc52c21a8814ddac2"
 
 [[package]]
 name = "opentelemetry_sdk"
@@ -6015,6 +6023,7 @@ dependencies = [
  "jwt-compact",
  "llm",
  "log",
+ "logforth",
  "mcp",
  "rate-limit",
  "reqwest",
@@ -6748,8 +6757,10 @@ dependencies = [
  "fastrace",
  "fastrace-opentelemetry",
  "log",
+ "logforth",
  "opentelemetry",
  "opentelemetry-otlp",
+ "opentelemetry-semantic-conventions",
  "opentelemetry_sdk",
  "tokio",
  "tonic 0.14.2",

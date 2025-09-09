@@ -44,7 +44,6 @@ fn create_test_config_with_tracing(service_name: &str) -> String {
         environment = "test"
 
         [telemetry.tracing]
-        enabled = true
         sampling = 1.0  # Sample all traces for testing
         parent_based_sampler = false
 
@@ -471,7 +470,6 @@ async fn sampling_configuration() {
         service_name = "{service_name}"
 
         [telemetry.tracing]
-        enabled = true
         sampling = 0.0  # Sample no traces
         parent_based_sampler = false
 
@@ -854,12 +852,10 @@ async fn tracing_disabled() {
         service_name = "{service_name}"
 
         [telemetry.tracing]
-        enabled = false  # Tracing disabled
-
-        [telemetry.exporters.otlp]
-        enabled = true
-        endpoint = "http://localhost:4317"
-        protocol = "grpc"
+        sampling = 1.0
+        
+        # Tracing is disabled because no exporters are configured
+        # (telemetry.exporters.otlp.enabled = false by default)
 
         [mcp]
         enabled = true

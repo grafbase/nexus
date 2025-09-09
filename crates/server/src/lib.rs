@@ -9,6 +9,7 @@ mod client_id;
 mod cors;
 mod csrf;
 mod health;
+mod logger;
 mod metrics;
 mod rate_limit;
 mod tracing;
@@ -37,21 +38,8 @@ pub struct ServeConfig {
     pub config: Config,
     /// Cancellation token for graceful shutdown
     pub shutdown_signal: CancellationToken,
-}
-
-/// Initialize telemetry if configured
-async fn init_telemetry(config: &Config) -> anyhow::Result<Option<telemetry::TelemetryGuard>> {
-    if let Some(telemetry_config) = &config.telemetry {
-        log::info!(
-            "Initializing telemetry subsystem - tracing enabled: {}, global OTLP enabled: {}",
-            telemetry_config.tracing().enabled,
-            telemetry_config.global_exporters().otlp.enabled
-        );
-        Ok(Some(telemetry::init(telemetry_config).await?))
-    } else {
-        log::debug!("Telemetry not configured, skipping initialization");
-        Ok(None)
-    }
+    /// Log filter string (e.g., "info" or "server=debug,mcp=debug")
+    pub log_filter: Option<String>,
 }
 
 /// Starts and runs the Nexus server with the provided configuration.
@@ -60,10 +48,43 @@ pub async fn serve(
         listen_address,
         config,
         shutdown_signal,
+        log_filter,
     }: ServeConfig,
 ) -> anyhow::Result<()> {
-    // Initialize telemetry if configured
-    let _telemetry_guard = init_telemetry(&config).await?;
+    // Determine log filter - use provided filter, then RUST_LOG, then defaults
+    let log_filter = if cfg!(test) {
+        // In tests, always use debug for our crates
+        "server=debug,mcp=debug,telemetry=debug,rate_limit=debug,llm=debug,config=debug,integration_tests=debug,nexus=debug".to_string()
+    } else if let Some(filter) = log_filter {
+        // Use the provided log filter from CLI args
+        filter
+    } else {
+        // Fall back to RUST_LOG env var or default to info
+        std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string())
+    };
+
+    // Initialize telemetry first if configured, to get the OTEL appender
+    let _telemetry_guard = if let Some(telemetry_config) = &config.telemetry {
+        // Don't let telemetry code log during initialization to avoid recursion
+        match telemetry::init(telemetry_config).await {
+            Ok(guard) => {
+                // Initialize logger with OTEL appender if logs are enabled
+                let otel_appender = guard.logs_appender().cloned();
+                logger::init(&log_filter, otel_appender);
+                Some(guard)
+            }
+            Err(e) => {
+                eprintln!("Failed to initialize telemetry: {e}");
+                // Initialize logger without OTEL
+                logger::init(&log_filter, None);
+                None
+            }
+        }
+    } else {
+        // No telemetry configured, initialize basic logger
+        logger::init(&log_filter, None);
+        None
+    };
 
     let mut app = Router::new();
 
@@ -144,7 +165,7 @@ pub async fn serve(
     // Apply tracing middleware (runs after client identification, before rate limiting)
     // This ensures client.id and client.group are available and creates parent span for rate limiting
     if let Some(ref telemetry) = config.telemetry
-        && telemetry.tracing().enabled
+        && telemetry.tracing_enabled()
     {
         log::debug!("Applying tracing middleware to protected routes");
         protected_router = protected_router.layer(tracing::TracingLayer::new());

@@ -133,13 +133,13 @@ services:
 
 ```bash
 # Run all integration tests
-cargo test -p integration-tests
+cargo nextest run -p integration-tests
 
-# Run with logging enabled
-TEST_LOG=1 cargo test -p integration-tests
+# Run with debug logging visible
+cargo nextest run -p integration-tests --no-capture
 
-# Run specific test
-cargo test -p integration-tests test_name
+# Run specific test with debug logs
+RUST_LOG=debug cargo nextest run -p integration-tests test_name --no-capture
 
 # Run OAuth2-specific tests
 cargo test -p integration-tests oauth2

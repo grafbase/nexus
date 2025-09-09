@@ -56,19 +56,27 @@ impl Layout for CustomTextLayout {
     }
 }
 
-pub(super) fn init(args: &Args) {
-    logforth::builder()
-        .dispatch(|d| d.filter(args.log_level.env_filter()).append(FastraceEvent::default()))
-        .dispatch(|d| {
-            let d = d
-                .diagnostic(FastraceDiagnostic::default())
-                .filter(args.log_level.env_filter());
+pub(super) fn init(args: &Args, otel_appender: Option<telemetry::logs::OtelLogsAppender>) {
+    let mut builder =
+        logforth::builder().dispatch(|d| d.filter(args.log_level.env_filter()).append(FastraceEvent::default()));
 
-            match args.log_style {
-                LogStyle::Color => d.append(Stdout::default().with_layout(CustomTextLayout::new())),
-                LogStyle::Text => d.append(Stdout::default().with_layout(CustomTextLayout::new().no_color())),
-                LogStyle::Json => d.append(Stdout::default().with_layout(JsonLayout::default())),
-            }
-        })
-        .apply();
+    // Add OpenTelemetry logs appender if provided
+    if let Some(appender) = otel_appender {
+        builder = builder.dispatch(|d| d.filter(args.log_level.env_filter()).append(appender));
+    }
+
+    // Add stdout appender
+    builder = builder.dispatch(|d| {
+        let d = d
+            .diagnostic(FastraceDiagnostic::default())
+            .filter(args.log_level.env_filter());
+
+        match args.log_style {
+            LogStyle::Color => d.append(Stdout::default().with_layout(CustomTextLayout::new())),
+            LogStyle::Text => d.append(Stdout::default().with_layout(CustomTextLayout::new().no_color())),
+            LogStyle::Json => d.append(Stdout::default().with_layout(JsonLayout::default())),
+        }
+    });
+
+    builder.apply();
 }

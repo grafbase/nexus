@@ -47,7 +47,6 @@ fn create_llm_tracing_config(service_name: &str) -> String {
         deployment = "integration-test"
 
         [telemetry.tracing]
-        enabled = true
         sampling = 1.0
         parent_based_sampler = false
 

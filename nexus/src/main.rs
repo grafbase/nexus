@@ -7,14 +7,13 @@ use server::ServeConfig;
 use tokio_util::sync::CancellationToken;
 
 mod args;
-mod logger;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let config = args.config()?;
 
-    logger::init(&args);
+    // The server crate will handle telemetry and logger initialization
 
     log::info!("Nexus {}", env!("CARGO_PKG_VERSION"));
 
@@ -68,9 +67,13 @@ fn serve_config(args: &Args, config: Config, shutdown_signal: CancellationToken)
         .or(config.server.listen_address)
         .unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8000)));
 
+    // Convert the log level to an env filter string
+    let log_filter = Some(args.log_level.env_filter().to_string());
+
     ServeConfig {
         listen_address,
         config,
         shutdown_signal,
+        log_filter,
     }
 }

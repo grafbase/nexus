@@ -265,8 +265,12 @@ The crate uses the `log` crate for logging. Enable debug logging to see detailed
 cargo run -- --log debug
 ```
 
-Tests emit logs, but only if you run them with the special environment variable:
+Tests emit logs when run with the `--no-capture` flag:
 
 ```bash
-TEST_LOG=1 cargo test
+# See logs from tests
+cargo nextest run --no-capture
+
+# Or with specific log level
+RUST_LOG=debug cargo nextest run --no-capture
 ```
