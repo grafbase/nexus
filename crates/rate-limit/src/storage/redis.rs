@@ -1,5 +1,7 @@
 //! Redis-based rate limit storage using the averaging fixed window algorithm.
 
+pub(crate) mod tracing;
+
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use redis::Script;
@@ -36,6 +38,11 @@ pub struct RedisStorage {
 }
 
 impl RedisStorage {
+    /// Get the connection pool status.
+    pub(crate) fn pool_status(&self) -> deadpool::Status {
+        self.pool.status()
+    }
+
     /// Create a new Redis storage instance.
     pub async fn new(config: &RedisConfig) -> Result<Self, StorageError> {
         // Create the connection pool

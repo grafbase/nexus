@@ -49,7 +49,11 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
 
     // 3. Initialize rate limit manager if enabled
     let rate_limit_manager = if config.server.rate_limits.enabled {
-        Some(Arc::new(RateLimitManager::new(config.server.rate_limits.clone(), config.mcp.clone()).await?))
+        Some(Arc::new(RateLimitManager::new(
+            config.server.rate_limits.clone(), 
+            config.mcp.clone(),
+            config.telemetry.as_ref()
+        ).await?))
     } else {
         None
     };

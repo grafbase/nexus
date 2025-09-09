@@ -71,7 +71,7 @@ impl<'a> LlmServerBuilder<'a> {
 
         let token_rate_limiter = if has_token_rate_limits {
             Some(
-                TokenRateLimitManager::new(&self.config.server.rate_limits.storage)
+                TokenRateLimitManager::new(&self.config.server.rate_limits.storage, self.config.telemetry.as_ref())
                     .await
                     .map_err(|e| {
                         log::error!("Failed to initialize token rate limiter: {e}");

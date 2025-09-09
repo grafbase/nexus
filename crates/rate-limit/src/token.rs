@@ -27,6 +27,7 @@ pub struct TokenRateLimitRequest {
 enum Storage {
     Memory(InMemoryStorage),
     Redis(crate::storage::redis::RedisStorage),
+    TracedRedis(crate::storage::redis::tracing::TracedRedisStorage),
 }
 
 impl Storage {
@@ -40,6 +41,7 @@ impl Storage {
         match self {
             Storage::Memory(storage) => storage.check_and_consume_tokens(context, tokens, limit, interval).await,
             Storage::Redis(storage) => storage.check_and_consume_tokens(context, tokens, limit, interval).await,
+            Storage::TracedRedis(storage) => storage.check_and_consume_tokens(context, tokens, limit, interval).await,
         }
     }
 }
@@ -52,13 +54,25 @@ pub struct TokenRateLimitManager {
 
 impl TokenRateLimitManager {
     /// Create a new token rate limit manager with configured storage backend.
-    pub async fn new(storage_config: &StorageConfig) -> Result<Self, RateLimitError> {
+    /// When telemetry config is provided with OTLP tracing enabled, Redis operations will be traced.
+    pub async fn new(
+        storage_config: &StorageConfig,
+        telemetry_config: Option<&config::TelemetryConfig>,
+    ) -> Result<Self, RateLimitError> {
         let storage = match storage_config {
             StorageConfig::Memory => Storage::Memory(InMemoryStorage::new()),
             StorageConfig::Redis(redis_config) => {
-                use crate::storage::redis::RedisStorage;
+                use crate::storage::redis::{RedisStorage, tracing::TracedRedisStorage};
                 let redis_storage = RedisStorage::new(redis_config).await.map_err(RateLimitError::Storage)?;
-                Storage::Redis(redis_storage)
+
+                // Wrap with tracing if OTLP export is enabled
+                let should_trace = telemetry_config.and_then(|tc| tc.traces_otlp_config()).is_some();
+
+                if should_trace {
+                    Storage::TracedRedis(TracedRedisStorage::new(redis_storage))
+                } else {
+                    Storage::Redis(redis_storage)
+                }
             }
         };
 

@@ -76,7 +76,12 @@ pub async fn serve(
 
     let rate_limit_manager = if config.server.rate_limits.enabled {
         log::debug!("Initializing rate limit manager with configured limits");
-        let manager = RateLimitManager::new(config.server.rate_limits.clone(), config.mcp.clone()).await?;
+        let manager = RateLimitManager::new(
+            config.server.rate_limits.clone(),
+            config.mcp.clone(),
+            config.telemetry.as_ref(),
+        )
+        .await?;
 
         Some(Arc::new(manager))
     } else {
