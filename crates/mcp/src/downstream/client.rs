@@ -93,28 +93,24 @@ impl DownstreamClient {
     }
 
     /// Lists all tools available from the downstream MCP server.
-    #[fastrace::trace(name = "downstream:list_tools")]
     pub async fn list_tools(&self) -> Result<Vec<Tool>, ServiceError> {
         log::debug!("Requesting tool list from downstream server '{}'", self.name());
         Ok(self.inner.service.list_tools(Default::default()).await?.tools)
     }
 
     /// Calls a tool on the downstream MCP server.
-    #[fastrace::trace(name = "downstream:call_tool")]
     pub async fn call_tool(&self, params: CallToolRequestParam) -> Result<CallToolResult, ServiceError> {
         log::debug!("Invoking tool '{}' on downstream server '{}'", params.name, self.name());
         self.inner.service.call_tool(params).await
     }
 
     /// Lists all prompts available from the downstream MCP server.
-    #[fastrace::trace(name = "downstream:list_prompts")]
     pub async fn list_prompts(&self) -> Result<Vec<Prompt>, ServiceError> {
         log::debug!("Requesting prompt list from downstream server '{}'", self.name());
         Ok(self.inner.service.list_prompts(Default::default()).await?.prompts)
     }
 
     /// Gets a prompt from the downstream MCP server.
-    #[fastrace::trace(name = "downstream:get_prompt")]
     pub async fn get_prompt(&self, params: GetPromptRequestParam) -> Result<GetPromptResult, ServiceError> {
         log::debug!(
             "Retrieving prompt '{}' from downstream server '{}'",
@@ -125,14 +121,12 @@ impl DownstreamClient {
     }
 
     /// Lists all resources available from the downstream MCP server.
-    #[fastrace::trace(name = "downstream:list_resources")]
     pub async fn list_resources(&self) -> Result<Vec<Resource>, ServiceError> {
         log::debug!("Requesting resource list from downstream server '{}'", self.name());
         Ok(self.inner.service.list_resources(Default::default()).await?.resources)
     }
 
     /// Reads a resource from the downstream MCP server.
-    #[fastrace::trace(name = "downstream:read_resource")]
     pub async fn read_resource(&self, params: ReadResourceRequestParam) -> Result<ReadResourceResult, ServiceError> {
         log::debug!(
             "Reading resource '{}' from downstream server '{}'",

@@ -132,6 +132,24 @@ pub async fn serve(
         log::debug!("LLM is enabled but no providers are configured - LLM endpoint will not be exposed");
     }
 
+    // Apply rate limiting HTTP middleware FIRST (so it runs LAST, after tracing creates parent span)
+    // (global and IP-based limits only - MCP limits are handled in the MCP layer)
+    if config.server.rate_limits.enabled
+        && let Some(manager) = rate_limit_manager
+    {
+        log::debug!("Applying HTTP rate limiting middleware to protected routes");
+        protected_router = protected_router.layer(RateLimitLayer::new(manager));
+    }
+
+    // Apply tracing middleware (runs after client identification, before rate limiting)
+    // This ensures client.id and client.group are available and creates parent span for rate limiting
+    if let Some(ref telemetry) = config.telemetry
+        && telemetry.tracing().enabled
+    {
+        log::debug!("Applying tracing middleware to protected routes");
+        protected_router = protected_router.layer(tracing::TracingLayer::new());
+    }
+
     // Apply client identification middleware for access control
     // IMPORTANT: In Axum, layers applied later in code run FIRST in execution
     // So this must be applied BEFORE auth layer to run AFTER auth validates JWT
@@ -158,24 +176,6 @@ pub async fn serve(
             "/.well-known/oauth-protected-resource",
             get(move || well_known::oauth_metadata(oauth_config_clone.clone())),
         );
-    }
-
-    // Apply rate limiting HTTP middleware only if server-level rate limiting is enabled
-    // (global and IP-based limits only - MCP limits are handled in the MCP layer)
-    if config.server.rate_limits.enabled
-        && let Some(manager) = rate_limit_manager
-    {
-        log::debug!("Applying HTTP rate limiting middleware to protected routes");
-        protected_router = protected_router.layer(RateLimitLayer::new(manager));
-    }
-
-    // Apply tracing middleware to protected routes if telemetry and tracing are enabled
-    // This must be done BEFORE merging into the main app
-    if let Some(ref telemetry) = config.telemetry
-        && telemetry.tracing().enabled
-    {
-        log::debug!("Applying tracing middleware to protected routes");
-        protected_router = protected_router.layer(tracing::TracingLayer::new());
     }
 
     // Apply metrics middleware to protected routes if telemetry is enabled

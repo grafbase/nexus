@@ -211,14 +211,14 @@ fn add_client_identity_to_span(span: &Span, parts: &Parts) {
     if let Some(client_id) = parts.headers.get("x-client-id")
         && let Ok(id) = client_id.to_str()
     {
-        span.add_property(|| ("mcp.client_id", id.to_string()));
+        span.add_property(|| ("client.id", id.to_string()));
     }
 
     // Check for x-client-group header
     if let Some(group) = parts.headers.get("x-client-group")
         && let Ok(g) = group.to_str()
     {
-        span.add_property(|| ("mcp.client_group", g.to_string()));
+        span.add_property(|| ("client.group", g.to_string()));
     }
 }
 

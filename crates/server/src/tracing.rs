@@ -3,6 +3,7 @@
 //! Creates distributed traces for all HTTP requests following OpenTelemetry semantic conventions.
 
 use axum::{body::Body, extract::MatchedPath};
+use config::ClientIdentity;
 use fastrace::future::FutureExt;
 use fastrace::{
     Span,
@@ -115,6 +116,15 @@ where
 
         if let Some(host) = host.clone() {
             root.add_property(|| ("server.address", host));
+        }
+
+        // Add client identity if present (extracted by ClientIdentificationLayer middleware)
+        if let Some(client_identity) = req.extensions().get::<ClientIdentity>() {
+            root.add_property(|| ("client.id", client_identity.client_id.clone()));
+
+            if let Some(ref group) = client_identity.group {
+                root.add_property(|| ("client.group", group.clone()));
+            }
         }
 
         log::debug!("Created root span '{}' with parent context", span_name);

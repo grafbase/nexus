@@ -138,7 +138,10 @@ async fn basic_trace_creation() {
         "[].SpanId" => "[SPAN_ID]",  
         "[].ParentSpanId" => "[PARENT_SPAN_ID]",
         "[].ServiceName" => "[SERVICE_NAME]",
-        "[0].SpanAttributes[1][1]" => "[CLIENT_ID]"  // Redact the client_id in MCP span
+        "[0].SpanAttributes[0][1]" => "[CLIENT_ID]",  // Redact the client_id in MCP span
+        "[1].SpanAttributes[0][1]" => "[CLIENT_ID]",  // Redact the client_id in first HTTP span
+        "[2].SpanAttributes[0][1]" => "[CLIENT_ID]",  // Redact the client_id in second HTTP span  
+        "[3].SpanAttributes[0][1]" => "[CLIENT_ID]"   // Redact the client_id in third HTTP span
     }, @r#"
     [
       {
@@ -149,12 +152,12 @@ async fn basic_trace_creation() {
         "ServiceName": "[SERVICE_NAME]",
         "SpanAttributes": [
           [
-            "mcp.auth_forwarded",
-            "false"
+            "client.id",
+            "[CLIENT_ID]"
           ],
           [
-            "mcp.client_id",
-            "[CLIENT_ID]"
+            "mcp.auth_forwarded",
+            "false"
           ],
           [
             "mcp.method",
@@ -170,6 +173,10 @@ async fn basic_trace_creation() {
         "SpanName": "POST /mcp",
         "ServiceName": "[SERVICE_NAME]",
         "SpanAttributes": [
+          [
+            "client.id",
+            "[CLIENT_ID]"
+          ],
           [
             "http.request.method",
             "POST"
@@ -197,6 +204,10 @@ async fn basic_trace_creation() {
         "ServiceName": "[SERVICE_NAME]",
         "SpanAttributes": [
           [
+            "client.id",
+            "[CLIENT_ID]"
+          ],
+          [
             "http.request.method",
             "POST"
           ],
@@ -222,6 +233,10 @@ async fn basic_trace_creation() {
         "SpanName": "POST /mcp",
         "ServiceName": "[SERVICE_NAME]",
         "SpanAttributes": [
+          [
+            "client.id",
+            "[CLIENT_ID]"
+          ],
           [
             "http.request.method",
             "POST"
@@ -332,12 +347,12 @@ async fn trace_propagation_with_traceparent() {
         "ServiceName": "[SERVICE_NAME]",
         "SpanAttributes": [
           [
-            "mcp.auth_forwarded",
-            "false"
+            "client.id",
+            "test-client"
           ],
           [
-            "mcp.client_id",
-            "test-client"
+            "mcp.auth_forwarded",
+            "false"
           ],
           [
             "mcp.method",
@@ -353,6 +368,10 @@ async fn trace_propagation_with_traceparent() {
         "SpanName": "POST /mcp",
         "ServiceName": "[SERVICE_NAME]",
         "SpanAttributes": [
+          [
+            "client.id",
+            "test-client"
+          ],
           [
             "http.request.method",
             "POST"
@@ -380,6 +399,10 @@ async fn trace_propagation_with_traceparent() {
         "ServiceName": "[SERVICE_NAME]",
         "SpanAttributes": [
           [
+            "client.id",
+            "test-client"
+          ],
+          [
             "http.request.method",
             "POST"
           ],
@@ -405,6 +428,10 @@ async fn trace_propagation_with_traceparent() {
         "SpanName": "POST /mcp",
         "ServiceName": "[SERVICE_NAME]",
         "SpanAttributes": [
+          [
+            "client.id",
+            "test-client"
+          ],
           [
             "http.request.method",
             "POST"
@@ -618,12 +645,12 @@ async fn aws_xray_trace_propagation() {
         "ServiceName": "[SERVICE_NAME]",
         "SpanAttributes": [
           [
-            "mcp.auth_forwarded",
-            "false"
+            "client.id",
+            "test-client"
           ],
           [
-            "mcp.client_id",
-            "test-client"
+            "mcp.auth_forwarded",
+            "false"
           ],
           [
             "mcp.method",
@@ -639,6 +666,10 @@ async fn aws_xray_trace_propagation() {
         "SpanName": "POST /mcp",
         "ServiceName": "[SERVICE_NAME]",
         "SpanAttributes": [
+          [
+            "client.id",
+            "test-client"
+          ],
           [
             "http.request.method",
             "POST"
@@ -666,6 +697,10 @@ async fn aws_xray_trace_propagation() {
         "ServiceName": "[SERVICE_NAME]",
         "SpanAttributes": [
           [
+            "client.id",
+            "test-client"
+          ],
+          [
             "http.request.method",
             "POST"
           ],
@@ -691,6 +726,10 @@ async fn aws_xray_trace_propagation() {
         "SpanName": "POST /mcp",
         "ServiceName": "[SERVICE_NAME]",
         "SpanAttributes": [
+          [
+            "client.id",
+            "test-client"
+          ],
           [
             "http.request.method",
             "POST"
