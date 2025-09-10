@@ -68,7 +68,7 @@ fn serve_config(args: &Args, config: Config, shutdown_signal: CancellationToken)
         .unwrap_or(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8000)));
 
     // Convert the log level to an env filter string
-    let log_filter = Some(args.log_level.env_filter().to_string());
+    let log_filter = args.log_level.env_filter();
 
     ServeConfig {
         listen_address,

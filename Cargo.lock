@@ -6025,6 +6025,7 @@ dependencies = [
  "log",
  "logforth",
  "mcp",
+ "rand 0.8.5",
  "rate-limit",
  "reqwest",
  "secrecy",

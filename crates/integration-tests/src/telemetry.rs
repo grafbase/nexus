@@ -4,7 +4,7 @@ use clickhouse::Row;
 use serde::Deserialize;
 use std::time::Duration;
 
-const DEFAULT_TIMEOUT: Duration = Duration::from_secs(2); // Reduced for faster test failures
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10); // Increased to handle slow OTLP export
 const RETRY_INTERVAL: Duration = Duration::from_millis(10); // Check more frequently
 
 /// Helper to create a ClickHouse client for metrics queries

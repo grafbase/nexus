@@ -172,38 +172,98 @@ async fn logs_include_trace_and_span_ids() {
       {
         "trace_id_matches": true,
         "has_span_id": true,
-        "severity": "INFO",
-        "body_preview": "Service initialized as server peer_info=None"
+        "severity": "DEBUG",
+        "body_preview": "Invoking tool 'adder' on downstream server 'test_m..."
       },
       {
         "trace_id_matches": true,
         "has_span_id": true,
-        "severity": "INFO",
-        "body_preview": "serve_inner;"
+        "severity": "DEBUG",
+        "body_preview": "Executing downstream tool: 'test_mcp_server__adder..."
       },
       {
         "trace_id_matches": true,
         "has_span_id": true,
-        "severity": "INFO",
-        "body_preview": "Service initialized as server peer_info=None"
+        "severity": "DEBUG",
+        "body_preview": "Rate limit manager not configured - skipping rate ..."
       },
       {
         "trace_id_matches": true,
         "has_span_id": true,
-        "severity": "INFO",
-        "body_preview": "serve_inner;"
+        "severity": "DEBUG",
+        "body_preview": "Parsing tool name 'test_mcp_server__adder': server..."
       },
       {
         "trace_id_matches": true,
         "has_span_id": true,
-        "severity": "INFO",
-        "body_preview": "Service initialized as server peer_info=None"
+        "severity": "DEBUG",
+        "body_preview": "Retrieving static-only search tool"
       },
       {
         "trace_id_matches": true,
         "has_span_id": true,
-        "severity": "INFO",
-        "body_preview": "serve_inner;"
+        "severity": "DEBUG",
+        "body_preview": "Executing downstream tool: 'test_mcp_server__adder..."
+      },
+      {
+        "trace_id_matches": true,
+        "has_span_id": true,
+        "severity": "DEBUG",
+        "body_preview": "Executing downstream tool via execute endpoint"
+      },
+      {
+        "trace_id_matches": true,
+        "has_span_id": true,
+        "severity": "DEBUG",
+        "body_preview": "Processing tool invocation for 'execute'"
+      },
+      {
+        "trace_id_matches": true,
+        "has_span_id": true,
+        "severity": "DEBUG",
+        "body_preview": "Completed request for POST /mcp, span will be subm..."
+      },
+      {
+        "trace_id_matches": true,
+        "has_span_id": true,
+        "severity": "DEBUG",
+        "body_preview": "Executing request within tracing span for POST /mc..."
+      },
+      {
+        "trace_id_matches": true,
+        "has_span_id": true,
+        "severity": "DEBUG",
+        "body_preview": "Completed request for POST /mcp, span will be subm..."
+      },
+      {
+        "trace_id_matches": true,
+        "has_span_id": true,
+        "severity": "DEBUG",
+        "body_preview": "Executing request within tracing span for POST /mc..."
+      },
+      {
+        "trace_id_matches": true,
+        "has_span_id": true,
+        "severity": "DEBUG",
+        "body_preview": "Completed request for POST /mcp, span will be subm..."
+      },
+      {
+        "trace_id_matches": true,
+        "has_span_id": true,
+        "severity": "DEBUG",
+        "body_preview": "Executing request within tracing span for POST /mc..."
+      },
+      {
+        "trace_id_matches": true,
+        "has_span_id": true,
+        "severity": "DEBUG",
+        "body_preview": "Completed request for POST /mcp, span will be subm..."
+      },
+      {
+        "trace_id_matches": true,
+        "has_span_id": true,
+        "severity": "DEBUG",
+        "body_preview": "Executing request within tracing span for POST /mc..."
       }
     ]
     "#);

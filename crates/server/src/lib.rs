@@ -26,9 +26,12 @@ use client_id::ClientIdentificationLayer;
 use config::Config;
 use rate_limit::RateLimitLayer;
 use std::sync::Arc;
+use telemetry::TelemetryGuard;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower_http::cors::CorsLayer;
+
+use crate::tracing::TracingLayer;
 
 /// Configuration for serving Nexus.
 pub struct ServeConfig {
@@ -39,7 +42,7 @@ pub struct ServeConfig {
     /// Cancellation token for graceful shutdown
     pub shutdown_signal: CancellationToken,
     /// Log filter string (e.g., "info" or "server=debug,mcp=debug")
-    pub log_filter: Option<String>,
+    pub log_filter: String,
 }
 
 /// Starts and runs the Nexus server with the provided configuration.
@@ -51,41 +54,7 @@ pub async fn serve(
         log_filter,
     }: ServeConfig,
 ) -> anyhow::Result<()> {
-    // Determine log filter - use provided filter, then RUST_LOG, then defaults
-    let log_filter = if cfg!(test) {
-        // In tests, always use debug for our crates
-        "server=debug,mcp=debug,telemetry=debug,rate_limit=debug,llm=debug,config=debug,integration_tests=debug,nexus=debug".to_string()
-    } else if let Some(filter) = log_filter {
-        // Use the provided log filter from CLI args
-        filter
-    } else {
-        // Fall back to RUST_LOG env var or default to info
-        std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string())
-    };
-
-    // Initialize telemetry first if configured, to get the OTEL appender
-    let _telemetry_guard = if let Some(telemetry_config) = &config.telemetry {
-        // Don't let telemetry code log during initialization to avoid recursion
-        match telemetry::init(telemetry_config).await {
-            Ok(guard) => {
-                // Initialize logger with OTEL appender if logs are enabled
-                let otel_appender = guard.logs_appender().cloned();
-                logger::init(&log_filter, otel_appender);
-                Some(guard)
-            }
-            Err(e) => {
-                eprintln!("Failed to initialize telemetry: {e}");
-                // Initialize logger without OTEL
-                logger::init(&log_filter, None);
-                None
-            }
-        }
-    } else {
-        // No telemetry configured, initialize basic logger
-        logger::init(&log_filter, None);
-        None
-    };
-
+    let _telemetry_guard = init_otel(&config, log_filter).await;
     let mut app = Router::new();
 
     // Create CORS layer first, like Grafbase does
@@ -168,7 +137,7 @@ pub async fn serve(
         && telemetry.tracing_enabled()
     {
         log::debug!("Applying tracing middleware to protected routes");
-        protected_router = protected_router.layer(tracing::TracingLayer::new());
+        protected_router = protected_router.layer(TracingLayer::with_config(Arc::new(telemetry.clone())));
     }
 
     // Apply client identification middleware for access control
@@ -293,4 +262,31 @@ pub async fn serve(
     }
 
     Ok(())
+}
+
+async fn init_otel(config: &Config, log_filter: String) -> Option<TelemetryGuard> {
+    if let Some(telemetry_config) = &config.telemetry {
+        // Don't let telemetry code log during initialization to avoid recursion
+        match telemetry::init(telemetry_config).await {
+            Ok(guard) => {
+                // Initialize logger with OTEL appender if logs are enabled
+                let otel_appender = guard.logs_appender().cloned();
+                logger::init(&log_filter, otel_appender);
+
+                Some(guard)
+            }
+            Err(e) => {
+                eprintln!("Failed to initialize telemetry: {e}");
+                // Initialize logger without OTEL
+                logger::init(&log_filter, None);
+
+                None
+            }
+        }
+    } else {
+        // No telemetry configured, initialize basic logger
+        logger::init(&log_filter, None);
+
+        None
+    }
 }

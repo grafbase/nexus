@@ -2,6 +2,7 @@
 
 mod llm;
 mod mcp;
+mod parent_based_sampler;
 mod rate_limit;
 
 use clickhouse::Row;
