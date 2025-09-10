@@ -21,6 +21,7 @@ llm.workspace = true
 log = { workspace = true, features = ["kv"] }
 logforth = { workspace = true, features = ["append-fastrace"] }
 mcp.workspace = true
+rand.workspace = true
 rate-limit.workspace = true
 reqwest = { workspace = true, features = ["rustls-tls"] }
 secrecy.workspace = true

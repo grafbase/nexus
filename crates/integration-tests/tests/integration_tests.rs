@@ -180,7 +180,7 @@ async fn health_endpoint_separate_listener() {
         listen_address: main_addr,
         config,
         shutdown_signal: shutdown_signal.clone(),
-        log_filter: None,
+        log_filter: "server=debug,mcp=debug,telemetry=debug,rate_limit=debug,llm=debug,config=debug,integration_tests=debug,nexus=debug".to_string(),
     };
 
     drop(main_listener);

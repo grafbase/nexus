@@ -1354,6 +1354,7 @@ max_concurrent_exports = 1           # Default: 1
 ```toml
 [telemetry.tracing]
 sampling = 0.15                   # Sample 15% of requests (default: 0.15)
+parent_based_sampler = false     # Respect parent trace sampling decision (default: false)
 
 # Collection limits (per span)
 [telemetry.tracing.collect]
@@ -1596,12 +1597,29 @@ Each span includes semantic attributes following OpenTelemetry conventions:
 
 #### Sampling
 
-Nexus uses fixed-rate sampling to randomly sample a percentage of traces:
+Nexus supports two sampling strategies:
+
+**Fixed-Rate Sampling** (default): Randomly samples a percentage of traces based on the configured rate.
 
 ```toml
 [telemetry.tracing]
 sampling = 0.15  # Sample 15% of requests (0.0 to 1.0)
 ```
+
+**Parent-Based Sampling**: When enabled, Nexus respects the sampling decision from parent traces in distributed systems.
+
+```toml
+[telemetry.tracing]
+sampling = 0.15                  # Default sampling rate for root traces
+parent_based_sampler = true      # Respect parent's sampling decision
+```
+
+With `parent_based_sampler = true`:
+- If a parent trace is sampled (W3C traceparent flag=01 or X-Ray Sampled=1), the child trace will be sampled
+- If a parent trace is not sampled (flag=00 or Sampled=0), the child trace will not be sampled
+- If no parent exists, the `sampling` rate is used
+
+This ensures consistent sampling decisions across distributed traces, preventing incomplete trace data where some spans are sampled while others are not.
 
 When a parent trace context is provided in request headers (via W3C Trace Context or AWS X-Ray), Nexus will continue that trace.
 

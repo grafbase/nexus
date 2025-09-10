@@ -543,7 +543,7 @@ impl TestServer {
             listen_address: address,
             config,
             shutdown_signal: nexus_shutdown_signal_clone,
-            log_filter: None, // Tests will use the default debug level
+            log_filter: "server=debug,mcp=debug,telemetry=debug,rate_limit=debug,llm=debug,config=debug,integration_tests=debug,nexus=debug".to_string(),
         };
 
         // Start the server in a background task
