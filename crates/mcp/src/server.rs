@@ -108,6 +108,9 @@ impl McpServer {
         let server_info = Implementation {
             name: generate_server_name(&config.mcp),
             version: env!("CARGO_PKG_VERSION").to_string(),
+            title: None,
+            website_url: None,
+            icons: None,
         };
 
         let inner = McpServerInner {

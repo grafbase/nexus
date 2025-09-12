@@ -474,6 +474,8 @@ async fn get_prompt_success_metrics() {
         name: "test_prompt".to_string(),
         description: Some("A test prompt".to_string()),
         arguments: None,
+        title: None,
+        icons: None,
     });
     builder.spawn_service(service).await;
 
@@ -544,6 +546,8 @@ async fn read_resource_success_metrics() {
             description: Some("A test resource".to_string()),
             mime_type: Some("text/plain".to_string()),
             size: None,
+            title: None,
+            icons: None,
         },
         None,
     ));
