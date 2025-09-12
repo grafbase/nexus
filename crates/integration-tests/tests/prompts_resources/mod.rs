@@ -17,6 +17,8 @@ async fn test_prompts_aggregation() {
         name: "test_prompt".to_string(),
         description: Some("A test prompt".to_string()),
         arguments: None,
+        title: None,
+        icons: None,
     };
     prompt_server.add_prompt(prompt1);
 
@@ -24,6 +26,8 @@ async fn test_prompts_aggregation() {
         name: "another_prompt".to_string(),
         description: Some("Another test prompt".to_string()),
         arguments: None,
+        title: None,
+        icons: None,
     };
     prompt_server.add_prompt(prompt2);
 
@@ -89,6 +93,8 @@ async fn test_resources_aggregation() {
             description: Some("A test file resource".to_string()),
             mime_type: Some("text/plain".to_string()),
             size: None,
+            title: None,
+            icons: None,
         },
         None,
     );
@@ -101,6 +107,8 @@ async fn test_resources_aggregation() {
             description: Some("Example JSON data".to_string()),
             mime_type: Some("application/json".to_string()),
             size: None,
+            title: None,
+            icons: None,
         },
         None,
     );
@@ -161,6 +169,8 @@ async fn test_multiple_servers_prompts_resources() {
         name: "server1_prompt".to_string(),
         description: Some("Prompt from server1".to_string()),
         arguments: None,
+        title: None,
+        icons: None,
     };
     server1.add_prompt(prompt);
 
@@ -172,6 +182,8 @@ async fn test_multiple_servers_prompts_resources() {
             description: Some("Test data resource".to_string()),
             mime_type: Some("application/octet-stream".to_string()),
             size: None,
+            title: None,
+            icons: None,
         },
         None,
     );

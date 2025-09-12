@@ -37,6 +37,8 @@ impl TestTool for AdderTool {
             input_schema: std::sync::Arc::new(schema),
             output_schema: None,
             annotations: None,
+            title: None,
+            icons: None,
         }
     }
 
@@ -94,6 +96,8 @@ impl TestTool for FailingTool {
             input_schema: std::sync::Arc::new(schema),
             output_schema: None,
             annotations: None,
+            title: None,
+            icons: None,
         }
     }
 
@@ -152,6 +156,8 @@ impl TestTool for CalculatorTool {
                 title: Some("Scientific Calculator".into()),
                 ..Default::default()
             }),
+            title: None,
+            icons: None,
         }
     }
 
@@ -252,6 +258,8 @@ impl TestTool for TextProcessorTool {
                 title: Some("Text Processor".into()),
                 ..Default::default()
             }),
+            title: None,
+            icons: None,
         }
     }
 
@@ -333,6 +341,8 @@ impl TestTool for FileSystemTool {
                 title: Some("File System Manager".into()),
                 ..Default::default()
             }),
+            title: None,
+            icons: None,
         }
     }
 

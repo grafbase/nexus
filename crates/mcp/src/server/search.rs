@@ -179,5 +179,7 @@ pub fn rmcp_tool() -> Tool {
         input_schema: Arc::new(search_schema_obj),
         output_schema: Some(Arc::new(output_schema_obj)),
         annotations: Some(ToolAnnotations::new().read_only(true)),
+        title: None,
+        icons: None,
     }
 }

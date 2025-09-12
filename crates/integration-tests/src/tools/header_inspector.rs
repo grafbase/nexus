@@ -56,6 +56,8 @@ impl TestTool for HeaderInspectorTool {
             input_schema: std::sync::Arc::new(schema),
             output_schema: None,
             annotations: None,
+            title: None,
+            icons: None,
         }
     }
 
