@@ -360,7 +360,7 @@ async fn redis_token_rate_limit_creates_span() {
         
         [server.rate_limits.storage]
         type = "redis"
-        url = "redis://localhost:6379"
+        url = "redis://localhost:6379/0"
         key_prefix = "{key_prefix}"
 
         [telemetry]
@@ -410,22 +410,21 @@ path = "/llm"
     headers.insert("traceparent", traceparent.parse().unwrap());
 
     // Make a request that will trigger token rate limiting
-    let response = test_server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .headers(headers)
-        .json(&json!({
+    let (status, _body) = test_server
+        .openai_completions(json!({
             "model": "testprovider/gpt-4",
             "messages": [
                 {"role": "user", "content": "Hello"}
             ],
             "max_tokens": 10
         }))
-        .send()
-        .await
-        .unwrap();
+        .header("x-client-id", &client_id)
+        .header("x-client-group", "premium")
+        .header("traceparent", &traceparent)
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 200);
+    assert_eq!(status, 200);
 
     // Wait for traces to be exported
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
@@ -518,7 +517,7 @@ async fn redis_rate_limit_exceeded_span_has_error() {
         
         [server.rate_limits.storage]
         type = "redis"
-        url = "redis://localhost:6379"
+        url = "redis://localhost:6379/0"
         key_prefix = "{key_prefix}"
         
         [server.rate_limits.global]

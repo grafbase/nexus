@@ -1,6 +1,6 @@
 //! Tests to create Hydra clients with custom metadata and test rate limiting.
 
-use super::{HydraClient, RequestBuilderExt};
+use super::HydraClient;
 use indoc::indoc;
 use integration_tests::{TestServer, llms::OpenAIMock};
 use serde_json::json;
@@ -94,7 +94,6 @@ async fn test_rate_limiting_with_different_client_ids() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     // Get tokens for both clients
     let premium_token = hydra
@@ -112,53 +111,44 @@ async fn test_rate_limiting_with_different_client_ids() {
 
     // Premium client uses most of its limit (100 tokens / 8 = 12 requests)
     for i in 1..=12 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .authorization(&premium_token.access_token)
-            .json(&request)
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 200, "Premium client request {} should succeed", i);
+        let (status, _body) = server
+            .openai_completions(request.clone())
+            .header("Authorization", &format!("Bearer {}", premium_token.access_token))
+            .send_raw()
+            .await;
+        assert_eq!(status, 200, "Premium client request {} should succeed", i);
     }
 
     // Premium client hits rate limit on 13th request
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .authorization(&premium_token.access_token)
-        .json(&request)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429, "Premium client should hit rate limit");
+    let (status, _body) = server
+        .openai_completions(request.clone())
+        .header("Authorization", &format!("Bearer {}", premium_token.access_token))
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "Premium client should hit rate limit");
 
     // Basic client should still be able to make requests (independent rate limit)
     // Basic client also has 100 token limit (same as premium in this test)
     for i in 1..=12 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .authorization(&basic_token.access_token)
-            .json(&request)
-            .send()
-            .await
-            .unwrap();
+        let (status, _body) = server
+            .openai_completions(request.clone())
+            .header("Authorization", &format!("Bearer {}", basic_token.access_token))
+            .send_raw()
+            .await;
         assert_eq!(
-            response.status(),
-            200,
+            status, 200,
             "Basic client request {} should succeed (independent rate limit)",
             i
         );
     }
 
     // Basic client hits rate limit on 13th request
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .authorization(&basic_token.access_token)
-        .json(&request)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429, "Basic client should also hit rate limit");
+    let (status, _body) = server
+        .openai_completions(request.clone())
+        .header("Authorization", &format!("Bearer {}", basic_token.access_token))
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "Basic client should also hit rate limit");
 }
 
 /// Test using sub claim (which equals client_id) for rate limiting.
@@ -203,7 +193,6 @@ async fn test_rate_limiting_with_sub_claim() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     // Get token for user alice
     let alice_token = hydra
@@ -220,27 +209,21 @@ async fn test_rate_limiting_with_sub_claim() {
 
     // Alice has 50 token limit, each request is ~8 tokens (not 6), so can make 6 requests (6 * 8 = 48 < 50)
     for i in 1..=6 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .authorization(&alice_token.access_token)
-            .json(&request)
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 200, "Alice's request {} should succeed", i);
+        let (status, _body) = server
+            .openai_completions(request.clone())
+            .header("Authorization", &format!("Bearer {}", alice_token.access_token))
+            .send_raw()
+            .await;
+        assert_eq!(status, 200, "Alice's request {} should succeed", i);
     }
 
     // 7th request should fail (exceeds 50 token limit: 7 * 8 = 56 > 50)
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .authorization(&alice_token.access_token)
-        .json(&request)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429, "Alice should hit 50 token rate limit");
-
-    let body = response.json::<serde_json::Value>().await.unwrap();
+    let (status, body) = server
+        .openai_completions(request.clone())
+        .header("Authorization", &format!("Bearer {}", alice_token.access_token))
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "Alice should hit 50 token rate limit");
     insta::assert_json_snapshot!(body, {
         ".error.message" => "[rate limit message]"
     }, @r#"
@@ -305,7 +288,6 @@ async fn two_jwt_users_independent_rate_limits() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     // Get tokens for both users
     let alice_token = hydra.get_token("user-alice", "user-alice-secret").await.unwrap();
@@ -320,28 +302,23 @@ async fn two_jwt_users_independent_rate_limits() {
 
     // Alice uses her rate limit (50 tokens / 8 = 6 requests)
     for i in 1..=6 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .authorization(&alice_token.access_token)
-            .json(&request)
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 200, "Alice's request {} should succeed", i);
+        let (status, _body) = server
+            .openai_completions(request.clone())
+            .header("Authorization", &format!("Bearer {}", alice_token.access_token))
+            .send_raw()
+            .await;
+        assert_eq!(status, 200, "Alice's request {} should succeed", i);
     }
 
     // Alice hits her rate limit on 7th request (7 * 8 = 56 > 50)
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .authorization(&alice_token.access_token)
-        .json(&request)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429, "Alice should hit her rate limit");
+    let (status, body) = server
+        .openai_completions(request.clone())
+        .header("Authorization", &format!("Bearer {}", alice_token.access_token))
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "Alice should hit her rate limit");
 
     // Verify Alice is rate limited with proper error
-    let body = response.json::<serde_json::Value>().await.unwrap();
     insta::assert_json_snapshot!(body, {
         ".error.message" => "[rate limit message]"
     }, @r#"
@@ -357,48 +334,39 @@ async fn two_jwt_users_independent_rate_limits() {
     // Bob should still be able to make requests (independent rate limit)
     // Bob also has 50 tokens, can make 6 requests (50 / 8 = 6)
     for i in 1..=6 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .authorization(&bob_token.access_token)
-            .json(&request)
-            .send()
-            .await
-            .unwrap();
+        let (status, _body) = server
+            .openai_completions(request.clone())
+            .header("Authorization", &format!("Bearer {}", bob_token.access_token))
+            .send_raw()
+            .await;
         assert_eq!(
-            response.status(),
-            200,
+            status, 200,
             "Bob's request {} should succeed (independent rate limit)",
             i
         );
     }
 
     // Bob hits his limit on 7th request (7 * 8 = 56 > 50)
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .authorization(&bob_token.access_token)
-        .json(&request)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429, "Bob should also hit his rate limit");
+    let (status, _body) = server
+        .openai_completions(request.clone())
+        .header("Authorization", &format!("Bearer {}", bob_token.access_token))
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "Bob should also hit his rate limit");
 
     // But Alice is still rate limited
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .authorization(&alice_token.access_token)
-        .json(&request) // Even same request fails for Alice
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429, "Alice should still be rate limited");
+    let (status, _body) = server
+        .openai_completions(request.clone())
+        .header("Authorization", &format!("Bearer {}", alice_token.access_token))
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "Alice should still be rate limited");
 
     // Bob is also now rate limited
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .authorization(&bob_token.access_token)
-        .json(&request) // Bob is also rate limited now
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429, "Bob should also be rate limited");
+    let (status, _body) = server
+        .openai_completions(request.clone())
+        .header("Authorization", &format!("Bearer {}", bob_token.access_token))
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "Bob should also be rate limited");
 }

@@ -20,10 +20,9 @@ async fn model_rename_works() {
     builder.spawn_llm(mock).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     // List models should show user-facing names
-    let models = llm.list_models().await;
+    let models = server.openai_list_models().await;
     insta::assert_json_snapshot!(models, {
         ".data[].created" => "[created]"
     }, @r#"
@@ -52,7 +51,7 @@ async fn model_rename_works() {
         "messages": [{"role": "user", "content": "Hello"}]
     });
 
-    let response = llm.completions(request).await;
+    let response = server.openai_completions(request).send().await;
     insta::assert_json_snapshot!(response, {
         ".id" => "[id]",
         ".created" => "[created]"
@@ -96,10 +95,9 @@ async fn unconfigured_model_returns_404() {
     builder.spawn_llm(mock).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     // List models should only show configured model
-    let models = llm.list_models().await;
+    let models = server.openai_list_models().await;
     insta::assert_json_snapshot!(models, {
         ".data[].created" => "[created]"
     }, @r#"
@@ -121,7 +119,7 @@ async fn unconfigured_model_returns_404() {
         "model": "openai/gpt-4",
         "messages": [{"role": "user", "content": "Hello"}]
     });
-    let response = llm.completions(request).await;
+    let response = server.openai_completions(request).send().await;
     insta::assert_json_snapshot!(response, {
         ".id" => "[id]",
         ".created" => "[created]"
@@ -154,11 +152,9 @@ async fn unconfigured_model_returns_404() {
         "model": "openai/gpt-3.5-turbo",
         "messages": [{"role": "user", "content": "Hello"}]
     });
-    let error = llm.completions_error(request).await;
+    let (status, body) = server.openai_completions(request).send_raw().await;
 
-    insta::assert_snapshot!(error.status().as_u16(), @"404");
-
-    let body = error.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(status, 404);
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
@@ -190,10 +186,9 @@ async fn multiple_providers_with_different_models() {
         .await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     // List models should show all configured models
-    let models = llm.list_models().await;
+    let models = server.openai_list_models().await;
 
     // Snapshot the model list
     insta::assert_json_snapshot!(models, {
@@ -235,7 +230,7 @@ async fn multiple_providers_with_different_models() {
         "model": "openai/gpt-4",
         "messages": [{"role": "user", "content": "Hello"}]
     });
-    let openai_response = llm.completions(openai_request).await;
+    let openai_response = server.openai_completions(openai_request).send().await;
     insta::assert_json_snapshot!(openai_response, {
         ".id" => "[id]",
         ".created" => "[created]"
@@ -267,7 +262,7 @@ async fn multiple_providers_with_different_models() {
         "model": "anthropic/claude-3-opus-20240229",
         "messages": [{"role": "user", "content": "Hello"}]
     });
-    let anthropic_response = llm.completions(anthropic_request).await;
+    let anthropic_response = server.openai_completions(anthropic_request).send().await;
     insta::assert_json_snapshot!(anthropic_response, {
         ".id" => "[id]",
         ".created" => "[created]"
@@ -299,7 +294,7 @@ async fn multiple_providers_with_different_models() {
         "model": "google/gemini-pro",
         "messages": [{"role": "user", "content": "Hello"}]
     });
-    let google_response = llm.completions(google_request).await;
+    let google_response = server.openai_completions(google_request).send().await;
     insta::assert_json_snapshot!(google_response, {
         ".id" => "[id]",
         ".created" => "[created]"
@@ -370,7 +365,6 @@ async fn renamed_model_in_streaming() {
         .await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "openai/fast",
@@ -378,7 +372,7 @@ async fn renamed_model_in_streaming() {
         "stream": true
     });
 
-    let chunks = llm.stream_completions(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
 
     // Snapshot first chunk to verify model name
     insta::assert_json_snapshot!(chunks.first().unwrap(), {

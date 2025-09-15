@@ -4,14 +4,24 @@ use indoc::indoc;
 use integration_tests::{TestServer, llms::OpenAIMock};
 use serde_json::json;
 
+// Helper function to extract content from streaming chunks
+fn extract_content_from_chunks(chunks: &[serde_json::Value]) -> String {
+    let mut content = String::new();
+    for chunk in chunks {
+        if let Some(delta) = chunk["choices"][0]["delta"]["content"].as_str() {
+            content.push_str(delta);
+        }
+    }
+    content
+}
+
 #[tokio::test]
 async fn list_models() {
     let mut builder = TestServer::builder();
     builder.spawn_llm(OpenAIMock::new("test_openai")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
-    let body = llm.list_models().await;
+    let body = server.openai_list_models().await;
 
     insta::assert_json_snapshot!(body, {
         ".data[].created" => "[created]"
@@ -50,8 +60,7 @@ path = "/custom"
     builder.spawn_llm(OpenAIMock::new("test_openai")).await;
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/custom");
-    let body = llm.list_models().await;
+    let body = server.openai_list_models().await;
 
     insta::assert_json_snapshot!(body, {
         ".data[].created" => "[created]"
@@ -82,7 +91,6 @@ async fn chat_completions() {
     builder.spawn_llm(OpenAIMock::new("test_openai")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "test_openai/gpt-3.5-turbo",
@@ -94,7 +102,7 @@ async fn chat_completions() {
         ]
     });
 
-    let body = llm.completions(request).await;
+    let body = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(body, {
         ".id" => "chatcmpl-test-[uuid]"
@@ -129,8 +137,17 @@ async fn chat_completions_simple() {
     builder.spawn_llm(OpenAIMock::new("test_openai")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
-    let body = llm.simple_completion("test_openai/gpt-3.5-turbo", "Hello!").await;
+    let request = json!({
+        "model": "test_openai/gpt-3.5-turbo",
+        "messages": [
+            {
+                "role": "user",
+                "content": "Hello!"
+            }
+        ]
+    });
+
+    let body = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(body, {
         ".id" => "chatcmpl-test-[uuid]"
@@ -165,7 +182,6 @@ async fn chat_completions_with_parameters() {
     builder.spawn_llm(OpenAIMock::new("test_openai")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "test_openai/gpt-3.5-turbo",
@@ -183,7 +199,7 @@ async fn chat_completions_with_parameters() {
         "stop": ["\\n", "END"]
     });
 
-    let body = llm.completions(request).await;
+    let body = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(body, {
         ".id" => "chatcmpl-test-[uuid]"
@@ -222,7 +238,6 @@ async fn streaming_with_multiple_chunks() {
         .await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "openai/gpt-4",
@@ -230,7 +245,8 @@ async fn streaming_with_multiple_chunks() {
         "stream": true
     });
 
-    let content = llm.stream_completions_content(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
+    let content = extract_content_from_chunks(&chunks);
     insta::assert_snapshot!(content, @"Hello there! How can I help you today?");
 }
 
@@ -240,7 +256,6 @@ async fn streaming_includes_usage_in_final_chunk() {
     builder.spawn_llm(OpenAIMock::new("openai").with_streaming()).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "openai/gpt-4",
@@ -248,7 +263,7 @@ async fn streaming_includes_usage_in_final_chunk() {
         "stream": true
     });
 
-    let chunks = llm.stream_completions(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
 
     // Last chunk should have usage data
     let last_chunk = chunks.last().unwrap();
@@ -288,7 +303,6 @@ async fn handles_escape_sequences_in_streaming() {
     builder.spawn_llm(mock).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "openai/gpt-3.5-turbo",
@@ -296,7 +310,8 @@ async fn handles_escape_sequences_in_streaming() {
         "stream": true
     });
 
-    let full_content = llm.stream_completions_content(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
+    let full_content = extract_content_from_chunks(&chunks);
 
     // Verify we got the complete text including the newlines
     insta::assert_snapshot!(full_content, @r"
@@ -336,7 +351,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "openai/gpt-4",
@@ -344,7 +358,8 @@ path = "/llm"
         "stream": true
     });
 
-    let full_content = llm.stream_completions_content(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
+    let full_content = extract_content_from_chunks(&chunks);
     insta::assert_snapshot!(full_content, @"Solid Snake is a character from the Metal Gear series");
 }
 
@@ -363,7 +378,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "openai/gpt-3.5-turbo",
@@ -371,7 +385,7 @@ path = "/llm"
         "stream": true
     });
 
-    let chunks = llm.stream_completions(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
 
     // First chunk should have the expected structure
     insta::assert_json_snapshot!(chunks[0], {
@@ -421,7 +435,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "openai/gpt-3.5-turbo",
@@ -429,6 +442,7 @@ path = "/llm"
         "stream": true
     });
 
-    let content = llm.stream_completions_content(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
+    let content = extract_content_from_chunks(&chunks);
     insta::assert_snapshot!(content, @"Hello world! How are you?");
 }

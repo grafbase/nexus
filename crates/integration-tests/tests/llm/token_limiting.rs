@@ -22,10 +22,18 @@ async fn no_client_id_allows_requests() {
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     // Request should succeed without client identification
-    let response = llm.simple_completion("openai/gpt-4", "Hello").await;
+    let request = json!({
+        "model": "openai/gpt-4",
+        "messages": [
+            {
+                "role": "user",
+                "content": "Hello"
+            }
+        ]
+    });
+    let response = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(response["choices"][0]["message"], @r#"
     {
@@ -54,7 +62,6 @@ async fn token_rate_limit_enforced_with_client_id() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     // Each request: ~8 input tokens (output tokens not counted anymore)
     let request = json!({
@@ -65,38 +72,23 @@ async fn token_rate_limit_enforced_with_client_id() {
 
     // Make requests up to the limit (100 tokens / 8 tokens per request = 12 requests)
     for i in 1..=12 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .json(&request)
+        let (status, _body) = server
+            .openai_completions(request.clone())
             .header("X-Client-Id", "test-client")
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(
-            response.status(),
-            200,
-            "Request {} ({} total tokens) should succeed",
-            i,
-            i * 8
-        );
+            .send_raw()
+            .await;
+        assert_eq!(status, 200, "Request {} ({} total tokens) should succeed", i, i * 8);
     }
 
     // 13th request: 104 tokens (should fail - exceeds 100 limit)
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "test-client")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(
-        response.status(),
-        429,
-        "13th request (104 total tokens) should be rate limited"
-    );
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "13th request (104 total tokens) should be rate limited");
 
     // Verify error response format
-    let body = response.json::<serde_json::Value>().await.unwrap();
     assert!(
         body["error"]["message"]
             .as_str()
@@ -144,7 +136,6 @@ async fn rate_limit_hierarchy_resolution() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     // Test Level 1: Model + Group (gpt-4 + pro group) - limit 400
     // Each request: ~8 input tokens (max_tokens not counted)
@@ -156,16 +147,14 @@ async fn rate_limit_hierarchy_resolution() {
 
     // Make requests up to the limit (400 tokens / 8 tokens per request = 50 requests)
     for i in 1..=50 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .json(&request)
+        let (status, _body) = server
+            .openai_completions(request.clone())
             .header("X-Client-Id", "client1")
             .header("X-Group", "pro")
-            .send()
-            .await
-            .unwrap();
+            .send_raw()
+            .await;
         assert_eq!(
-            response.status(),
+            status,
             200,
             "Level 1: Request {} ({} total tokens) should succeed",
             i,
@@ -174,17 +163,14 @@ async fn rate_limit_hierarchy_resolution() {
     }
 
     // 51st request: 408 tokens (exceeds 400 limit)
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "client1")
         .header("X-Group", "pro")
-        .send()
-        .await
-        .unwrap();
+        .send_raw()
+        .await;
     assert_eq!(
-        response.status(),
-        429,
+        status, 429,
         "Level 1: 51st request (408 total tokens) should be rate limited"
     );
 
@@ -197,15 +183,13 @@ async fn rate_limit_hierarchy_resolution() {
 
     // Make requests up to the limit (300 tokens / 8 tokens per request = 37 requests)
     for i in 1..=37 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .json(&request)
+        let (status, _body) = server
+            .openai_completions(request.clone())
             .header("X-Client-Id", "client2")
-            .send()
-            .await
-            .unwrap();
+            .send_raw()
+            .await;
         assert_eq!(
-            response.status(),
+            status,
             200,
             "Level 2: Request {} ({} total tokens) should succeed",
             i,
@@ -214,14 +198,12 @@ async fn rate_limit_hierarchy_resolution() {
     }
 
     // 38th request: 304 tokens (exceeds 300 limit)
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "client2")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429, "Level 2: 38th request should be rate limited");
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "Level 2: 38th request should be rate limited");
 
     // Test Level 3: Provider + Group (gpt-3.5-turbo + pro group) - limit 200
     let request = json!({
@@ -232,16 +214,14 @@ async fn rate_limit_hierarchy_resolution() {
 
     // Make requests up to the limit (200 tokens / 8 tokens per request = 25 requests)
     for i in 1..=25 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .json(&request)
+        let (status, _body) = server
+            .openai_completions(request.clone())
             .header("X-Client-Id", "client3")
             .header("X-Group", "pro")
-            .send()
-            .await
-            .unwrap();
+            .send_raw()
+            .await;
         assert_eq!(
-            response.status(),
+            status,
             200,
             "Level 3: Request {} ({} total tokens) should succeed",
             i,
@@ -250,15 +230,13 @@ async fn rate_limit_hierarchy_resolution() {
     }
 
     // 26th request: 208 tokens (exceeds 200 limit)
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "client3")
         .header("X-Group", "pro")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429, "Level 3: 26th request should be rate limited");
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "Level 3: 26th request should be rate limited");
 
     // Test Level 4: Provider default (gpt-3.5-turbo without group) - limit 100
     let request = json!({
@@ -269,15 +247,13 @@ async fn rate_limit_hierarchy_resolution() {
 
     // Make requests up to the limit (100 tokens / 8 tokens per request = 12 requests)
     for i in 1..=12 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .json(&request)
+        let (status, _body) = server
+            .openai_completions(request.clone())
             .header("X-Client-Id", "client4")
-            .send()
-            .await
-            .unwrap();
+            .send_raw()
+            .await;
         assert_eq!(
-            response.status(),
+            status,
             200,
             "Level 4: Request {} ({} total tokens) should succeed",
             i,
@@ -286,14 +262,12 @@ async fn rate_limit_hierarchy_resolution() {
     }
 
     // 13th request: 104 tokens (exceeds 100 limit)
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "client4")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429, "Level 4: 13th request should be rate limited");
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "Level 4: 13th request should be rate limited");
 }
 
 /// Test that different clients have independent rate limits.
@@ -316,7 +290,6 @@ async fn independent_client_rate_limits() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     let request = json!({
         "model": "openai/gpt-4",
@@ -326,35 +299,29 @@ async fn independent_client_rate_limits() {
 
     // Client 1 uses most of their limit (12 requests * 8 tokens = 96 tokens)
     for i in 1..=12 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .json(&request)
+        let (status, _body) = server
+            .openai_completions(request.clone())
             .header("X-Client-Id", "client1")
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 200, "Client 1 request {} should succeed", i);
+            .send_raw()
+            .await;
+        assert_eq!(status, 200, "Client 1 request {} should succeed", i);
     }
 
     // Client 1 should be rate limited on 13th request (104 tokens > 100 limit)
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "client1")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429);
+        .send_raw()
+        .await;
+    assert_eq!(status, 429);
 
     // But Client 2 should still be able to make requests
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "client2")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 200);
+        .send_raw()
+        .await;
+    assert_eq!(status, 200);
 }
 
 /// Test that group-based rate limits are enforced correctly.
@@ -388,7 +355,6 @@ async fn group_based_rate_limits() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     // Free tier client with small limit (100 tokens)
     let request = json!({
@@ -399,27 +365,23 @@ async fn group_based_rate_limits() {
 
     // Make 12 requests (96 tokens total) - should all succeed
     for i in 1..=12 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .json(&request)
+        let (status, _body) = server
+            .openai_completions(request.clone())
             .header("X-Client-Id", "free-client")
             .header("X-Group", "free")
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 200, "Free tier request {} should succeed", i);
+            .send_raw()
+            .await;
+        assert_eq!(status, 200, "Free tier request {} should succeed", i);
     }
 
     // 13th request should be rate limited (104 tokens > 100 limit)
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "free-client")
         .header("X-Group", "free")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429);
+        .send_raw()
+        .await;
+    assert_eq!(status, 429);
 
     // Pro tier client with larger limit (1000 tokens)
     let request = json!({
@@ -430,15 +392,13 @@ async fn group_based_rate_limits() {
 
     // Make many requests to use most of the limit (125 requests * 8 tokens = 1000 tokens)
     for i in 1..=125 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .json(&request)
+        let (status, _body) = server
+            .openai_completions(request.clone())
             .header("X-Client-Id", "pro-client")
             .header("X-Group", "pro")
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 200, "Pro tier request {} should succeed", i);
+            .send_raw()
+            .await;
+        assert_eq!(status, 200, "Pro tier request {} should succeed", i);
     }
 
     // 126th request should be rate limited (1008 tokens > 1000 limit)
@@ -448,15 +408,13 @@ async fn group_based_rate_limits() {
         "max_tokens": 50
     });
 
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "pro-client")
         .header("X-Group", "pro")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429);
+        .send_raw()
+        .await;
+    assert_eq!(status, 429);
 }
 
 /// Test that requests without required client identification are rejected.
@@ -479,7 +437,6 @@ async fn missing_client_id_rejected_when_required() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     let request = json!({
         "model": "openai/gpt-4",
@@ -487,16 +444,9 @@ async fn missing_client_id_rejected_when_required() {
     });
 
     // Request without X-Client-Id header should be rejected
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
-        .send()
-        .await
-        .unwrap();
+    let (status, body) = server.openai_completions(request.clone()).send_raw().await;
 
-    assert_eq!(response.status(), 400);
-
-    let body = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(status, 400);
     assert_eq!(body["error"], "missing_client_id");
     assert_eq!(body["error_description"], "Client identification is required");
 }
@@ -524,7 +474,6 @@ async fn invalid_group_rejected() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     let request = json!({
         "model": "openai/gpt-4",
@@ -532,18 +481,14 @@ async fn invalid_group_rejected() {
     });
 
     // Request with invalid group should be rejected
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "test-client")
         .header("X-Group", "platinum") // Not in group_values
-        .send()
-        .await
-        .unwrap();
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 400);
-
-    let body = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(status, 400);
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": "invalid_group",
@@ -572,7 +517,6 @@ async fn clear_token_accumulation() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     // Test accumulation: each request is ~6 input tokens (max_tokens not counted)
     let request = json!({
@@ -583,25 +527,21 @@ async fn clear_token_accumulation() {
 
     // Make 12 requests that should stay under the 100 token limit
     for i in 1..=12 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .json(&request)
+        let (status, _body) = server
+            .openai_completions(request.clone())
             .header("X-Client-Id", "accumulation-test")
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 200, "Request {} should succeed", i);
+            .send_raw()
+            .await;
+        assert_eq!(status, 200, "Request {} should succeed", i);
     }
 
     // 13th request: should exceed the limit
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "accumulation-test")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429, "Request 13 should be rate limited");
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "Request 13 should be rate limited");
 }
 
 /// Test exact boundary conditions for rate limits.
@@ -624,7 +564,6 @@ async fn exact_boundary_conditions() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     // Test 1: Make requests up to the limit
     let request = json!({
@@ -635,25 +574,21 @@ async fn exact_boundary_conditions() {
 
     // Make 12 requests that should succeed
     for i in 1..=12 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .json(&request)
+        let (status, _body) = server
+            .openai_completions(request.clone())
             .header("X-Client-Id", "boundary-test-1")
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 200, "Request {} should succeed", i);
+            .send_raw()
+            .await;
+        assert_eq!(status, 200, "Request {} should succeed", i);
     }
 
     // 13th request should be rate limited
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "boundary-test-1")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429, "Request exceeding limit should be rate limited");
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "Request exceeding limit should be rate limited");
 
     // Test 2: Different client should be independent
     let request = json!({
@@ -664,25 +599,21 @@ async fn exact_boundary_conditions() {
 
     // Make requests with different client - should succeed
     for i in 1..=12 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .json(&request)
+        let (status, _body) = server
+            .openai_completions(request.clone())
             .header("X-Client-Id", "boundary-test-2") // Different client
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 200, "Request {} should succeed", i);
+            .send_raw()
+            .await;
+        assert_eq!(status, 200, "Request {} should succeed", i);
     }
 
     // 13th request should fail
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "boundary-test-2")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429, "13th request should be rate limited");
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "13th request should be rate limited");
 
     // Test 3: Just under limit should succeed
     let request = json!({
@@ -693,25 +624,21 @@ async fn exact_boundary_conditions() {
 
     // Make 12 requests (96 tokens) - should all succeed
     for i in 1..=12 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .json(&request)
+        let (status, _body) = server
+            .openai_completions(request.clone())
             .header("X-Client-Id", "boundary-test-3")
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 200, "Request {} should succeed", i);
+            .send_raw()
+            .await;
+        assert_eq!(status, 200, "Request {} should succeed", i);
     }
 
     // 13th request should fail (104 tokens > 100 limit)
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "boundary-test-3")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429, "13th request should be rate limited");
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "13th request should be rate limited");
 }
 
 /// Test that rate limits reset after the interval expires.
@@ -734,7 +661,6 @@ async fn rate_limit_reset_after_interval() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     // Request that uses up the limit (50 tokens / 8 tokens per request = 6 requests)
     let request = json!({
@@ -745,38 +671,32 @@ async fn rate_limit_reset_after_interval() {
 
     // Make 6 requests (48 tokens) - should all succeed
     for i in 1..=6 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .json(&request)
+        let (status, _body) = server
+            .openai_completions(request.clone())
             .header("X-Client-Id", "reset-test")
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 200, "Request {} should succeed", i);
+            .send_raw()
+            .await;
+        assert_eq!(status, 200, "Request {} should succeed", i);
     }
 
     // 7th request should fail (56 tokens > 50 limit)
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "reset-test")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429, "7th request should fail (limit exhausted)");
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "7th request should fail (limit exhausted)");
 
     // Wait for interval to expire (2 seconds + buffer)
     tokio::time::sleep(tokio::time::Duration::from_millis(2500)).await;
 
     // After reset, should be able to make requests again
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "reset-test")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 200, "Request after interval reset should succeed");
+        .send_raw()
+        .await;
+    assert_eq!(status, 200, "Request after interval reset should succeed");
 }
 
 /// Test that missing group_id when group_values is configured uses default rate limits.
@@ -802,7 +722,6 @@ async fn missing_group_when_group_values_configured() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     let request = json!({
         "model": "openai/gpt-4",
@@ -811,24 +730,21 @@ async fn missing_group_when_group_values_configured() {
 
     // Request without group header when group_values is configured
     // Should succeed and use default rate limits
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "test-client")
         // Missing X-Group header - this is OK, will use default rate limit
-        .send()
-        .await
-        .unwrap();
+        .send_raw()
+        .await;
 
     // Should succeed since missing group is allowed (uses default rate limit)
     assert_eq!(
-        response.status(),
-        200,
+        status, 200,
         "Request without group should succeed with default rate limit"
     );
 
     // Verify the response is valid
-    let body = response.json::<serde_json::Value>().await.unwrap();
+    let body = body;
     assert!(body["choices"].is_array());
 }
 
@@ -851,7 +767,6 @@ async fn token_burst_capacity_allows_full_limit() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     // Make requests that consume exactly 48 tokens (6 requests * 8 tokens)
     // This is just under the 50 token limit
@@ -863,34 +778,21 @@ async fn token_burst_capacity_allows_full_limit() {
 
     // Make 6 requests (48 tokens total)
     for i in 1..=6 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .json(&request)
+        let (status, _body) = server
+            .openai_completions(request.clone())
             .header("X-Client-Id", "burst-test")
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(
-            response.status(),
-            200,
-            "Request {} should succeed (within burst capacity)",
-            i
-        );
+            .send_raw()
+            .await;
+        assert_eq!(status, 200, "Request {} should succeed (within burst capacity)", i);
     }
 
     // 7th request should fail (56 tokens > 50 limit)
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "burst-test")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(
-        response.status(),
-        429,
-        "7th request should be rate limited (exceeds limit)"
-    );
+        .send_raw()
+        .await;
+    assert_eq!(status, 429, "7th request should be rate limited (exceeds limit)");
 }
 
 /// Test concurrent token requests with in-memory storage.
@@ -929,7 +831,7 @@ async fn concurrent_token_requests_memory() {
 
             server_clone
                 .client
-                .request(reqwest::Method::POST, "/llm/v1/chat/completions")
+                .request(reqwest::Method::POST, "/llm/openai/v1/chat/completions")
                 .json(&request)
                 .header("X-Client-Id", "concurrent-test")
                 .send()
@@ -985,7 +887,6 @@ async fn zero_token_request_handling() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     // Empty message (should still count as minimum tokens for request overhead)
     let request = json!({
@@ -996,12 +897,10 @@ async fn zero_token_request_handling() {
 
     // Even empty requests have some token overhead (role, structure, etc.)
     // Should still succeed but consume minimal tokens
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "zero-test")
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 200, "Empty content request should still succeed");
+        .send_raw()
+        .await;
+    assert_eq!(status, 200, "Empty content request should still succeed");
 }

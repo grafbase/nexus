@@ -8,7 +8,6 @@ async fn invalid_model_format_returns_400() {
     builder.spawn_llm(OpenAIMock::new("openai")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     // Model without provider prefix
     let request = json!({
@@ -16,10 +15,8 @@ async fn invalid_model_format_returns_400() {
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = llm.completions_error(request).await;
-    assert_eq!(response.status(), 400);
-
-    let body: serde_json::Value = response.json().await.unwrap();
+    let (status, body) = server.openai_completions(request).send_raw().await;
+    assert_eq!(status, 400);
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
@@ -37,7 +34,6 @@ async fn provider_not_found_returns_404() {
     builder.spawn_llm(OpenAIMock::new("openai")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     // Non-existent provider
     let request = json!({
@@ -45,10 +41,8 @@ async fn provider_not_found_returns_404() {
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = llm.completions_error(request).await;
-    assert_eq!(response.status(), 404);
-
-    let body: serde_json::Value = response.json().await.unwrap();
+    let (status, body) = server.openai_completions(request).send_raw().await;
+    assert_eq!(status, 404);
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
@@ -69,17 +63,14 @@ async fn authentication_error_returns_401() {
     builder.spawn_llm(mock).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "openai/gpt-4",
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = llm.completions_error(request).await;
-    assert_eq!(response.status(), 401);
-
-    let body: serde_json::Value = response.json().await.unwrap();
+    let (status, body) = server.openai_completions(request).send_raw().await;
+    assert_eq!(status, 401);
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
@@ -100,17 +91,14 @@ async fn model_not_found_returns_404() {
     builder.spawn_llm(mock).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "openai/gpt-5",
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = llm.completions_error(request).await;
-    assert_eq!(response.status(), 404);
-
-    let body: serde_json::Value = response.json().await.unwrap();
+    let (status, body) = server.openai_completions(request).send_raw().await;
+    assert_eq!(status, 404);
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
@@ -131,17 +119,14 @@ async fn rate_limit_error_returns_429() {
     builder.spawn_llm(mock).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "openai/gpt-4",
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = llm.completions_error(request).await;
-    assert_eq!(response.status(), 429);
-
-    let body: serde_json::Value = response.json().await.unwrap();
+    let (status, body) = server.openai_completions(request).send_raw().await;
+    assert_eq!(status, 429);
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
@@ -162,17 +147,14 @@ async fn insufficient_quota_returns_403() {
     builder.spawn_llm(mock).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "openai/gpt-4",
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = llm.completions_error(request).await;
-    assert_eq!(response.status(), 403);
-
-    let body: serde_json::Value = response.json().await.unwrap();
+    let (status, body) = server.openai_completions(request).send_raw().await;
+    assert_eq!(status, 403);
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
@@ -190,7 +172,6 @@ async fn streaming_mock_not_implemented_returns_error() {
     builder.spawn_llm(OpenAIMock::new("openai")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "openai/gpt-4",
@@ -198,12 +179,10 @@ async fn streaming_mock_not_implemented_returns_error() {
         "stream": true
     });
 
-    let response = llm.completions_error(request).await;
+    let (status, body) = server.openai_completions(request).send_raw().await;
     // OpenAI supports streaming now, but the mock doesn't implement it
     // So we get an error when trying to connect to the streaming endpoint
-    assert!(response.status() == 400 || response.status() == 502);
-
-    let body: serde_json::Value = response.json().await.unwrap();
+    assert!(status == 400 || status == 502);
 
     // The error message depends on whether we fail at mock level or stream parsing
     if body["error"]["code"] == 400 {
@@ -233,10 +212,7 @@ async fn list_models_with_auth_error_returns_empty_list() {
 
     let server = builder.build("").await;
 
-    let response = server.client.get("/llm/v1/models").await;
-    assert_eq!(response.status(), 200); // Still returns 200 even if providers fail
-
-    let body: serde_json::Value = response.json().await.unwrap();
+    let body = server.openai_list_models().await;
     insta::assert_json_snapshot!(body, @r#"
     {
       "object": "list",
@@ -267,17 +243,14 @@ async fn bad_request_returns_400() {
     builder.spawn_llm(mock).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "openai/gpt-4",
         "messages": []  // Empty messages array
     });
 
-    let response = llm.completions_error(request).await;
-    assert_eq!(response.status(), 400);
-
-    let body: serde_json::Value = response.json().await.unwrap();
+    let (status, body) = server.openai_completions(request).send_raw().await;
+    assert_eq!(status, 400);
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
@@ -299,17 +272,14 @@ async fn provider_internal_error_returns_500_with_message() {
     builder.spawn_llm(mock).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "openai/gpt-4",
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = llm.completions_error(request).await;
-    assert_eq!(response.status(), 500);
-
-    let body: serde_json::Value = response.json().await.unwrap();
+    let (status, body) = server.openai_completions(request).send_raw().await;
+    assert_eq!(status, 500);
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
@@ -342,7 +312,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "openai/gpt-4",
@@ -350,12 +319,11 @@ path = "/llm"
         "stream": true
     });
 
-    let response = llm.completions_error(request).await;
+    let (status, body) = server.openai_completions(request).send_raw().await;
 
     // Streaming errors should return HTTP 500 (Internal Server Error from provider)
-    assert_eq!(response.status(), 500);
+    assert_eq!(status, 500);
 
-    let body: serde_json::Value = response.json().await.unwrap();
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
@@ -377,17 +345,15 @@ async fn provider_other_error_returns_502() {
     builder.spawn_llm(mock).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "openai/gpt-4",
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = llm.completions_error(request).await;
-    assert_eq!(response.status(), 502);
+    let (status, body) = server.openai_completions(request).send_raw().await;
+    assert_eq!(status, 502);
 
-    let body: serde_json::Value = response.json().await.unwrap();
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {

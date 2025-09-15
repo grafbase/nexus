@@ -10,8 +10,8 @@ use reqwest::{Client, Method, header::AUTHORIZATION};
 use secrecy::ExposeSecret;
 
 use self::{
-    input::OpenAIRequest,
-    output::{OpenAIResponse, OpenAIStreamChunk},
+    input::openai::OpenAIRequest,
+    output::openai::{OpenAIResponse, OpenAIStreamChunk},
 };
 
 use crate::{

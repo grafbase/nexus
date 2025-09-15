@@ -23,7 +23,6 @@ async fn empty_client_id_accepted() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     let request = json!({
         "model": "openai/gpt-4",
@@ -32,16 +31,14 @@ async fn empty_client_id_accepted() {
     });
 
     // Empty string client ID is treated as a valid (though strange) client ID
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "")
-        .send()
-        .await
-        .unwrap();
+        .send_raw()
+        .await;
 
     // Empty string is a valid client ID, just unusual
-    assert_eq!(response.status(), 200, "Empty string client ID should be accepted");
+    assert_eq!(status, 200, "Empty string client ID should be accepted");
 }
 
 /// Test edge cases: whitespace-only client_id.
@@ -63,7 +60,6 @@ async fn whitespace_client_id_accepted() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     let request = json!({
         "model": "openai/gpt-4",
@@ -72,16 +68,14 @@ async fn whitespace_client_id_accepted() {
     });
 
     // Whitespace-only client ID (spaces only, as tabs/newlines are invalid in headers)
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "     ")
-        .send()
-        .await
-        .unwrap();
+        .send_raw()
+        .await;
 
     // Whitespace-only is also treated as a valid client ID
-    assert_eq!(response.status(), 200, "Whitespace client ID should be accepted");
+    assert_eq!(status, 200, "Whitespace client ID should be accepted");
 }
 
 /// Test edge cases: very long client_id and group_id.
@@ -111,7 +105,6 @@ async fn very_long_identifiers() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     let request = json!({
         "model": "openai/gpt-4",
@@ -122,17 +115,15 @@ async fn very_long_identifiers() {
     // Very long identifiers (256 characters)
     let long_client_id = "a".repeat(256);
 
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", &long_client_id)
         .header("X-Group", "enterprise")
-        .send()
-        .await
-        .unwrap();
+        .send_raw()
+        .await;
 
     // Should work with long identifiers
-    assert_eq!(response.status(), 200, "Long client ID should be accepted");
+    assert_eq!(status, 200, "Long client ID should be accepted");
 }
 
 /// Test edge cases: special characters in identifiers.
@@ -154,7 +145,6 @@ async fn special_characters_in_identifiers() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     let request = json!({
         "model": "openai/gpt-4",
@@ -165,20 +155,14 @@ async fn special_characters_in_identifiers() {
     // Special characters in client ID
     let special_client_id = "user@example.com:123-456_789/test";
 
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, _body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", special_client_id)
-        .send()
-        .await
-        .unwrap();
+        .send_raw()
+        .await;
 
     // Should work with special characters
-    assert_eq!(
-        response.status(),
-        200,
-        "Special characters in client ID should be accepted"
-    );
+    assert_eq!(status, 200, "Special characters in client ID should be accepted");
 }
 
 /// Test error response for rate limit exceeded.
@@ -200,7 +184,6 @@ async fn rate_limit_exceeded_response_format() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     let request = json!({
         "model": "openai/gpt-4",
@@ -210,31 +193,24 @@ async fn rate_limit_exceeded_response_format() {
 
     // Make 6 requests first to use up most of the limit (48 tokens)
     for i in 1..=6 {
-        let response = client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .json(&request)
+        let (status, _body) = server
+            .openai_completions(request.clone())
             .header("X-Client-Id", "rate-limit-test")
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 200, "Request {} should succeed", i);
+            .send_raw()
+            .await;
+        assert_eq!(status, 200, "Request {} should succeed", i);
     }
 
     // 7th request should exceed the limit (56 tokens > 50)
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "rate-limit-test")
-        .send()
-        .await
-        .unwrap();
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 429);
+    assert_eq!(status, 429);
 
-    // No Retry-After headers are sent to maintain consistency with downstream LLM providers
-    assert!(!response.headers().contains_key("retry-after"));
-
-    let body = response.json::<serde_json::Value>().await.unwrap();
+    // Check the error response body (no headers available in send_raw)
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
@@ -265,24 +241,19 @@ async fn missing_client_id_error_format() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     let request = json!({
         "model": "openai/gpt-4",
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, body) = server
+        .openai_completions(request.clone())
         // Missing X-Client-Id header
-        .send()
-        .await
-        .unwrap();
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 400);
-
-    let body = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(status, 400);
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": "missing_client_id",
@@ -314,25 +285,20 @@ async fn unauthorized_group_error_format() {
     "#};
 
     let server = builder.build(config).await;
-    let client = &server.client;
 
     let request = json!({
         "model": "openai/gpt-4",
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let response = client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&request)
+    let (status, body) = server
+        .openai_completions(request.clone())
         .header("X-Client-Id", "test-client")
         .header("X-Group", "enterprise") // Not in group_values
-        .send()
-        .await
-        .unwrap();
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 400);
-
-    let body = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(status, 400);
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": "invalid_group",

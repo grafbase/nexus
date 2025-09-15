@@ -31,8 +31,8 @@ pub use headers::{
 pub use health::HealthConfig;
 pub use http_types::{HeaderName, HeaderValue};
 pub use llm::{
-    ApiModelConfig, ApiProviderConfig, BedrockModelConfig, BedrockProviderConfig, LlmConfig, LlmProviderConfig,
-    ModelConfig, ProviderType,
+    ApiModelConfig, ApiProviderConfig, BedrockModelConfig, BedrockProviderConfig, LlmConfig, LlmProtocol,
+    LlmProviderConfig, ModelConfig, ProviderType,
 };
 pub use mcp::{
     ClientAuthConfig, HttpConfig, HttpProtocol, McpConfig, McpServer, McpServerRateLimit, StdioConfig, StdioTarget,
@@ -126,8 +126,14 @@ mod tests {
             llm: LlmConfig {
                 enabled: true,
                 protocols: LlmProtocolsConfig {
-                    openai: None,
-                    anthropic: None,
+                    openai: OpenAIProtocolConfig {
+                        enabled: true,
+                        path: "/llm/openai",
+                    },
+                    anthropic: AnthropicProtocolConfig {
+                        enabled: false,
+                        path: "/llm/anthropic",
+                    },
                 },
                 providers: {},
             },

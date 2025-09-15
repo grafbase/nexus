@@ -222,11 +222,16 @@ pub async fn serve(
             }
 
             if llm_actually_exposed {
-                for (protocol, endpoint_config) in config.llm.get_protocol_endpoints() {
+                if config.llm.protocols.openai.enabled {
                     log::info!(
-                        "LLM endpoint ({:?} protocol) available at: https://{listen_address}{}",
-                        protocol,
-                        endpoint_config.path
+                        "LLM endpoint (OpenAI protocol) available at: https://{listen_address}{}",
+                        config.llm.protocols.openai.path
+                    );
+                }
+                if config.llm.protocols.anthropic.enabled {
+                    log::info!(
+                        "LLM endpoint (Anthropic protocol) available at: https://{listen_address}{}",
+                        config.llm.protocols.anthropic.path
                     );
                 }
             }
@@ -251,11 +256,16 @@ pub async fn serve(
             }
 
             if llm_actually_exposed {
-                for (protocol, endpoint_config) in config.llm.get_protocol_endpoints() {
+                if config.llm.protocols.openai.enabled {
                     log::info!(
-                        "LLM endpoint ({:?} protocol) available at: http://{listen_address}{}",
-                        protocol,
-                        endpoint_config.path
+                        "LLM endpoint (OpenAI protocol) available at: http://{listen_address}{}",
+                        config.llm.protocols.openai.path
+                    );
+                }
+                if config.llm.protocols.anthropic.enabled {
+                    log::info!(
+                        "LLM endpoint (Anthropic protocol) available at: http://{listen_address}{}",
+                        config.llm.protocols.anthropic.path
                     );
                 }
             }

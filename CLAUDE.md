@@ -295,6 +295,38 @@ async fn user_can_search_tools() { ... }
 async fn test_user_can_search_tools() { ... }
 ```
 
+### LLM Testing Patterns
+
+For LLM integration tests, **ALWAYS** use the builder pattern instead of manual HTTP calls:
+
+```rust
+// GOOD: Use TestServer builder methods
+let request = json!({
+    "model": "provider/model",
+    "messages": [{"role": "user", "content": "Hello"}]
+});
+
+let response = server
+    .openai_completions(request)
+    .header("X-Provider-API-Key", "test-key")
+    .send()
+    .await;
+
+// For error testing
+let (status, body) = server
+    .openai_completions(request)
+    .send_raw()
+    .await;
+assert_eq!(status, 401);
+
+// BAD: Manual HTTP client calls
+let client = reqwest::Client::new();
+let response = client.post(format!("http://{}/llm/openai/v1/chat/completions", server.address))
+    .json(&request).send().await;
+```
+
+**Available methods**: `openai_completions()`, `openai_completions_stream()`, `anthropic_completions()`, `anthropic_completions_stream()`
+
 ### Snapshot Testing (INLINE ONLY - CRITICAL)
 
 **STRICT RULES**:

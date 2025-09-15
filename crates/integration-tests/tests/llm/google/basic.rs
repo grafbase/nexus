@@ -2,14 +2,24 @@ use indoc::indoc;
 use integration_tests::{TestServer, llms::GoogleMock};
 use serde_json::json;
 
+// Helper function to extract content from streaming chunks
+fn extract_content_from_chunks(chunks: &[serde_json::Value]) -> String {
+    let mut content = String::new();
+    for chunk in chunks {
+        if let Some(delta) = chunk["choices"][0]["delta"]["content"].as_str() {
+            content.push_str(delta);
+        }
+    }
+    content
+}
+
 #[tokio::test]
 async fn list_models() {
     let mut builder = TestServer::builder();
     builder.spawn_llm(GoogleMock::new("google")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
-    let body = llm.list_models().await;
+    let body = server.openai_list_models().await;
 
     insta::assert_json_snapshot!(body, @r#"
     {
@@ -50,7 +60,6 @@ async fn chat_completion() {
     builder.spawn_llm(GoogleMock::new("google")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "google/gemini-1.5-flash",
@@ -68,7 +77,7 @@ async fn chat_completion() {
         "max_tokens": 100
     });
 
-    let body = llm.completions(request).await;
+    let body = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(body, {
         ".id" => "[id]",
@@ -104,7 +113,6 @@ async fn handles_system_messages() {
     builder.spawn_llm(GoogleMock::new("google")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     // Test with system message
     let request = json!({
@@ -121,7 +129,7 @@ async fn handles_system_messages() {
         ]
     });
 
-    let body = llm.completions(request).await;
+    let body = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(body, {
         ".id" => "[id]",
@@ -173,7 +181,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "google/gemini-1.5-flash",
@@ -181,7 +188,8 @@ path = "/llm"
         "stream": true
     });
 
-    let full_content = llm.stream_completions_content(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
+    let full_content = extract_content_from_chunks(&chunks);
 
     // Verify we got the complete text including the newlines
     insta::assert_snapshot!(full_content, @r"
@@ -213,7 +221,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "google/gemini-1.5-flash",
@@ -222,7 +229,8 @@ path = "/llm"
     });
 
     // Just verify we can collect the content properly
-    let content = llm.stream_completions_content(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
+    let content = extract_content_from_chunks(&chunks);
     insta::assert_snapshot!(content, @"He's a grizzled war veteran, a clone, and a master of infiltration.");
 }
 
@@ -287,7 +295,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "google/gemini-1.5-flash",
@@ -295,7 +302,8 @@ path = "/llm"
         "stream": true
     });
 
-    let full_content = llm.stream_completions_content(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
+    let full_content = extract_content_from_chunks(&chunks);
 
     insta::assert_snapshot!(full_content, @r#"
     Here's the FizzBuzz problem solved in Rust:
@@ -324,9 +332,18 @@ async fn simple_completion() {
     builder.spawn_llm(GoogleMock::new("google")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
-    let body = llm.simple_completion("google/gemini-pro", "Quick test").await;
+    let request = json!({
+        "model": "google/gemini-pro",
+        "messages": [
+            {
+                "role": "user",
+                "content": "Quick test"
+            }
+        ]
+    });
+
+    let body = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(body, {
         ".id" => "[id]",
@@ -362,7 +379,6 @@ async fn with_parameters() {
     builder.spawn_llm(GoogleMock::new("google")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     // Test with various Google-compatible parameters
     let request = json!({
@@ -380,7 +396,7 @@ async fn with_parameters() {
         "stop": ["\\n\\n", "END"]
     });
 
-    let body = llm.completions(request).await;
+    let body = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(body, {
         ".id" => "[id]",
@@ -419,8 +435,7 @@ async fn custom_models() {
     builder.spawn_llm(mock).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
-    let body = llm.list_models().await;
+    let body = server.openai_list_models().await;
 
     insta::assert_json_snapshot!(body, @r#"
     {
@@ -451,7 +466,6 @@ async fn custom_response() {
     builder.spawn_llm(mock).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "google/gemini-1.5-flash",
@@ -463,7 +477,7 @@ async fn custom_response() {
         ]
     });
 
-    let body = llm.completions(request).await;
+    let body = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(body, {
         ".id" => "[id]",
@@ -508,7 +522,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "google/gemini-pro",
@@ -516,7 +529,7 @@ path = "/llm"
         "stream": true
     });
 
-    let chunks = llm.stream_completions(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
 
     // Verify chunks are in OpenAI format
     insta::assert_json_snapshot!(chunks[0], {

@@ -46,24 +46,21 @@ path = "/llm"
     let server = builder.build(config).await;
 
     // Make request with custom headers
-    let response = server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
+    let (status, _body) = server
+        .openai_completions(json!({
+            "model": "test/gpt-4",
+            "messages": [{"role": "user", "content": "test"}],
+            "max_tokens": 10
+        }))
         .header("Content-Type", "application/json")
         .header("X-Test-Public", "public-value")
         .header("X-Test-Secret", "secret-value")
         .header("X-Test-Data", "data-value")
         .header("X-Not-Forwarded", "should-not-appear")
-        .json(&json!({
-            "model": "test/gpt-4",
-            "messages": [{"role": "user", "content": "test"}],
-            "max_tokens": 10
-        }))
-        .send()
-        .await
-        .unwrap();
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 200);
+    assert_eq!(status, 200);
 
     // Get captured headers, filtering out standard HTTP headers
     let headers = header_recorder.captured_headers();
@@ -128,23 +125,20 @@ path = "/llm"
     let server = builder.build(config).await;
 
     // Make request with custom headers
-    let response = server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .header("Content-Type", "application/json")
-        .header("X-Request-ID", "req-123")
-        .header("X-Original", "original-value")
-        .header("X-Other", "other-value")
-        .json(&json!({
+    let (status, _body) = server
+        .openai_completions(json!({
             "model": "claude/claude-3-sonnet",
             "messages": [{"role": "user", "content": "test"}],
             "max_tokens": 10
         }))
-        .send()
-        .await
-        .unwrap();
+        .header("Content-Type", "application/json")
+        .header("X-Request-ID", "req-123")
+        .header("X-Original", "original-value")
+        .header("X-Other", "other-value")
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 200);
+    assert_eq!(status, 200);
 
     // Get captured headers, filtering out standard HTTP headers
     let headers = header_recorder.captured_headers();
@@ -212,24 +206,21 @@ path = "/llm"
     let server = builder.build(config).await;
 
     // Make request with custom headers
-    let response = server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
+    let (status, _body) = server
+        .openai_completions(json!({
+            "model": "gemini/gemini-pro",
+            "messages": [{"role": "user", "content": "test"}],
+            "max_tokens": 10
+        }))
         .header("Content-Type", "application/json")
         .header("X-Trace-ID", "trace-123")
         .header("X-Trace-Parent", "parent-456")
         .header("X-Trace-Secret", "secret-789")
         .header("X-Debug", "debug-value")
-        .json(&json!({
-            "model": "gemini/gemini-pro",
-            "messages": [{"role": "user", "content": "test"}],
-            "max_tokens": 10
-        }))
-        .send()
-        .await
-        .unwrap();
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 200);
+    assert_eq!(status, 200);
 
     // Get captured headers, filtering out standard HTTP headers
     let headers = header_recorder.captured_headers();
@@ -305,21 +296,18 @@ path = "/llm"
     let server = builder.build(config).await;
 
     // Test with "smart" model - should have model-level headers
-    let response = server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .header("Content-Type", "application/json")
-        .header("X-Request-ID", "req-999")
-        .json(&json!({
+    let (status, _body) = server
+        .openai_completions(json!({
             "model": "ai/smart",
             "messages": [{"role": "user", "content": "test"}],
             "max_tokens": 10
         }))
-        .send()
-        .await
-        .unwrap();
+        .header("Content-Type", "application/json")
+        .header("X-Request-ID", "req-999")
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 200);
+    assert_eq!(status, 200);
 
     // Get captured headers for smart model
     let headers = header_recorder.captured_headers();
@@ -340,21 +328,18 @@ path = "/llm"
     "#);
 
     // Test with "fast" model - should only have provider-level headers
-    let response = server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .header("Content-Type", "application/json")
-        .header("X-Request-ID", "req-888")
-        .json(&json!({
+    let (status, _body) = server
+        .openai_completions(json!({
             "model": "ai/fast",
             "messages": [{"role": "user", "content": "test"}],
             "max_tokens": 10
         }))
-        .send()
-        .await
-        .unwrap();
+        .header("Content-Type", "application/json")
+        .header("X-Request-ID", "req-888")
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 200);
+    assert_eq!(status, 200);
 
     // Get captured headers for fast model and filter out dynamic ones
     let headers = header_recorder.captured_headers();
@@ -407,20 +392,17 @@ path = "/llm"
     let server = builder.build(config).await;
 
     // Send request WITHOUT X-Request-ID header
-    let response = server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .header("Content-Type", "application/json")
-        .json(&json!({
+    let (status, _body) = server
+        .openai_completions(json!({
             "model": "test/gpt-4",
             "messages": [{"role": "user", "content": "test"}],
             "max_tokens": 10
         }))
-        .send()
-        .await
-        .unwrap();
+        .header("Content-Type", "application/json")
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 200);
+    assert_eq!(status, 200);
 
     // Filter out dynamic headers
     let headers = header_recorder.captured_headers();
@@ -465,21 +447,18 @@ path = "/llm"
     let server = builder.build(config).await;
 
     // Send request WITH X-Request-ID header
-    let response = server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .header("Content-Type", "application/json")
-        .header("X-Request-ID", "actual-request-id")
-        .json(&json!({
+    let (status, _body) = server
+        .openai_completions(json!({
             "model": "test/gpt-4",
             "messages": [{"role": "user", "content": "test"}],
             "max_tokens": 10
         }))
-        .send()
-        .await
-        .unwrap();
+        .header("Content-Type", "application/json")
+        .header("X-Request-ID", "actual-request-id")
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 200);
+    assert_eq!(status, 200);
 
     let headers = header_recorder.captured_headers();
 
@@ -528,22 +507,19 @@ path = "/llm"
 
     let server = builder.build(config).await;
 
-    let response = server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .header("Content-Type", "application/json")
-        .header("X-Source", "test-source")
-        .header("X-Other", "other-value")
-        .json(&json!({
+    let (status, _body) = server
+        .openai_completions(json!({
             "model": "test/gpt-4",
             "messages": [{"role": "user", "content": "test"}],
             "max_tokens": 10
         }))
-        .send()
-        .await
-        .unwrap();
+        .header("Content-Type", "application/json")
+        .header("X-Source", "test-source")
+        .header("X-Other", "other-value")
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 200);
+    assert_eq!(status, 200);
 
     let headers = header_recorder.captured_headers();
 
@@ -600,24 +576,21 @@ path = "/llm"
 
     let server = builder.build(config).await;
 
-    let response = server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
+    let (status, _body) = server
+        .openai_completions(json!({
+            "model": "claude/claude-3",
+            "messages": [{"role": "user", "content": "test"}],
+            "max_tokens": 10
+        }))
         .header("Content-Type", "application/json")
         .header("X-Public", "public-value")
         .header("X-Secret", "secret-value")
         .header("X-Internal", "internal-value")
         .header("X-Allowed", "allowed-value")
-        .json(&json!({
-            "model": "claude/claude-3",
-            "messages": [{"role": "user", "content": "test"}],
-            "max_tokens": 10
-        }))
-        .send()
-        .await
-        .unwrap();
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 200);
+    assert_eq!(status, 200);
 
     let headers = header_recorder.captured_headers();
 
@@ -669,25 +642,22 @@ path = "/llm"
 
     let server = builder.build(config).await;
 
-    let response = server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .header("Content-Type", "application/json")
-        .header("X-Public", "public")
-        .header("X-Secret-Key", "secret1")
-        .header("X-Secret-Token", "secret2")
-        .header("X-secret-data", "secret3") // lowercase
-        .header("X-Safe", "safe")
-        .json(&json!({
+    let (status, _body) = server
+        .openai_completions(json!({
             "model": "test/gpt-4",
             "messages": [{"role": "user", "content": "test"}],
             "max_tokens": 10
         }))
-        .send()
-        .await
-        .unwrap();
+        .header("Content-Type", "application/json")
+        .header("X-Public", "public")
+        .header("X-Secret-Key", "secret1")
+        .header("X-Secret-Token", "secret2")
+        .header("X-secret-data", "secret3")
+        .header("X-Safe", "safe")
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 200);
+    assert_eq!(status, 200);
 
     let headers = header_recorder.captured_headers();
 
@@ -735,21 +705,18 @@ path = "/llm"
     let server = builder.build(config).await;
 
     // Test with header present
-    let response = server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .header("Content-Type", "application/json")
-        .header("X-Original", "original-value")
-        .json(&json!({
+    let (status, _body) = server
+        .openai_completions(json!({
             "model": "test/gpt-4",
             "messages": [{"role": "user", "content": "test"}],
             "max_tokens": 10
         }))
-        .send()
-        .await
-        .unwrap();
+        .header("Content-Type", "application/json")
+        .header("X-Original", "original-value")
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 200);
+    assert_eq!(status, 200);
 
     let headers = header_recorder.captured_headers();
 
@@ -798,20 +765,17 @@ path = "/llm"
     let server = builder.build(config).await;
 
     // Test WITHOUT original header
-    let response = server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .header("Content-Type", "application/json")
-        .json(&json!({
+    let (status, _body) = server
+        .openai_completions(json!({
             "model": "claude/claude-3",
             "messages": [{"role": "user", "content": "test"}],
             "max_tokens": 10
         }))
-        .send()
-        .await
-        .unwrap();
+        .header("Content-Type", "application/json")
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 200);
+    assert_eq!(status, 200);
 
     let headers = header_recorder.captured_headers();
 
@@ -860,21 +824,18 @@ path = "/llm"
     let server = builder.build(config).await;
 
     // Test WITH original header (should override default)
-    let response = server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .header("Content-Type", "application/json")
-        .header("X-Original", "actual-value")
-        .json(&json!({
+    let (status, _body) = server
+        .openai_completions(json!({
             "model": "test/gpt-4",
             "messages": [{"role": "user", "content": "test"}],
             "max_tokens": 10
         }))
-        .send()
-        .await
-        .unwrap();
+        .header("Content-Type", "application/json")
+        .header("X-Original", "actual-value")
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 200);
+    assert_eq!(status, 200);
 
     let headers = header_recorder.captured_headers();
 

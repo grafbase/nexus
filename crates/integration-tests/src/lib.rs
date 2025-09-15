@@ -9,7 +9,7 @@ use std::time::Duration;
 use std::{net::SocketAddr, path::PathBuf};
 
 use config::Config;
-use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue};
+use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
 use rmcp::{
     model::CallToolRequestParam,
     service::{RunningService, ServiceExt},
@@ -111,7 +111,7 @@ impl TestClient {
         self.client.get(format!("{}{}", self.base_url, path)).send().await
     }
 
-    /// Send a custom HTTP request for CORS testing
+    /// Create a request with the given method and path
     pub fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
         self.client.request(method, format!("{}{}", self.base_url, path))
     }
@@ -125,14 +125,6 @@ impl TestClient {
 /// MCP client for testing MCP protocol functionality
 pub struct McpTestClient {
     service: RunningService<rmcp::RoleClient, ()>,
-}
-
-/// LLM client for testing LLM API functionality
-pub struct LlmTestClient {
-    // NEVER make this public - always use the helper methods instead of raw client access
-    client: TestClient,
-    base_path: String,
-    custom_headers: HeaderMap,
 }
 
 impl McpTestClient {
@@ -319,39 +311,37 @@ impl McpTestClient {
     }
 }
 
-impl LlmTestClient {
-    /// Create a new LLM test client
-    pub fn new(client: TestClient, base_path: String) -> Self {
-        Self {
-            client,
-            base_path,
-            custom_headers: HeaderMap::new(),
+/// Builder for OpenAI completions requests with fluent API for headers
+pub struct OpenAICompletionsRequest<'a> {
+    test_server: &'a TestServer,
+    request: serde_json::Value,
+    headers: HeaderMap,
+}
+
+impl<'a> OpenAICompletionsRequest<'a> {
+    /// Add a header to the request
+    pub fn header(mut self, key: &str, value: &str) -> Self {
+        let header_name = HeaderName::from_bytes(key.as_bytes()).unwrap();
+        let header_value = HeaderValue::from_str(value).unwrap();
+        self.headers.insert(header_name, header_value);
+        self
+    }
+
+    /// Send the request and return the response
+    pub async fn send(self) -> serde_json::Value {
+        let openai_path = &self.test_server.config.llm.protocols.openai.path;
+        let url = format!("http://{}{}/v1/chat/completions", self.test_server.address, openai_path);
+
+        let mut request_builder = self.test_server.client.client.post(&url).json(&self.request);
+
+        // Add all headers to the request
+        for (key, value) in &self.headers {
+            if let Ok(value) = value.to_str() {
+                request_builder = request_builder.header(key.as_str(), value);
+            }
         }
-    }
 
-    /// Add a custom header to be included in all requests
-    pub fn push_header(&mut self, key: &str, value: impl AsRef<str>) {
-        let header_name = reqwest::header::HeaderName::from_bytes(key.as_bytes()).unwrap();
-        let header_value = HeaderValue::from_str(value.as_ref()).unwrap();
-        self.custom_headers.insert(header_name, header_value);
-    }
-
-    /// List available models
-    pub async fn list_models(&self) -> serde_json::Value {
-        let response = self.client.get(&format!("{}/v1/models", self.base_path)).await;
-
-        assert_eq!(response.status(), 200);
-        response.json().await.unwrap()
-    }
-
-    /// Send a chat completion request
-    pub async fn completions(&self, request: serde_json::Value) -> serde_json::Value {
-        let response = self
-            .client
-            .post(&format!("{}/v1/chat/completions", self.base_path), &request)
-            .await
-            .unwrap();
-
+        let response = request_builder.send().await.unwrap();
         let status = response.status();
 
         #[allow(clippy::panic)]
@@ -366,71 +356,65 @@ impl LlmTestClient {
         response.json().await.unwrap()
     }
 
-    /// Send a chat completion request with a simple message
-    pub async fn simple_completion(&self, model: &str, message: &str) -> serde_json::Value {
-        let request = json!({
-            "model": model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": message
-                }
-            ]
-        });
+    /// Send the request and return status code and body (for error testing)
+    pub async fn send_raw(self) -> (u16, serde_json::Value) {
+        let openai_path = &self.test_server.config.llm.protocols.openai.path;
+        let url = format!("http://{}{}/v1/chat/completions", self.test_server.address, openai_path);
 
-        self.completions(request).await
-    }
+        let mut request_builder = self.test_server.client.client.post(&url).json(&self.request);
 
-    /// Send a chat completion request that may fail (for testing error cases)
-    pub async fn try_completions(&self, request: serde_json::Value) -> Result<serde_json::Value, String> {
-        let response = self
-            .client
-            .post(&format!("{}/v1/chat/completions", self.base_path), &request)
-            .await
-            .map_err(|e| e.to_string())?;
-
-        let status = response.status();
-        if status != 200 {
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unable to read error".to_string());
-            return Err(format!("Status {status}: {error_text}"));
+        // Add all headers to the request
+        for (key, value) in &self.headers {
+            if let Ok(value) = value.to_str() {
+                request_builder = request_builder.header(key.as_str(), value);
+            }
         }
 
-        response.json().await.map_err(|e| e.to_string())
+        let response = request_builder.send().await.unwrap();
+        let status = response.status().as_u16();
+        let body = response.json().await.unwrap();
+        (status, body)
+    }
+}
+
+/// Builder for OpenAI streaming completions requests with fluent API for headers
+pub struct OpenAICompletionsStreamRequest<'a> {
+    test_server: &'a TestServer,
+    request: serde_json::Value,
+    headers: HeaderMap,
+}
+
+impl<'a> OpenAICompletionsStreamRequest<'a> {
+    /// Add a header to the request
+    pub fn header(mut self, key: &str, value: &str) -> Self {
+        let header_name = HeaderName::from_bytes(key.as_bytes()).unwrap();
+        let header_value = HeaderValue::from_str(value).unwrap();
+        self.headers.insert(header_name, header_value);
+        self
     }
 
-    /// Send a chat completion request and return the raw response
-    async fn send_completion_request(&self, request: serde_json::Value) -> reqwest::Response {
-        let mut req = self
-            .client
-            .client
-            .post(format!(
-                "{}{}/v1/chat/completions",
-                self.client.base_url, self.base_path
-            ))
-            .json(&request);
-
-        // Add any custom headers
-        for (key, value) in &self.custom_headers {
-            req = req.header(key.clone(), value.clone());
-        }
-
-        req.send().await.unwrap()
-    }
-
-    /// Send a completion request expecting an error response
-    pub async fn completions_error(&self, request: serde_json::Value) -> reqwest::Response {
-        self.send_completion_request(request).await
-    }
-
-    /// Send a streaming chat completion request and collect all chunks as JSON values
-    pub async fn stream_completions(&self, request: serde_json::Value) -> Vec<serde_json::Value> {
+    /// Send the request and return streaming chunks
+    pub async fn send(self) -> Vec<serde_json::Value> {
         use eventsource_stream::Eventsource;
         use futures::StreamExt;
 
-        let response = self.send_completion_request(request).await;
+        let openai_path = &self.test_server.config.llm.protocols.openai.path;
+        let url = format!("http://{}{}/v1/chat/completions", self.test_server.address, openai_path);
+
+        // Ensure streaming is enabled
+        let mut request = self.request;
+        request["stream"] = json!(true);
+
+        let mut request_builder = self.test_server.client.client.post(&url).json(&request);
+
+        // Add all headers to the request
+        for (key, value) in &self.headers {
+            if let Ok(value) = value.to_str() {
+                request_builder = request_builder.header(key.as_str(), value);
+            }
+        }
+
+        let response = request_builder.send().await.unwrap();
 
         assert_eq!(response.status(), 200);
         assert_eq!(response.headers().get("content-type").unwrap(), "text/event-stream");
@@ -464,25 +448,124 @@ impl LlmTestClient {
 
         chunks
     }
+}
 
-    /// Send a streaming request and collect the accumulated content
-    pub async fn stream_completions_content(&self, request: serde_json::Value) -> String {
-        let chunks = self.stream_completions(request).await;
+/// Builder for Anthropic completions requests with fluent API for headers
+pub struct AnthropicCompletionsRequest<'a> {
+    test_server: &'a TestServer,
+    request: serde_json::Value,
+    headers: HeaderMap,
+}
 
-        let mut content = String::new();
-        for chunk in chunks {
-            if let Some(delta_content) = chunk
-                .get("choices")
-                .and_then(|c| c.get(0))
-                .and_then(|choice| choice.get("delta"))
-                .and_then(|delta| delta.get("content"))
-                .and_then(|c| c.as_str())
-            {
-                content.push_str(delta_content);
+impl<'a> AnthropicCompletionsRequest<'a> {
+    /// Add a header to the request
+    pub fn header(mut self, key: &str, value: &str) -> Self {
+        let header_name = HeaderName::from_bytes(key.as_bytes()).unwrap();
+        let header_value = HeaderValue::from_str(value).unwrap();
+        self.headers.insert(header_name, header_value);
+        self
+    }
+
+    /// Send the request and return the response
+    pub async fn send(self) -> serde_json::Value {
+        let anthropic_path = &self.test_server.config.llm.protocols.anthropic.path;
+        let url = format!("http://{}{}/v1/messages", self.test_server.address, anthropic_path);
+
+        let mut request_builder = self.test_server.client.client.post(&url).json(&self.request);
+
+        // Add all headers to the request
+        for (key, value) in &self.headers {
+            if let Ok(value) = value.to_str() {
+                request_builder = request_builder.header(key.as_str(), value);
             }
         }
 
-        content
+        let response = request_builder.send().await.unwrap();
+        let status = response.status();
+
+        #[allow(clippy::panic)]
+        if status != 200 {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Unable to read error".to_string());
+            panic!("Expected 200 status, got {status}: {error_text}");
+        }
+
+        response.json().await.unwrap()
+    }
+}
+
+/// Builder for Anthropic streaming completions requests with fluent API for headers
+pub struct AnthropicCompletionsStreamRequest<'a> {
+    test_server: &'a TestServer,
+    request: serde_json::Value,
+    headers: HeaderMap,
+}
+
+impl<'a> AnthropicCompletionsStreamRequest<'a> {
+    /// Add a header to the request
+    pub fn header(mut self, key: &str, value: &str) -> Self {
+        let header_name = HeaderName::from_bytes(key.as_bytes()).unwrap();
+        let header_value = HeaderValue::from_str(value).unwrap();
+        self.headers.insert(header_name, header_value);
+        self
+    }
+
+    /// Send the request and return streaming chunks
+    pub async fn send(self) -> Vec<serde_json::Value> {
+        use eventsource_stream::Eventsource;
+        use futures::StreamExt;
+
+        let anthropic_path = &self.test_server.config.llm.protocols.anthropic.path;
+        let url = format!("http://{}{}/v1/messages", self.test_server.address, anthropic_path);
+
+        // Ensure streaming is enabled
+        let mut request = self.request;
+        request["stream"] = json!(true);
+
+        let mut request_builder = self.test_server.client.client.post(&url).json(&request);
+
+        // Add all headers to the request
+        for (key, value) in &self.headers {
+            if let Ok(value) = value.to_str() {
+                request_builder = request_builder.header(key.as_str(), value);
+            }
+        }
+
+        let response = request_builder.send().await.unwrap();
+
+        assert_eq!(response.status(), 200);
+        assert_eq!(response.headers().get("content-type").unwrap(), "text/event-stream");
+
+        // Convert the response bytes stream to SSE event stream
+        let byte_stream = response.bytes_stream();
+        let event_stream = byte_stream.eventsource();
+
+        // Transform SSE events to JSON values
+        let stream = event_stream.filter_map(|event| async move {
+            match event {
+                Ok(event) => {
+                    // Skip empty events and [DONE] marker
+                    if event.data.is_empty() || event.data == "[DONE]" {
+                        None
+                    } else {
+                        // Parse as JSON Value
+                        serde_json::from_str::<serde_json::Value>(&event.data).ok()
+                    }
+                }
+                Err(_) => None,
+            }
+        });
+
+        futures::pin_mut!(stream);
+
+        let mut chunks = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            chunks.push(chunk);
+        }
+
+        chunks
     }
 }
 
@@ -490,6 +573,8 @@ impl LlmTestClient {
 pub struct TestServer {
     pub client: TestClient,
     pub address: SocketAddr,
+    /// Configuration used by this test server
+    pub config: Config,
     /// Cancellation tokens for test services (MCP mocks, LLM mocks, etc.)
     pub test_service_tokens: Vec<CancellationToken>,
     /// Handle to the main Nexus server task
@@ -541,7 +626,7 @@ impl TestServer {
         // Create the server configuration with telemetry guard
         let serve_config = ServeConfig {
             listen_address: address,
-            config,
+            config: config.clone(),
             shutdown_signal: nexus_shutdown_signal_clone,
             log_filter: "server=debug,mcp=debug,telemetry=debug,rate_limit=debug,llm=debug,config=debug,integration_tests=debug,nexus=debug".to_string(),
         };
@@ -608,6 +693,7 @@ impl TestServer {
         TestServer {
             client,
             address,
+            config,
             test_service_tokens,
             _nexus_task_handle: nexus_task_handle,
             nexus_shutdown_signal,
@@ -653,9 +739,51 @@ impl TestServer {
         McpTestClient::new_with_headers(mcp_url, headers).await
     }
 
-    /// Create an LLM client for testing LLM API endpoints
-    pub fn llm_client(&self, base_path: &str) -> LlmTestClient {
-        LlmTestClient::new(self.client.clone(), base_path.to_string())
+    /// Create an OpenAI completions request builder
+    pub fn openai_completions(&self, request: serde_json::Value) -> OpenAICompletionsRequest<'_> {
+        OpenAICompletionsRequest {
+            test_server: self,
+            request,
+            headers: HeaderMap::new(),
+        }
+    }
+
+    /// Create an OpenAI streaming completions request builder
+    pub fn openai_completions_stream(&self, request: serde_json::Value) -> OpenAICompletionsStreamRequest<'_> {
+        OpenAICompletionsStreamRequest {
+            test_server: self,
+            request,
+            headers: HeaderMap::new(),
+        }
+    }
+
+    /// Create an Anthropic completions request builder
+    pub fn anthropic_completions(&self, request: serde_json::Value) -> AnthropicCompletionsRequest<'_> {
+        AnthropicCompletionsRequest {
+            test_server: self,
+            request,
+            headers: HeaderMap::new(),
+        }
+    }
+
+    /// Create an Anthropic streaming completions request builder
+    pub fn anthropic_completions_stream(&self, request: serde_json::Value) -> AnthropicCompletionsStreamRequest<'_> {
+        AnthropicCompletionsStreamRequest {
+            test_server: self,
+            request,
+            headers: HeaderMap::new(),
+        }
+    }
+
+    /// List models for OpenAI protocol
+    pub async fn openai_list_models(&self) -> serde_json::Value {
+        let openai_path = &self.config.llm.protocols.openai.path;
+        let url = format!("http://{}{}/v1/models", self.address, openai_path);
+
+        let response = self.client.client.get(&url).send().await.unwrap();
+
+        assert_eq!(response.status(), 200);
+        response.json().await.unwrap()
     }
 }
 
@@ -803,7 +931,7 @@ impl TestServerBuilder {
 
                 [llm.protocols.openai]
                 enabled = true
-                path = "/llm"
+                path = "/llm/openai"
             "#});
         }
 
