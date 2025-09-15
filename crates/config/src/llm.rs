@@ -87,30 +87,49 @@ impl Default for LlmProtocol {
     }
 }
 
-/// Configuration for a single LLM protocol endpoint.
+/// OpenAI protocol configuration
 #[derive(Debug, Clone, Deserialize)]
-pub struct LlmProtocolConfig {
-    /// Whether this protocol endpoint is enabled.
-    #[serde(default = "default_true")]
+#[serde(default)]
+pub struct OpenAIProtocolConfig {
     pub enabled: bool,
-
-    /// The path where this endpoint will be mounted.
     pub path: String,
 }
 
-fn default_true() -> bool {
-    true
+impl Default for OpenAIProtocolConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            path: "/llm/openai".to_string(),
+        }
+    }
+}
+
+/// Anthropic protocol configuration
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct AnthropicProtocolConfig {
+    pub enabled: bool,
+    pub path: String,
+}
+
+impl Default for AnthropicProtocolConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false, // TODO: Enable when Anthropic protocol is implemented
+            path: "/llm/anthropic".to_string(),
+        }
+    }
 }
 
 /// Configuration for all LLM protocol endpoints.
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default)]
 pub struct LlmProtocolsConfig {
-    /// OpenAI protocol endpoint configuration.
-    pub openai: Option<LlmProtocolConfig>,
+    /// OpenAI protocol endpoint configuration
+    pub openai: OpenAIProtocolConfig,
 
-    /// Anthropic protocol endpoint configuration.
-    pub anthropic: Option<LlmProtocolConfig>,
+    /// Anthropic protocol endpoint configuration
+    pub anthropic: AnthropicProtocolConfig,
 }
 
 /// LLM configuration for AI model integration.
@@ -148,28 +167,9 @@ impl LlmConfig {
         !self.providers.is_empty()
     }
 
-    /// Get all configured protocol endpoints as (protocol, config) pairs.
-    pub fn get_protocol_endpoints(&self) -> Vec<(LlmProtocol, &LlmProtocolConfig)> {
-        let mut endpoints = Vec::new();
-
-        if let Some(openai_config) = &self.protocols.openai
-            && openai_config.enabled
-        {
-            endpoints.push((LlmProtocol::OpenAI, openai_config));
-        }
-
-        if let Some(anthropic_config) = &self.protocols.anthropic
-            && anthropic_config.enabled
-        {
-            endpoints.push((LlmProtocol::Anthropic, anthropic_config));
-        }
-
-        endpoints
-    }
-
-    /// Whether there are any protocol endpoints configured.
+    /// Whether there are any protocol endpoints enabled.
     pub fn has_protocol_endpoints(&self) -> bool {
-        !self.get_protocol_endpoints().is_empty()
+        self.protocols.openai.enabled || self.protocols.anthropic.enabled
     }
 }
 
@@ -405,8 +405,14 @@ mod tests {
         LlmConfig {
             enabled: true,
             protocols: LlmProtocolsConfig {
-                openai: None,
-                anthropic: None,
+                openai: OpenAIProtocolConfig {
+                    enabled: true,
+                    path: "/llm/openai",
+                },
+                anthropic: AnthropicProtocolConfig {
+                    enabled: false,
+                    path: "/llm/anthropic",
+                },
             },
             providers: {},
         }
@@ -437,13 +443,14 @@ mod tests {
         LlmConfig {
             enabled: true,
             protocols: LlmProtocolsConfig {
-                openai: Some(
-                    LlmProtocolConfig {
-                        enabled: true,
-                        path: "/llm",
-                    },
-                ),
-                anthropic: None,
+                openai: OpenAIProtocolConfig {
+                    enabled: true,
+                    path: "/llm",
+                },
+                anthropic: AnthropicProtocolConfig {
+                    enabled: false,
+                    path: "/llm/anthropic",
+                },
             },
             providers: {
                 "openai": Openai(
@@ -498,13 +505,14 @@ mod tests {
         LlmConfig {
             enabled: true,
             protocols: LlmProtocolsConfig {
-                openai: None,
-                anthropic: Some(
-                    LlmProtocolConfig {
-                        enabled: true,
-                        path: "/llm",
-                    },
-                ),
+                openai: OpenAIProtocolConfig {
+                    enabled: true,
+                    path: "/llm/openai",
+                },
+                anthropic: AnthropicProtocolConfig {
+                    enabled: true,
+                    path: "/llm",
+                },
             },
             providers: {
                 "anthropic": Anthropic(
@@ -557,13 +565,14 @@ mod tests {
         LlmConfig {
             enabled: true,
             protocols: LlmProtocolsConfig {
-                openai: Some(
-                    LlmProtocolConfig {
-                        enabled: true,
-                        path: "/llm",
-                    },
-                ),
-                anthropic: None,
+                openai: OpenAIProtocolConfig {
+                    enabled: true,
+                    path: "/llm",
+                },
+                anthropic: AnthropicProtocolConfig {
+                    enabled: false,
+                    path: "/llm/anthropic",
+                },
             },
             providers: {
                 "google": Google(
@@ -627,13 +636,14 @@ path = "/ai"
         LlmConfig {
             enabled: true,
             protocols: LlmProtocolsConfig {
-                openai: Some(
-                    LlmProtocolConfig {
-                        enabled: true,
-                        path: "/ai",
-                    },
-                ),
-                anthropic: None,
+                openai: OpenAIProtocolConfig {
+                    enabled: true,
+                    path: "/ai",
+                },
+                anthropic: AnthropicProtocolConfig {
+                    enabled: false,
+                    path: "/llm/anthropic",
+                },
             },
             providers: {
                 "anthropic": Anthropic(
@@ -703,16 +713,22 @@ path = "/ai"
 
         let config: LlmConfig = toml::from_str(config).unwrap();
 
-        assert_debug_snapshot!(&config, @r"
+        assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: false,
             protocols: LlmProtocolsConfig {
-                openai: None,
-                anthropic: None,
+                openai: OpenAIProtocolConfig {
+                    enabled: true,
+                    path: "/llm/openai",
+                },
+                anthropic: AnthropicProtocolConfig {
+                    enabled: false,
+                    path: "/llm/anthropic",
+                },
             },
             providers: {},
         }
-        ");
+        "#);
     }
 
     #[test]
@@ -729,13 +745,14 @@ path = "/models"
         LlmConfig {
             enabled: true,
             protocols: LlmProtocolsConfig {
-                openai: Some(
-                    LlmProtocolConfig {
-                        enabled: true,
-                        path: "/models",
-                    },
-                ),
-                anthropic: None,
+                openai: OpenAIProtocolConfig {
+                    enabled: true,
+                    path: "/models",
+                },
+                anthropic: AnthropicProtocolConfig {
+                    enabled: false,
+                    path: "/llm/anthropic",
+                },
             },
             providers: {},
         }
@@ -776,13 +793,14 @@ path = "/llm"
         LlmConfig {
             enabled: true,
             protocols: LlmProtocolsConfig {
-                openai: Some(
-                    LlmProtocolConfig {
-                        enabled: true,
-                        path: "/llm",
-                    },
-                ),
-                anthropic: None,
+                openai: OpenAIProtocolConfig {
+                    enabled: true,
+                    path: "/llm",
+                },
+                anthropic: AnthropicProtocolConfig {
+                    enabled: false,
+                    path: "/llm/anthropic",
+                },
             },
             providers: {
                 "openai": Openai(
@@ -831,13 +849,14 @@ path = "/llm"
         LlmConfig {
             enabled: true,
             protocols: LlmProtocolsConfig {
-                openai: Some(
-                    LlmProtocolConfig {
-                        enabled: true,
-                        path: "/llm",
-                    },
-                ),
-                anthropic: None,
+                openai: OpenAIProtocolConfig {
+                    enabled: true,
+                    path: "/llm",
+                },
+                anthropic: AnthropicProtocolConfig {
+                    enabled: false,
+                    path: "/llm/anthropic",
+                },
             },
             providers: {
                 "openai": Openai(
@@ -895,13 +914,14 @@ path = "/llm"
         LlmConfig {
             enabled: true,
             protocols: LlmProtocolsConfig {
-                openai: Some(
-                    LlmProtocolConfig {
-                        enabled: true,
-                        path: "/llm",
-                    },
-                ),
-                anthropic: None,
+                openai: OpenAIProtocolConfig {
+                    enabled: true,
+                    path: "/llm",
+                },
+                anthropic: AnthropicProtocolConfig {
+                    enabled: false,
+                    path: "/llm/anthropic",
+                },
             },
             providers: {
                 "openai": Openai(
@@ -962,13 +982,14 @@ path = "/llm"
         LlmConfig {
             enabled: true,
             protocols: LlmProtocolsConfig {
-                openai: Some(
-                    LlmProtocolConfig {
-                        enabled: true,
-                        path: "/llm",
-                    },
-                ),
-                anthropic: None,
+                openai: OpenAIProtocolConfig {
+                    enabled: true,
+                    path: "/llm",
+                },
+                anthropic: AnthropicProtocolConfig {
+                    enabled: false,
+                    path: "/llm/anthropic",
+                },
             },
             providers: {
                 "anthropic": Anthropic(
@@ -1147,13 +1168,14 @@ path = "/llm"
         LlmConfig {
             enabled: true,
             protocols: LlmProtocolsConfig {
-                openai: Some(
-                    LlmProtocolConfig {
-                        enabled: true,
-                        path: "/llm",
-                    },
-                ),
-                anthropic: None,
+                openai: OpenAIProtocolConfig {
+                    enabled: true,
+                    path: "/llm",
+                },
+                anthropic: AnthropicProtocolConfig {
+                    enabled: false,
+                    path: "/llm/anthropic",
+                },
             },
             providers: {
                 "anthropic": Anthropic(
@@ -1237,18 +1259,14 @@ path = "/llm"
         LlmConfig {
             enabled: true,
             protocols: LlmProtocolsConfig {
-                openai: Some(
-                    LlmProtocolConfig {
-                        enabled: true,
-                        path: "/llm",
-                    },
-                ),
-                anthropic: Some(
-                    LlmProtocolConfig {
-                        enabled: true,
-                        path: "/claude",
-                    },
-                ),
+                openai: OpenAIProtocolConfig {
+                    enabled: true,
+                    path: "/llm",
+                },
+                anthropic: AnthropicProtocolConfig {
+                    enabled: true,
+                    path: "/claude",
+                },
             },
             providers: {
                 "openai": Openai(
@@ -1295,13 +1313,14 @@ protocol = "anthropic"
         LlmConfig {
             enabled: true,
             protocols: LlmProtocolsConfig {
-                openai: Some(
-                    LlmProtocolConfig {
-                        enabled: true,
-                        path: "/v1",
-                    },
-                ),
-                anthropic: None,
+                openai: OpenAIProtocolConfig {
+                    enabled: true,
+                    path: "/v1",
+                },
+                anthropic: AnthropicProtocolConfig {
+                    enabled: false,
+                    path: "/llm/anthropic",
+                },
             },
             providers: {
                 "anthropic": Anthropic(
@@ -1325,5 +1344,17 @@ protocol = "anthropic"
             },
         }
         "#);
+    }
+
+    #[test]
+    fn protocol_config_default_paths() {
+        // Test that the default configs have correct paths
+        let openai_config = OpenAIProtocolConfig::default();
+        assert_eq!(openai_config.path, "/llm/openai");
+        assert!(openai_config.enabled);
+
+        let anthropic_config = AnthropicProtocolConfig::default();
+        assert_eq!(anthropic_config.path, "/llm/anthropic");
+        assert!(!anthropic_config.enabled); // Disabled by default until implemented
     }
 }

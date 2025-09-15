@@ -58,26 +58,29 @@ pub(crate) fn validate_has_downstreams(config: &Config) -> anyhow::Result<()> {
     // If LLM is enabled and has providers, it must have at least one protocol endpoint
     if has_llm_providers && !config.llm.has_protocol_endpoints() {
         bail!(indoc! {r#"
-            LLM providers are configured but no protocol endpoints are defined. At least one protocol endpoint must be configured.
+            LLM providers are configured but no protocol endpoints are enabled. At least one protocol endpoint must be enabled.
 
-            Example configuration:
+            Both protocols are enabled by default. To explicitly enable them in configuration:
 
               [llm.protocols.openai]
               enabled = true
-              path = "/llm"
+              path = "/llm/openai"
 
               [llm.protocols.anthropic]
               enabled = true
-              path = "/claude"
+              path = "/llm/anthropic"
         "#});
     }
 
-    // Validate that protocol endpoint paths are unique
-    let mut seen_paths = std::collections::HashSet::new();
-    for (_protocol, endpoint_config) in config.llm.get_protocol_endpoints() {
-        if !seen_paths.insert(&endpoint_config.path) {
-            bail!("Duplicate LLM protocol endpoint path: {}", endpoint_config.path);
-        }
+    // Validate that protocol endpoint paths are unique if both are enabled
+    if config.llm.protocols.openai.enabled
+        && config.llm.protocols.anthropic.enabled
+        && config.llm.protocols.openai.path == config.llm.protocols.anthropic.path
+    {
+        bail!(
+            "Duplicate LLM protocol endpoint path: OpenAI and Anthropic protocols cannot use the same path ({})",
+            config.llm.protocols.openai.path
+        );
     }
 
     Ok(())
@@ -606,6 +609,12 @@ mod tests {
     #[test]
     fn validation_fails_when_llm_has_providers_but_no_endpoints() {
         let config_str = indoc! {r#"
+            [llm.protocols.openai]
+            enabled = false
+
+            [llm.protocols.anthropic]
+            enabled = false
+
             [llm.providers.openai]
             type = "openai"
             api_key = "test-key"
@@ -617,7 +626,7 @@ mod tests {
         let result = super::validate_has_downstreams(&config);
         assert!(result.is_err());
         let error = result.unwrap_err().to_string();
-        assert!(error.contains("no protocol endpoints are defined"));
+        assert!(error.contains("no protocol endpoints are enabled"));
     }
 
     #[test]

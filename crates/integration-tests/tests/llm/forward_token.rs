@@ -18,10 +18,19 @@ async fn forward_token_disabled_uses_configured_key() {
     let config = "";
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     // Make request WITHOUT token forwarding header
-    let response = llm.simple_completion("test_openai/gpt-4", "Hello").await;
+    let request = json!({
+        "model": "test_openai/gpt-4",
+        "messages": [
+            {
+                "role": "user",
+                "content": "Hello"
+            }
+        ]
+    });
+
+    let response = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(response, {
         ".id" => "[id]",
@@ -71,7 +80,6 @@ async fn forward_token_enabled_uses_provided_key() {
     "#, config_data.address};
 
     let server = TestServer::builder().build(&config).await;
-    let client = reqwest::Client::new();
 
     // Make request WITH token forwarding header
     let request = json!({
@@ -79,16 +87,11 @@ async fn forward_token_enabled_uses_provided_key() {
         "messages": [{"role": "user", "content": "Hello"}],
     });
 
-    let response = client
-        .post(format!("http://{}/llm/v1/chat/completions", server.address))
+    let body = server
+        .openai_completions(request)
         .header(PROVIDER_API_KEY_HEADER, "user-provided-key")
-        .json(&request)
         .send()
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), 200);
-    let body: serde_json::Value = response.json().await.unwrap();
+        .await;
 
     insta::assert_json_snapshot!(body, {
         ".id" => "[id]",
@@ -137,10 +140,19 @@ async fn forward_token_enabled_falls_back_to_configured_key() {
     "#, config_data.address};
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     // Make request WITHOUT token forwarding header (should use fallback)
-    let response = llm.simple_completion("test_openai_fallback/gpt-4", "Hello").await;
+    let request = json!({
+        "model": "test_openai_fallback/gpt-4",
+        "messages": [
+            {
+                "role": "user",
+                "content": "Hello"
+            }
+        ]
+    });
+
+    let response = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(response, {
         ".id" => "[id]",
@@ -184,7 +196,6 @@ async fn forward_token_enabled_no_keys_returns_error() {
     "#};
 
     let server = TestServer::builder().build(config).await;
-    let client = reqwest::Client::new();
 
     // Make request WITHOUT token forwarding header and no configured key
     let request = json!({
@@ -192,15 +203,9 @@ async fn forward_token_enabled_no_keys_returns_error() {
         "messages": [{"role": "user", "content": "Hello"}],
     });
 
-    let response = client
-        .post(format!("http://{}/llm/v1/chat/completions", server.address))
-        .json(&request)
-        .send()
-        .await
-        .unwrap();
+    let (status, body) = server.openai_completions(request).send_raw().await;
 
-    assert_eq!(response.status(), 401);
-    let body: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(status, 401);
 
     insta::assert_json_snapshot!(body, @r#"
     {
@@ -235,23 +240,17 @@ async fn forward_token_works_with_anthropic() {
     "#, config_data.address};
 
     let server = TestServer::builder().build(&config).await;
-    let client = reqwest::Client::new();
 
     let request = json!({
         "model": "test_anthropic_forward_token/claude-3-opus-20240229",
         "messages": [{"role": "user", "content": "Hello"}],
     });
 
-    let response = client
-        .post(format!("http://{}/llm/v1/chat/completions", server.address))
+    let body = server
+        .openai_completions(request)
         .header(PROVIDER_API_KEY_HEADER, "anthropic-user-key")
-        .json(&request)
         .send()
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), 200);
-    let body: serde_json::Value = response.json().await.unwrap();
+        .await;
 
     insta::assert_json_snapshot!(body, {
         ".id" => "[id]",
@@ -302,23 +301,17 @@ async fn forward_token_works_with_google() {
     "#, config_data.address};
 
     let server = TestServer::builder().build(&config).await;
-    let client = reqwest::Client::new();
 
     let request = json!({
         "model": "test_google_forward_token/gemini-pro",
         "messages": [{"role": "user", "content": "Hello"}],
     });
 
-    let response = client
-        .post(format!("http://{}/llm/v1/chat/completions", server.address))
+    let body = server
+        .openai_completions(request)
         .header(PROVIDER_API_KEY_HEADER, "google-user-key")
-        .json(&request)
         .send()
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), 200);
-    let body: serde_json::Value = response.json().await.unwrap();
+        .await;
 
     insta::assert_json_snapshot!(body, {
         ".id" => "[id]",
@@ -359,7 +352,6 @@ async fn forward_token_disabled_ignores_header() {
     let config = "";
 
     let server = builder.build(config).await;
-    let client = reqwest::Client::new();
 
     // Send token forwarding header even though token forwarding is disabled
     let request = json!({
@@ -367,16 +359,11 @@ async fn forward_token_disabled_ignores_header() {
         "messages": [{"role": "user", "content": "Hello"}],
     });
 
-    let response = client
-        .post(format!("http://{}/llm/v1/chat/completions", server.address))
+    let body = server
+        .openai_completions(request)
         .header(PROVIDER_API_KEY_HEADER, "should-be-ignored")
-        .json(&request)
         .send()
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), 200);
-    let body: serde_json::Value = response.json().await.unwrap();
+        .await;
 
     insta::assert_json_snapshot!(body, {
         ".id" => "[id]",

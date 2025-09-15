@@ -8,8 +8,7 @@ async fn list_models() {
     builder.spawn_llm(AnthropicMock::new("anthropic")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
-    let body = llm.list_models().await;
+    let body = server.openai_list_models().await;
 
     insta::assert_json_snapshot!(body, {
         ".data[].created" => "[created]"
@@ -58,7 +57,6 @@ async fn chat_completion() {
     builder.spawn_llm(AnthropicMock::new("anthropic")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "anthropic/claude-3-5-sonnet-20241022",
@@ -76,7 +74,7 @@ async fn chat_completion() {
         "max_tokens": 100
     });
 
-    let body = llm.completions(request).await;
+    let body = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(body, {
         ".id" => "msg_[id]",
@@ -112,7 +110,6 @@ async fn handles_system_messages() {
     builder.spawn_llm(AnthropicMock::new("anthropic")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     // Test with system message which Anthropic handles specially
     let request = json!({
@@ -129,7 +126,7 @@ async fn handles_system_messages() {
         ]
     });
 
-    let body = llm.completions(request).await;
+    let body = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(body, {
         ".id" => "msg_[id]",
@@ -165,11 +162,18 @@ async fn simple_completion() {
     builder.spawn_llm(AnthropicMock::new("anthropic")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
-    let body = llm
-        .simple_completion("anthropic/claude-3-5-haiku-20241022", "Quick test")
-        .await;
+    let request = json!({
+        "model": "anthropic/claude-3-5-haiku-20241022",
+        "messages": [
+            {
+                "role": "user",
+                "content": "Quick test"
+            }
+        ]
+    });
+
+    let body = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(body, {
         ".id" => "msg_[id]",
@@ -205,7 +209,6 @@ async fn with_parameters() {
     builder.spawn_llm(AnthropicMock::new("anthropic")).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     // Test with various Anthropic-compatible parameters
     let request = json!({
@@ -222,7 +225,7 @@ async fn with_parameters() {
         "stop": ["\\n\\n", "END"]
     });
 
-    let body = llm.completions(request).await;
+    let body = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(body, {
         ".id" => "msg_[id]",
@@ -273,7 +276,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "anthropic/claude-3-5-sonnet-20241022",
@@ -281,7 +283,7 @@ path = "/llm"
         "stream": true
     });
 
-    let chunks = llm.stream_completions(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
 
     // Should have multiple chunks (initial, content, final with usage)
     assert!(chunks.len() >= 3);
@@ -330,7 +332,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "anthropic/claude-3-opus-20240229",
@@ -338,7 +339,7 @@ path = "/llm"
         "stream": true
     });
 
-    let chunks = llm.stream_completions(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
 
     // Should have multiple chunks
     assert!(chunks.len() >= 3); // start, content, end

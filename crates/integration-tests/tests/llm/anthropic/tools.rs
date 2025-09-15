@@ -22,7 +22,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "anthropic/claude-3-5-sonnet-20241022",
@@ -54,7 +53,7 @@ path = "/llm"
         "tool_choice": "auto"
     });
 
-    let response = llm.completions(request).await;
+    let response = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(response, {
         ".id" => "[id]",
@@ -116,7 +115,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "anthropic/claude-3-5-sonnet-20241022",
@@ -144,7 +142,7 @@ path = "/llm"
         "parallel_tool_calls": true
     });
 
-    let response = llm.completions(request).await;
+    let response = server.openai_completions(request).send().await;
 
     // Note: This test currently returns a single tool call due to simplified mock implementation
     // In a real scenario, parallel tool calls would return multiple tool_calls
@@ -205,7 +203,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "anthropic/claude-3-5-sonnet-20241022",
@@ -255,7 +252,7 @@ path = "/llm"
         }
     });
 
-    let response = llm.completions(request).await;
+    let response = server.openai_completions(request).send().await;
 
     // Verify that the specific tool was called
     insta::assert_json_snapshot!(response, {
@@ -316,7 +313,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     // Test handling of tool response messages (converted to Anthropic's tool_result format)
     let request = json!({
@@ -346,7 +342,7 @@ path = "/llm"
         ]
     });
 
-    let response = llm.completions(request).await;
+    let response = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(response, {
         ".id" => "[id]",
@@ -395,7 +391,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     // Regular request without tools should work normally
     let request = json!({
@@ -406,7 +401,7 @@ path = "/llm"
         }]
     });
 
-    let response = llm.completions(request).await;
+    let response = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(response, {
         ".id" => "[id]",
@@ -456,7 +451,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "anthropic/claude-3-5-sonnet-20241022",
@@ -490,7 +484,7 @@ path = "/llm"
     });
 
     // Test streaming tool calls
-    let chunks = llm.stream_completions(request.clone()).await;
+    let chunks = server.openai_completions_stream(request.clone()).send().await;
 
     // Should have multiple chunks for streaming
     assert!(chunks.len() >= 2, "Expected at least 2 chunks, got {}", chunks.len());

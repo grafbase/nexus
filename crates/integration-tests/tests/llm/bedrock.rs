@@ -23,8 +23,7 @@ async fn bedrock_list_models() {
     builder.spawn_llm(mock).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
-    let body = llm.list_models().await;
+    let body = server.openai_list_models().await;
 
     insta::assert_json_snapshot!(body, {
         ".data[].created" => "[created]"

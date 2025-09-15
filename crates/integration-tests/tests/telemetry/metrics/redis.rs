@@ -367,6 +367,13 @@ async fn redis_check_and_consume_tokens_operation() {
         [telemetry.exporters.otlp.batch_export]
         scheduled_delay = "1s"
 
+        [llm]
+        enabled = true
+
+        [llm.protocols.openai]
+        enabled = true
+        path = "/llm"
+
         [llm.providers.test.models."gpt-4".rate_limits.per_user]
         input_token_limit = 1000
         interval = "60s"
@@ -375,22 +382,17 @@ async fn redis_check_and_consume_tokens_operation() {
     let test_server = builder.build(&config).await;
 
     // Make an LLM request that will trigger token rate limiting
-    // Use the raw client to properly send headers
-    let response = test_server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .json(&json!({
+    let (status, body) = test_server
+        .openai_completions(json!({
             "model": "test/gpt-4",
             "messages": [{"role": "user", "content": "Hello"}]
         }))
         .header("x-client-id", "test-user-1")
-        .send()
-        .await
-        .unwrap();
+        .send_raw()
+        .await;
 
     // Verify the request succeeded
-    assert_eq!(response.status(), 200);
-    let body = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(status, 200);
     assert!(body["choices"].is_array());
 
     // Wait for metrics to be exported

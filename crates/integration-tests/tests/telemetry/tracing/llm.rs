@@ -90,11 +90,8 @@ async fn llm_chat_completion_creates_span() {
     headers.insert("traceparent", traceparent.parse().unwrap());
 
     // Make a chat completion request
-    let response = test_server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .headers(headers)
-        .json(&json!({
+    let (status, _body) = test_server
+        .openai_completions(json!({
             "model": "test_openai/gpt-4",
             "messages": [
                 {"role": "system", "content": "You are a helpful assistant."},
@@ -103,11 +100,13 @@ async fn llm_chat_completion_creates_span() {
             "temperature": 0.7,
             "max_tokens": 150
         }))
-        .send()
-        .await
-        .unwrap();
+        .header("x-client-id", &client_id)
+        .header("x-client-group", "premium")
+        .header("traceparent", &traceparent)
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 200);
+    assert_eq!(status, 200);
 
     let clickhouse = create_clickhouse_client().await;
 
@@ -264,11 +263,8 @@ async fn llm_streaming_completion_creates_span() {
     headers.insert("traceparent", traceparent.parse().unwrap());
 
     // Make a streaming chat completion request
-    let response = test_server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .headers(headers)
-        .json(&json!({
+    let chunks = test_server
+        .openai_completions_stream(json!({
             "model": "test_openai/gpt-3.5-turbo",
             "messages": [
                 {"role": "user", "content": "Count from 1 to 5"}
@@ -277,16 +273,23 @@ async fn llm_streaming_completion_creates_span() {
             "temperature": 0.5,
             "max_tokens": 50
         }))
+        .header("x-client-id", &client_id)
+        .header("x-client-group", "basic")
+        .header("traceparent", &traceparent)
         .send()
-        .await
-        .unwrap();
+        .await;
 
-    assert_eq!(response.status(), 200);
+    // Verify we got streaming chunks (the [DONE] marker is filtered out by the streaming parser)
+    assert!(!chunks.is_empty(), "Should receive streaming chunks");
 
-    // Consume the stream
-    let body = response.text().await.unwrap();
-    assert!(body.contains("data:"));
-    assert!(body.contains("[DONE]"));
+    // Check that we got actual content chunks (the [DONE] marker is automatically filtered out)
+    let has_content_chunk = chunks.iter().any(|chunk| {
+        chunk
+            .get("choices")
+            .and_then(|choices| choices.as_array())
+            .is_some_and(|choices| !choices.is_empty())
+    });
+    assert!(has_content_chunk, "Should contain streaming content chunks");
 
     let clickhouse = create_clickhouse_client().await;
 
@@ -420,11 +423,8 @@ async fn llm_with_tools_adds_tool_attributes() {
     headers.insert("traceparent", traceparent.parse().unwrap());
 
     // Make a chat completion request with tools
-    let response = test_server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .headers(headers)
-        .json(&json!({
+    let (status, _body) = test_server
+        .openai_completions(json!({
             "model": "test_openai/gpt-4",
             "messages": [
                 {"role": "user", "content": "What's the weather like?"}
@@ -459,11 +459,12 @@ async fn llm_with_tools_adds_tool_attributes() {
             ],
             "tool_choice": "auto"
         }))
-        .send()
-        .await
-        .unwrap();
+        .header("x-client-id", "tools-test-client")
+        .header("traceparent", &traceparent)
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 200);
+    assert_eq!(status, 200);
 
     let clickhouse = create_clickhouse_client().await;
 
@@ -559,21 +560,19 @@ async fn llm_error_creates_span_with_error_attributes() {
     headers.insert("traceparent", traceparent.parse().unwrap());
 
     // Make a chat completion request that will fail
-    let response = test_server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .headers(headers)
-        .json(&json!({
+    let (status, _body) = test_server
+        .openai_completions(json!({
             "model": "test_openai/gpt-4",
             "messages": [
                 {"role": "user", "content": "This will fail"}
             ]
         }))
-        .send()
-        .await
-        .unwrap();
+        .header("x-client-id", "error-test-client")
+        .header("traceparent", &traceparent)
+        .send_raw()
+        .await;
 
-    assert_eq!(response.status(), 401);
+    assert_eq!(status, 401);
 
     let clickhouse = create_clickhouse_client().await;
 

@@ -25,10 +25,9 @@ async fn multiple_providers_work_together() {
     builder.spawn_llm(google_provider).await;
 
     let server = builder.build("").await;
-    let llm = server.llm_client("/llm");
 
     // Test listing models from both providers
-    let models_body = llm.list_models().await;
+    let models_body = server.openai_list_models().await;
 
     // Extract and normalize model IDs for snapshot
     let model_ids: Vec<String> = models_body["data"]
@@ -60,7 +59,7 @@ async fn multiple_providers_work_together() {
         "messages": [{"role": "user", "content": "Hello from OpenAI"}]
     });
 
-    let openai_body = llm.completions(openai_request).await;
+    let openai_body = server.openai_completions(openai_request).send().await;
 
     insta::assert_json_snapshot!(openai_body, {
         ".id" => "chatcmpl-test-[uuid]"
@@ -94,7 +93,7 @@ async fn multiple_providers_work_together() {
         "messages": [{"role": "user", "content": "Hello from Anthropic"}]
     });
 
-    let anthropic_body = llm.completions(anthropic_request).await;
+    let anthropic_body = server.openai_completions(anthropic_request).send().await;
 
     insta::assert_json_snapshot!(anthropic_body, {
         ".id" => "msg_[id]",
@@ -129,7 +128,7 @@ async fn multiple_providers_work_together() {
         "messages": [{"role": "user", "content": "Hello from Google"}]
     });
 
-    let google_body = llm.completions(google_request).await;
+    let google_body = server.openai_completions(google_request).send().await;
 
     insta::assert_json_snapshot!(google_body, {
         ".id" => "[id]",

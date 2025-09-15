@@ -22,7 +22,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "google/gemini-1.5-flash",
@@ -54,7 +53,7 @@ path = "/llm"
         "tool_choice": "auto"
     });
 
-    let response = llm.completions(request).await;
+    let response = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(response, {
         ".id" => "[id]",
@@ -116,7 +115,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "google/gemini-1.5-flash",
@@ -144,7 +142,7 @@ path = "/llm"
         "parallel_tool_calls": true
     });
 
-    let response = llm.completions(request).await;
+    let response = server.openai_completions(request).send().await;
 
     // Google mock returns multiple tool calls for parallel calls
     insta::assert_json_snapshot!(response, {
@@ -213,7 +211,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     // Test handling of tool response messages (converted to Google's functionResponse format)
     let request = json!({
@@ -243,7 +240,7 @@ path = "/llm"
         ]
     });
 
-    let response = llm.completions(request).await;
+    let response = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(response, {
         ".id" => "[id]",
@@ -292,7 +289,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     // Regular request without tools should work normally
     let request = json!({
@@ -303,7 +299,7 @@ path = "/llm"
         }]
     });
 
-    let response = llm.completions(request).await;
+    let response = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(response, {
         ".id" => "[id]",
@@ -357,7 +353,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     // This mimics the MCP execute tool which has additionalProperties: true
     let request = json!({
@@ -393,7 +388,7 @@ path = "/llm"
     });
 
     // This should succeed - Google API should not receive additionalProperties
-    let response = llm.completions(request).await;
+    let response = server.openai_completions(request).send().await;
 
     insta::assert_json_snapshot!(response, {
         ".id" => "[id]",
@@ -453,7 +448,6 @@ path = "/llm"
     "#};
 
     let server = builder.build(config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "google/gemini-1.5-flash",
@@ -487,7 +481,7 @@ path = "/llm"
     });
 
     // Test streaming tool calls
-    let chunks = llm.stream_completions(request.clone()).await;
+    let chunks = server.openai_completions_stream(request.clone()).send().await;
 
     // Should have multiple chunks for streaming
     let chunk_count = chunks.len();

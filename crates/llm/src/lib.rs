@@ -31,17 +31,20 @@ pub async fn router(config: &config::Config) -> anyhow::Result<Router> {
             .map_err(|e| anyhow::anyhow!("Failed to initialize LLM server: {e}"))?,
     );
 
-    // For now, create routers for all protocol endpoints
-    // TODO: In phase 2, we'll add protocol-specific routing
     let mut router = Router::new();
 
-    for (_protocol, endpoint_config) in config.llm.get_protocol_endpoints() {
-        let ai_routes = Router::new()
+    if config.llm.protocols.openai.enabled {
+        let openai_routes = Router::new()
             .route("/v1/chat/completions", post(chat_completions))
             .route("/v1/models", get(list_models))
             .with_state(server.clone());
 
-        router = router.nest(&endpoint_config.path, ai_routes);
+        router = router.nest(&config.llm.protocols.openai.path, openai_routes);
+    }
+
+    if config.llm.protocols.anthropic.enabled {
+        // TODO: Implement Anthropic-specific routes
+        todo!("Anthropic protocol implementation")
     }
 
     Ok(router)

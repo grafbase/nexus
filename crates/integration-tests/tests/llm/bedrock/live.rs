@@ -60,11 +60,10 @@ async fn anthropic_claude_instant_minimal() {
     let config = create_bedrock_config(&[("claude-instant", "anthropic.claude-instant-v1")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     // Minimal prompt to reduce costs
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/claude-instant",
             "messages": [{
                 "role": "user",
@@ -73,6 +72,7 @@ async fn anthropic_claude_instant_minimal() {
             "max_tokens": 10,
             "temperature": 0
         }))
+        .send()
         .await;
 
     // Verify response structure with snapshot
@@ -115,10 +115,9 @@ async fn ai21_jamba_1_5_mini_minimal() {
     let config = create_bedrock_config(&[("jamba-mini", "ai21.jamba-1-5-mini-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/jamba-mini",
             "messages": [{
                 "role": "user",
@@ -127,6 +126,7 @@ async fn ai21_jamba_1_5_mini_minimal() {
             "max_tokens": 10,
             "temperature": 0
         }))
+        .send()
         .await;
 
     insta::assert_json_snapshot!(response, {
@@ -162,10 +162,9 @@ async fn anthropic_claude3_sonnet_minimal() {
     let config = create_bedrock_config(&[("claude3-sonnet", "anthropic.claude-3-sonnet-20240229-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/claude3-sonnet",
             "messages": [{
                 "role": "user",
@@ -174,6 +173,7 @@ async fn anthropic_claude3_sonnet_minimal() {
             "max_tokens": 10,
             "temperature": 0
         }))
+        .send()
         .await;
 
     insta::assert_json_snapshot!(response, {
@@ -207,10 +207,9 @@ async fn anthropic_claude3_haiku_minimal() {
     let config = create_bedrock_config(&[("claude3-haiku", "anthropic.claude-3-haiku-20240307-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/claude3-haiku",
             "messages": [{
                 "role": "user",
@@ -219,6 +218,7 @@ async fn anthropic_claude3_haiku_minimal() {
             "max_tokens": 10,
             "temperature": 0
         }))
+        .send()
         .await;
 
     insta::assert_json_snapshot!(response, {
@@ -256,10 +256,9 @@ async fn amazon_nova_micro_minimal() {
     let config = create_bedrock_config(&[("nova-micro", "amazon.nova-micro-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/nova-micro",
             "messages": [{
                 "role": "user",
@@ -268,6 +267,7 @@ async fn amazon_nova_micro_minimal() {
             "max_tokens": 10,
             "temperature": 0
         }))
+        .send()
         .await;
 
     // Verify response structure
@@ -309,11 +309,10 @@ async fn amazon_nova_micro_with_tools() {
     let config = create_bedrock_config(&[("nova-micro", "amazon.nova-micro-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     // Test with tools - Nova should be able to call them
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/nova-micro",
             "messages": [{
                 "role": "user",
@@ -345,6 +344,7 @@ async fn amazon_nova_micro_with_tools() {
             }],
             "tool_choice": "auto"
         }))
+        .send()
         .await;
 
     // Snapshot the entire response to verify tool calling works
@@ -395,10 +395,9 @@ async fn amazon_titan_lite_minimal() {
     let config = create_bedrock_config(&[("titan-lite", "amazon.titan-text-lite-v1")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/titan-lite",
             "messages": [{
                 "role": "user",
@@ -407,6 +406,7 @@ async fn amazon_titan_lite_minimal() {
             "max_tokens": 10,
             "temperature": 0
         }))
+        .send()
         .await;
 
     insta::assert_json_snapshot!(response, {
@@ -440,10 +440,9 @@ async fn amazon_titan_express_minimal() {
     let config = create_bedrock_config(&[("titan-express", "amazon.titan-text-express-v1")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/titan-express",
             "messages": [{
                 "role": "user",
@@ -452,6 +451,7 @@ async fn amazon_titan_express_minimal() {
             "max_tokens": 10,
             "temperature": 0
         }))
+        .send()
         .await;
 
     insta::assert_json_snapshot!(response, {
@@ -489,10 +489,9 @@ async fn meta_llama3_8b_minimal() {
     let config = create_bedrock_config(&[("llama3-8b", "meta.llama3-8b-instruct-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/llama3-8b",
             "messages": [{
                 "role": "user",
@@ -501,6 +500,7 @@ async fn meta_llama3_8b_minimal() {
             "max_tokens": 10,
             "temperature": 0
         }))
+        .send()
         .await;
 
     // Verify it's a valid completion and contains "4" in response
@@ -546,10 +546,9 @@ async fn mistral_7b_instruct_minimal() {
     let config = create_bedrock_config(&[("mistral-7b", "mistral.mistral-7b-instruct-v0:2")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/mistral-7b",
             "messages": [{
                 "role": "user",
@@ -558,6 +557,7 @@ async fn mistral_7b_instruct_minimal() {
             "max_tokens": 10,
             "temperature": 0
         }))
+        .send()
         .await;
 
     insta::assert_json_snapshot!(response, {
@@ -595,10 +595,9 @@ async fn cohere_command_r_minimal() {
     let config = create_bedrock_config(&[("command-r", "cohere.command-r-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/command-r",
             "messages": [{
                 "role": "user",
@@ -607,6 +606,7 @@ async fn cohere_command_r_minimal() {
             "max_tokens": 10,
             "temperature": 0
         }))
+        .send()
         .await;
 
     insta::assert_json_snapshot!(response, {
@@ -641,11 +641,10 @@ async fn cohere_command_r_multi_turn() {
     let config = create_bedrock_config(&[("command-r", "cohere.command-r-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     // Test multi-turn conversation with chat history
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/command-r",
             "messages": [
                 {
@@ -664,6 +663,7 @@ async fn cohere_command_r_multi_turn() {
             "max_tokens": 50,
             "temperature": 0
         }))
+        .send()
         .await;
 
     // Verify response acknowledges context
@@ -706,11 +706,10 @@ async fn cohere_command_r_with_system() {
     let config = create_bedrock_config(&[("command-r", "cohere.command-r-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     // Test system message handling
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/command-r",
             "messages": [
                 {
@@ -725,6 +724,7 @@ async fn cohere_command_r_with_system() {
             "max_tokens": 20,
             "temperature": 0
         }))
+        .send()
         .await;
 
     insta::assert_json_snapshot!(response, {
@@ -763,11 +763,10 @@ async fn anthropic_claude3_haiku_tool_calling_basic() {
     let config = create_bedrock_config(&[("claude3-haiku", "anthropic.claude-3-haiku-20240307-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     // Basic tool calling request
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/claude3-haiku",
             "messages": [{
                 "role": "user",
@@ -798,6 +797,7 @@ async fn anthropic_claude3_haiku_tool_calling_basic() {
             "max_tokens": 200,
             "temperature": 0
         }))
+        .send()
         .await;
 
     // Verify response contains tool call
@@ -839,11 +839,10 @@ async fn anthropic_claude3_sonnet_tool_calling_multiple() {
     let config = create_bedrock_config(&[("claude3-sonnet", "anthropic.claude-3-sonnet-20240229-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     // Request that should trigger multiple tool calls
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/claude3-sonnet",
             "messages": [{
                 "role": "user",
@@ -875,6 +874,7 @@ async fn anthropic_claude3_sonnet_tool_calling_multiple() {
             "max_tokens": 300,
             "temperature": 0
         }))
+        .send()
         .await;
 
     // Verify multiple tool calls
@@ -901,11 +901,10 @@ async fn anthropic_claude3_haiku_tool_choice_specific() {
     let config = create_bedrock_config(&[("claude3-haiku", "anthropic.claude-3-haiku-20240307-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     // Force specific tool use
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/claude3-haiku",
             "messages": [{
                 "role": "user",
@@ -951,6 +950,7 @@ async fn anthropic_claude3_haiku_tool_choice_specific() {
             "max_tokens": 200,
             "temperature": 0
         }))
+        .send()
         .await;
 
     // Verify the specific tool was called
@@ -966,11 +966,10 @@ async fn cohere_command_r_tool_calling_basic() {
     let config = create_bedrock_config(&[("command-r", "cohere.command-r-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     // Basic tool calling request
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/command-r",
             "messages": [{
                 "role": "user",
@@ -1001,6 +1000,7 @@ async fn cohere_command_r_tool_calling_basic() {
             "max_tokens": 200,
             "temperature": 0
         }))
+        .send()
         .await;
 
     // Verify response contains tool call
@@ -1044,11 +1044,10 @@ async fn cohere_command_r_tool_calling_with_context() {
     let config = create_bedrock_config(&[("command-r", "cohere.command-r-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     // Tool calling with conversation context
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/command-r",
             "messages": [
                 {
@@ -1084,6 +1083,7 @@ async fn cohere_command_r_tool_calling_with_context() {
             "max_tokens": 200,
             "temperature": 0
         }))
+        .send()
         .await;
 
     // Verify response
@@ -1113,11 +1113,10 @@ async fn cohere_command_r_tool_choice_required() {
     let config = create_bedrock_config(&[("command-r", "cohere.command-r-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     // Force tool use with "required"
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/command-r",
             "messages": [{
                 "role": "user",
@@ -1144,6 +1143,7 @@ async fn cohere_command_r_tool_choice_required() {
             "max_tokens": 200,
             "temperature": 0
         }))
+        .send()
         .await;
 
     // Verify a tool was called
@@ -1164,7 +1164,6 @@ async fn anthropic_claude3_haiku_streaming_with_tools() {
     let config = create_bedrock_config(&[("claude3-haiku", "anthropic.claude-3-haiku-20240307-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "bedrock/claude3-haiku",
@@ -1197,7 +1196,7 @@ async fn anthropic_claude3_haiku_streaming_with_tools() {
     });
 
     // Test streaming with tools
-    let chunks = llm.stream_completions(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
     assert!(!chunks.is_empty(), "Expected stream chunks");
 
     // Tool calls in streaming appear in chunks
@@ -1221,7 +1220,6 @@ async fn cohere_command_r_streaming_with_tools() {
     let config = create_bedrock_config(&[("command-r", "cohere.command-r-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "bedrock/command-r",
@@ -1249,7 +1247,7 @@ async fn cohere_command_r_streaming_with_tools() {
     });
 
     // Test streaming with tools
-    let chunks = llm.stream_completions(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
     assert!(!chunks.is_empty(), "Expected stream chunks");
 
     // Verify basic streaming structure
@@ -1283,11 +1281,10 @@ async fn deepseek_r1_minimal() {
     let config = create_bedrock_config(&[("r1", "us.deepseek.r1-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     // Minimal prompt to reduce costs - DeepSeek R1 may think silently
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/r1",
             "messages": [{
                 "role": "user",
@@ -1296,6 +1293,7 @@ async fn deepseek_r1_minimal() {
             "max_tokens": 100,
             "temperature": 0
         }))
+        .send()
         .await;
 
     // Verify response structure
@@ -1345,11 +1343,10 @@ async fn deepseek_r1_with_system() {
     let config = create_bedrock_config(&[("r1", "us.deepseek.r1-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     // Test system message handling
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/r1",
             "messages": [
                 {
@@ -1364,6 +1361,7 @@ async fn deepseek_r1_with_system() {
             "max_tokens": 10,
             "temperature": 0
         }))
+        .send()
         .await;
 
     // Just verify response structure
@@ -1404,10 +1402,9 @@ async fn error_invalid_model() {
     let config = create_bedrock_config(&[("invalid", "anthropic.invalid-model-v99")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
-    let response = llm
-        .completions_error(json!({
+    let (status, body) = server
+        .openai_completions(json!({
             "model": "bedrock/invalid",
             "messages": [{
                 "role": "user",
@@ -1415,10 +1412,11 @@ async fn error_invalid_model() {
             }],
             "max_tokens": 10
         }))
+        .send_raw()
         .await;
 
-    assert_eq!(response.status(), 400);
-    let error = response.json::<serde_json::Value>().await.unwrap();
+    assert_eq!(status, 400);
+    let error = body;
 
     // AWS SDK should return a ValidationException or service error - verify it's there
     let error_msg = error["error"]["message"].as_str().unwrap();
@@ -1453,21 +1451,22 @@ async fn error_missing_required_field() {
     let config = create_bedrock_config(&[("claude", "anthropic.claude-instant-v1")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     // Missing messages field
-    let response = llm
-        .completions_error(json!({
+    let (status, body) = server
+        .openai_completions(json!({
             "model": "bedrock/claude",
             "max_tokens": 10
         }))
+        .send_raw()
         .await;
 
-    assert_eq!(response.status(), 422);
-    let error = response.text().await.unwrap();
+    assert_eq!(status, 422);
+    // Body is already a Value from send_raw
 
     // Axum returns a text error for 422 (unprocessable entity) on deserialization failures
-    assert!(error.contains("missing field") || error.contains("Failed to deserialize"));
+    let error_text = body.as_str().unwrap_or("");
+    assert!(error_text.contains("missing field") || error_text.contains("Failed to deserialize"));
 }
 
 // ============================================================================
@@ -1479,7 +1478,6 @@ async fn streaming_claude_instant() {
     let config = create_bedrock_config(&[("claude-instant", "anthropic.claude-instant-v1")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "bedrock/claude-instant",
@@ -1493,11 +1491,11 @@ async fn streaming_claude_instant() {
     });
 
     // Test that we can stream content successfully
-    let content = llm.stream_completions_content(request.clone()).await;
+    let content = server.openai_completions_stream(request.clone()).send().await;
     assert!(!content.is_empty(), "Expected streaming content");
 
     // Also verify chunks are valid
-    let chunks = llm.stream_completions(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
     assert!(!chunks.is_empty(), "Expected stream chunks, got none");
 
     // Verify first chunk structure
@@ -1514,7 +1512,6 @@ async fn streaming_cohere_command_r_with_helpers() {
     let config = create_bedrock_config(&[("command-r", "cohere.command-r-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "bedrock/command-r",
@@ -1527,7 +1524,7 @@ async fn streaming_cohere_command_r_with_helpers() {
         "temperature": 0
     });
 
-    let chunks = llm.stream_completions(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
 
     // Should have at least one chunk
     assert!(!chunks.is_empty(), "Expected at least one chunk, got {}", chunks.len());
@@ -1550,7 +1547,6 @@ async fn streaming_cohere_command_r_multi_turn_with_helpers() {
     let config = create_bedrock_config(&[("command-r", "cohere.command-r-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     // Test streaming with conversation history
     let request = json!({
@@ -1565,7 +1561,7 @@ async fn streaming_cohere_command_r_multi_turn_with_helpers() {
         "temperature": 0
     });
 
-    let chunks = llm.stream_completions(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
     assert!(
         !chunks.is_empty(),
         "Expected at least one chunk for multi-turn conversation"
@@ -1589,7 +1585,6 @@ async fn streaming_nova_micro() {
     let config = create_bedrock_config(&[("nova-micro", "amazon.nova-micro-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "bedrock/nova-micro",
@@ -1602,7 +1597,7 @@ async fn streaming_nova_micro() {
         "temperature": 0
     });
 
-    let chunks = llm.stream_completions(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
 
     // Should have chunks
     assert!(!chunks.is_empty(), "Expected stream chunks, got none");
@@ -1625,7 +1620,6 @@ async fn streaming_titan_express() {
     let config = create_bedrock_config(&[("titan-express", "amazon.titan-text-express-v1")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "bedrock/titan-express",
@@ -1638,7 +1632,7 @@ async fn streaming_titan_express() {
         "temperature": 0
     });
 
-    let chunks = llm.stream_completions(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
 
     // Should have chunks
     assert!(!chunks.is_empty(), "Expected stream chunks, got none");
@@ -1661,7 +1655,6 @@ async fn streaming_deepseek_r1() {
     let config = create_bedrock_config(&[("r1", "us.deepseek.r1-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "bedrock/r1",
@@ -1675,7 +1668,7 @@ async fn streaming_deepseek_r1() {
     });
 
     // Test streaming chunks
-    let chunks = llm.stream_completions(request.clone()).await;
+    let chunks = server.openai_completions_stream(request.clone()).send().await;
     assert!(!chunks.is_empty(), "Expected stream chunks, got none");
 
     // Verify first chunk structure with snapshot
@@ -1699,7 +1692,7 @@ async fn streaming_deepseek_r1() {
     "#);
 
     // Test content accumulation - DeepSeek R1 may produce no visible content due to internal reasoning
-    let _content = llm.stream_completions_content(request).await;
+    let _content = server.openai_completions_stream(request).send().await;
     // Note: R1 may use all tokens for internal reasoning without producing visible output
     // This is expected behavior when it hits token limits during thinking
 }
@@ -1709,7 +1702,6 @@ async fn streaming_ai21_jamba_mini() {
     let config = create_bedrock_config(&[("jamba-mini", "ai21.jamba-1-5-mini-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "bedrock/jamba-mini",
@@ -1723,7 +1715,7 @@ async fn streaming_ai21_jamba_mini() {
     });
 
     // Test streaming chunks
-    let chunks = llm.stream_completions(request.clone()).await;
+    let chunks = server.openai_completions_stream(request.clone()).send().await;
     assert!(!chunks.is_empty(), "Expected stream chunks, got none");
 
     // Verify first chunk structure with snapshot
@@ -1749,7 +1741,7 @@ async fn streaming_ai21_jamba_mini() {
     "#);
 
     // Test that content accumulation works
-    let content = llm.stream_completions_content(request).await;
+    let content = server.openai_completions_stream(request).send().await;
     assert!(!content.is_empty(), "Expected non-empty streaming content");
 }
 
@@ -1762,11 +1754,10 @@ async fn verify_token_counting_claude3_sonnet() {
     let config = create_bedrock_config(&[("claude3-sonnet", "anthropic.claude-3-sonnet-20240229-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     // Use a prompt with predictable token count
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/claude3-sonnet",
             "messages": [{
                 "role": "user",
@@ -1775,6 +1766,7 @@ async fn verify_token_counting_claude3_sonnet() {
             "max_tokens": 50,
             "temperature": 0
         }))
+        .send()
         .await;
 
     // Verify usage is present and contains valid token counts
@@ -1805,7 +1797,6 @@ async fn verify_token_counting_streaming_claude3_sonnet() {
     let config = create_bedrock_config(&[("claude3-sonnet", "anthropic.claude-3-sonnet-20240229-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
     let request = json!({
         "model": "bedrock/claude3-sonnet",
@@ -1819,7 +1810,7 @@ async fn verify_token_counting_streaming_claude3_sonnet() {
     });
 
     // Collect all chunks to find the one with usage
-    let chunks = llm.stream_completions(request).await;
+    let chunks = server.openai_completions_stream(request).send().await;
 
     // Find the chunk with usage information (should be in MessageStop event)
     let usage_chunk = chunks
@@ -1853,10 +1844,9 @@ async fn verify_token_counting_llama3() {
     let config = create_bedrock_config(&[("llama3-8b", "meta.llama3-8b-instruct-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/llama3-8b",
             "messages": [{
                 "role": "user",
@@ -1865,6 +1855,7 @@ async fn verify_token_counting_llama3() {
             "max_tokens": 20,
             "temperature": 0
         }))
+        .send()
         .await;
 
     // Verify usage is present
@@ -1893,10 +1884,9 @@ async fn verify_token_counting_cohere_command_r() {
     let config = create_bedrock_config(&[("command-r", "cohere.command-r-v1:0")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/command-r",
             "messages": [{
                 "role": "user",
@@ -1905,6 +1895,7 @@ async fn verify_token_counting_cohere_command_r() {
             "max_tokens": 10,
             "temperature": 0
         }))
+        .send()
         .await;
 
     // Verify usage is present
@@ -1934,10 +1925,9 @@ async fn verify_token_counting_mistral() {
     let config = create_bedrock_config(&[("mistral-7b", "mistral.mistral-7b-instruct-v0:2")]);
 
     let server = TestServer::builder().build(&config).await;
-    let llm = server.llm_client("/llm");
 
-    let response = llm
-        .completions(json!({
+    let response = server
+        .openai_completions(json!({
             "model": "bedrock/mistral-7b",
             "messages": [{
                 "role": "user",
@@ -1946,6 +1936,7 @@ async fn verify_token_counting_mistral() {
             "max_tokens": 10,
             "temperature": 0
         }))
+        .send()
         .await;
 
     // Verify usage is present
@@ -1982,7 +1973,6 @@ async fn verify_streaming_token_counting_multiple_models() {
     for (alias, model_id) in test_cases {
         let config = create_bedrock_config(&[(alias, model_id)]);
         let server = TestServer::builder().build(&config).await;
-        let llm = server.llm_client("/llm");
 
         let request = json!({
             "model": format!("bedrock/{}", alias),
@@ -1995,7 +1985,7 @@ async fn verify_streaming_token_counting_multiple_models() {
             "stream": true
         });
 
-        let chunks = llm.stream_completions(request).await;
+        let chunks = server.openai_completions_stream(request).send().await;
 
         // Find the final chunk with usage information
         let usage_chunk = chunks

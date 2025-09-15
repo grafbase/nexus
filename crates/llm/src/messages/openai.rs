@@ -1,0 +1,870 @@
+use std::fmt;
+
+use serde::{Deserialize, Serialize};
+
+/// OpenAI-compatible chat completion request.
+///
+/// This is the standard request format used across the LLM routing system.
+/// It follows the OpenAI API specification, making it compatible with most
+/// LLM providers and client libraries. The router translates this common
+/// format to provider-specific formats as needed.
+#[derive(Debug, Clone, Deserialize)]
+pub(crate) struct ChatCompletionRequest {
+    /// The conversation history as a list of messages.
+    ///
+    /// Messages should typically alternate between user and assistant roles,
+    /// with an optional system message at the beginning to set context.
+    pub(crate) messages: Vec<ChatMessage>,
+
+    /// The model identifier in the format "provider/model".
+    ///
+    /// Examples:
+    /// - "openai/gpt-4"
+    /// - "anthropic/claude-3-opus-20240229"
+    /// - "google/gemini-1.5-pro"
+    pub(crate) model: String,
+
+    /// Controls randomness in the response.
+    ///
+    /// Range: 0.0 to 2.0 (provider-dependent)
+    /// - Lower values (e.g., 0.2) make output more focused and deterministic
+    /// - Higher values (e.g., 0.8) make output more random and creative
+    /// - Default varies by provider
+    #[serde(default)]
+    pub(crate) temperature: Option<f32>,
+
+    /// Maximum number of tokens to generate in the response.
+    ///
+    /// This limit includes the completion tokens only, not the prompt.
+    /// Different models have different maximum limits.
+    #[serde(default)]
+    pub(crate) max_tokens: Option<u32>,
+
+    /// Nucleus sampling parameter (alternative to temperature).
+    ///
+    /// Range: 0.0 to 1.0
+    /// - The model considers tokens with top_p cumulative probability
+    /// - E.g., 0.1 means only tokens in the top 10% probability are considered
+    /// - Generally, alter temperature OR top_p, not both
+    #[serde(default)]
+    pub(crate) top_p: Option<f32>,
+
+    /// Penalizes repeated tokens based on their frequency in the generated text.
+    ///
+    /// Range: -2.0 to 2.0
+    /// - Positive values decrease likelihood of repeating the same text
+    /// - Helps reduce repetitive output
+    #[serde(default)]
+    pub(crate) frequency_penalty: Option<f32>,
+
+    /// Penalizes tokens based on whether they appear in the text at all.
+    ///
+    /// Range: -2.0 to 2.0
+    /// - Positive values encourage the model to talk about new topics
+    /// - Helps increase diversity of output
+    #[serde(default)]
+    pub(crate) presence_penalty: Option<f32>,
+
+    /// Sequences that will cause the model to stop generating.
+    ///
+    /// When the model generates any of these sequences, it stops immediately.
+    /// Useful for controlling output format or length.
+    #[serde(default)]
+    pub(crate) stop: Option<Vec<String>>,
+
+    /// Whether to stream the response token by token.
+    ///
+    /// When true, responses are sent as Server-Sent Events.
+    /// Note: Not all providers support streaming.
+    #[serde(default)]
+    pub(crate) stream: Option<bool>,
+
+    /// Tools available for the model to use.
+    ///
+    /// List of functions the model can call. Each tool has a name,
+    /// description, and parameter schema. The model will decide when
+    /// to use tools based on the conversation context.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) tools: Option<Vec<Tool>>,
+
+    /// Controls how the model uses tools.
+    ///
+    /// - "none": Model won't call any tools
+    /// - "auto": Model decides whether to call tools (default)
+    /// - "required": Model must call at least one tool
+    /// - Or specify a particular tool to force its use
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) tool_choice: Option<ToolChoice>,
+
+    /// Whether to allow multiple tool calls in parallel.
+    ///
+    /// When true, the model can call multiple tools in a single response.
+    /// Not all providers support parallel tool calls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) parallel_tool_calls: Option<bool>,
+}
+
+/// Role of a message sender in a chat conversation.
+///
+/// Defines who is sending a message in the conversation. Different providers
+/// may use slightly different role names, but this enum covers the standard
+/// roles used across all major LLM APIs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ChatRole {
+    /// User input message.
+    ///
+    /// Represents messages from the human user asking questions or giving instructions.
+    User,
+
+    /// System instruction message.
+    ///
+    /// Sets the context, personality, or behavior for the assistant.
+    /// Usually placed at the beginning of the conversation.
+    /// Not all providers support system messages in the same way.
+    System,
+
+    /// Assistant/model response message.
+    ///
+    /// Represents messages generated by the AI model in response to user input.
+    /// Some providers call this "model" instead of "assistant".
+    Assistant,
+
+    /// Tool response message.
+    ///
+    /// Contains the result of a tool call execution.
+    /// Links back to a specific tool call via tool_call_id.
+    Tool,
+
+    /// Any other role not yet known.
+    ///
+    /// Captures unknown role values for forward compatibility.
+    /// This ensures the system doesn't break when providers add new roles.
+    #[serde(untagged)]
+    Other(String),
+}
+
+impl AsRef<str> for ChatRole {
+    fn as_ref(&self) -> &str {
+        match self {
+            ChatRole::User => "user",
+            ChatRole::System => "system",
+            ChatRole::Assistant => "assistant",
+            ChatRole::Tool => "tool",
+            ChatRole::Other(s) => s,
+        }
+    }
+}
+
+impl fmt::Display for ChatRole {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}
+
+/// A single message in a chat conversation.
+///
+/// Represents one turn in the conversation between the user and the assistant.
+/// This format is compatible with OpenAI's API and is used as the common
+/// format across all providers.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct ChatMessage {
+    /// The role of the message sender.
+    pub(crate) role: ChatRole,
+
+    /// The text content of the message.
+    ///
+    /// For user messages: the question or instruction
+    /// For assistant messages: the model's response
+    /// For system messages: the context or behavior instructions
+    /// May be None when the message contains only tool calls.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) content: Option<String>,
+
+    /// Tool calls made by the assistant.
+    ///
+    /// When the assistant decides to use tools, this contains
+    /// the list of tool invocations with their arguments.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tool_calls: Option<Vec<ToolCall>>,
+
+    /// ID of the tool call this message is responding to.
+    ///
+    /// Used when role is "tool" to link the response back to
+    /// the specific tool call that generated it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tool_call_id: Option<String>,
+}
+
+/// API object type identifier for OpenAI-compatible responses.
+///
+/// Used to identify the type of object being returned in API responses.
+/// This helps clients parse responses correctly and ensures compatibility
+/// with OpenAI's API specification.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) enum ObjectType {
+    /// Chat completion response object.
+    ///
+    /// Returned when requesting a chat completion.
+    #[serde(rename = "chat.completion")]
+    ChatCompletion,
+
+    /// Chat completion chunk for streaming responses.
+    ///
+    /// Returned when streaming a chat completion.
+    #[serde(rename = "chat.completion.chunk")]
+    ChatCompletionChunk,
+
+    /// List object for collections.
+    ///
+    /// Used when returning lists of items (e.g., available models).
+    #[serde(rename = "list")]
+    List,
+
+    /// Individual model object.
+    ///
+    /// Represents metadata about a single AI model.
+    #[serde(rename = "model")]
+    Model,
+
+    /// Any other object type.
+    ///
+    /// Captures unknown object types for forward compatibility.
+    #[serde(untagged)]
+    Other(String),
+}
+
+/// OpenAI-compatible chat completion response.
+///
+/// The standard response format returned by the LLM router for all chat completions.
+/// This format is compatible with OpenAI's API, making it easy to use with existing
+/// client libraries and tools. Provider-specific responses are translated to this format.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ChatCompletionResponse {
+    /// Unique identifier for this completion.
+    ///
+    /// Format varies by provider but is always unique.
+    pub(crate) id: String,
+
+    /// The object type, always "chat.completion" for chat responses.
+    pub(crate) object: ObjectType,
+
+    /// Unix timestamp (seconds since epoch) when the completion was created.
+    pub(crate) created: u64,
+
+    /// The model that generated the completion.
+    ///
+    /// Includes the provider prefix (e.g., "openai/gpt-4").
+    pub(crate) model: String,
+
+    /// The completion choices generated by the model.
+    ///
+    /// Usually contains one choice, but can have multiple if n > 1 was requested.
+    pub(crate) choices: Vec<ChatChoice>,
+
+    /// Token usage statistics for this completion.
+    ///
+    /// Used for tracking costs and usage limits.
+    pub(crate) usage: Usage,
+}
+
+/// Reason why the model stopped generating tokens.
+///
+/// Indicates why the model stopped producing output. This is important for
+/// understanding whether the response is complete or was cut off. The enum
+/// is designed to be forward-compatible with new stop reasons from providers.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) enum FinishReason {
+    /// Natural stop point or stop sequence encountered.
+    ///
+    /// The model completed its response naturally or hit a stop sequence.
+    #[serde(rename = "stop")]
+    Stop,
+
+    /// Maximum token limit reached.
+    ///
+    /// The response was cut off because it hit the max_tokens limit.
+    #[serde(rename = "length")]
+    Length,
+
+    /// Content filtered for safety/policy reasons.
+    ///
+    /// The model's response was blocked by content filters.
+    #[serde(rename = "content_filter")]
+    ContentFilter,
+
+    /// Model invoked a tool or function call.
+    ///
+    /// The model is requesting to use an external tool.
+    #[serde(rename = "tool_calls")]
+    ToolCalls,
+
+    /// Any other finish reason.
+    ///
+    /// Captures unknown finish reasons for forward compatibility.
+    /// The string value contains the original reason from the provider.
+    #[serde(untagged)]
+    Other(String),
+}
+
+impl AsRef<str> for FinishReason {
+    fn as_ref(&self) -> &str {
+        match self {
+            FinishReason::Stop => "stop",
+            FinishReason::Length => "length",
+            FinishReason::ContentFilter => "content_filter",
+            FinishReason::ToolCalls => "tool_calls",
+            FinishReason::Other(s) => s,
+        }
+    }
+}
+
+impl fmt::Display for FinishReason {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_ref().fmt(f)
+    }
+}
+
+/// A single completion choice generated by the model.
+///
+/// Represents one possible completion for the given input. When multiple
+/// choices are requested (n > 1), each will have a different index.
+/// Each choice contains the generated message and metadata about why
+/// generation stopped.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ChatChoice {
+    /// Zero-based index of this choice in the list of choices.
+    ///
+    /// Used when multiple completions are requested (n > 1).
+    pub(crate) index: u32,
+
+    /// The message generated by the model for this choice.
+    pub(crate) message: ChatMessage,
+
+    /// The reason why the model stopped generating tokens for this choice.
+    pub(crate) finish_reason: FinishReason,
+}
+
+/// Token usage statistics for a completion request.
+///
+/// Tracks the number of tokens used in both the prompt and the completion.
+/// This information is crucial for understanding costs, as most LLM providers
+/// charge based on token usage. Different models may count tokens differently.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct Usage {
+    /// Number of tokens in the prompt (input).
+    ///
+    /// Includes all messages sent to the model, including system messages.
+    pub(crate) prompt_tokens: u32,
+
+    /// Number of tokens in the completion (output).
+    ///
+    /// The tokens generated by the model in its response.
+    pub(crate) completion_tokens: u32,
+
+    /// Total tokens used (prompt + completion).
+    ///
+    /// The sum of prompt_tokens and completion_tokens.
+    pub(crate) total_tokens: u32,
+}
+
+/// Information about an available AI model.
+///
+/// Represents metadata about a model that can be used for completions.
+/// This information is returned when listing available models and helps
+/// clients understand what models are available and their characteristics.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct Model {
+    /// The model identifier.
+    ///
+    /// Format: "provider/model-name"
+    /// Examples: "openai/gpt-4", "anthropic/claude-3-opus-20240229"
+    pub(crate) id: String,
+
+    /// The object type, always "model" for model objects.
+    pub(crate) object: ObjectType,
+
+    /// Unix timestamp when the model was created.
+    ///
+    /// May be 0 for providers that don't provide this information.
+    pub(crate) created: u64,
+
+    /// The organization that owns the model.
+    ///
+    /// Examples: "openai", "anthropic", "google"
+    pub(crate) owned_by: String,
+}
+
+/// Response containing a list of available models.
+///
+/// Returns all models available through the LLM router from all configured
+/// providers. Each model ID includes the provider prefix to avoid naming
+/// conflicts between providers.
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct ModelsResponse {
+    /// The object type, always "list" for list responses.
+    pub(crate) object: ObjectType,
+
+    /// List of available models from all providers.
+    ///
+    /// Models are prefixed with their provider name (e.g., "openai/gpt-4").
+    pub(crate) data: Vec<Model>,
+}
+
+/// Represents a chunk in a streaming chat completion response.
+///
+/// When streaming is enabled (`stream: true` in the request), the response is sent
+/// as a series of chunks via Server-Sent Events (SSE). Each chunk contains an
+/// incremental update (delta) to the message being generated.
+///
+/// This format follows OpenAI's streaming API specification, providing a unified
+/// interface regardless of the underlying provider (OpenAI, Anthropic, Google, etc.).
+///
+/// ## SSE Format
+/// Each chunk is sent as:
+/// ```text
+/// data: {"id":"...","object":"chat.completion.chunk",...}
+/// ```
+/// The stream ends with:
+/// ```text
+/// data: [DONE]
+/// ```
+///
+/// ## Usage Pattern
+/// Clients should:
+/// 1. Accumulate content from all chunks with the same ID
+/// 2. Concatenate the `delta.content` fields to build the complete message
+/// 3. Use `finish_reason` in the final chunk to determine completion status
+/// 4. Extract `usage` statistics from the final chunk if needed
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ChatCompletionChunk {
+    /// Unique identifier for this completion stream.
+    ///
+    /// Format varies by provider:
+    /// - OpenAI: "chatcmpl-{alphanumeric}"
+    /// - Anthropic: "msg_{alphanumeric}" (converted from their format)
+    /// - Google: "gen-{uuid}" (generated)
+    ///
+    /// Remains consistent across all chunks in the same stream.
+    pub(crate) id: String,
+
+    /// The object type, always "chat.completion.chunk" for streaming responses.
+    ///
+    /// This distinguishes streaming chunks from complete responses
+    /// which have object type "chat.completion".
+    pub(crate) object: ObjectType,
+
+    /// Unix timestamp (seconds since epoch) when the chunk was created.
+    ///
+    /// All chunks in a stream typically share the same timestamp,
+    /// representing when streaming began.
+    pub(crate) created: u64,
+
+    /// The model that is generating the completion.
+    ///
+    /// Always includes the provider prefix for routing.
+    /// Format: "{provider}/{model}"
+    /// Examples: "openai/gpt-4", "anthropic/claude-3-opus-20240229"
+    pub(crate) model: String,
+
+    /// The delta choices for this chunk.
+    ///
+    /// Array of incremental updates, one per requested completion.
+    /// Usually contains a single choice (index 0) unless `n > 1` was specified.
+    /// Each choice represents a different completion path.
+    pub(crate) choices: Vec<ChatChoiceDelta>,
+
+    /// System fingerprint for the model configuration.
+    ///
+    /// Provider-specific identifier for reproducibility:
+    /// - OpenAI: "fp_{alphanumeric}" - tracks model version and parameters
+    /// - Other providers: Usually None
+    ///
+    /// Can be used to detect when model configuration changes between requests.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) system_fingerprint: Option<String>,
+
+    /// Token usage statistics for the completion.
+    ///
+    /// Only present in the final chunk of a stream (when finish_reason is set).
+    /// Contains:
+    /// - `prompt_tokens`: Tokens used in the input prompt
+    /// - `completion_tokens`: Tokens generated in the response
+    /// - `total_tokens`: Sum of prompt and completion tokens
+    ///
+    /// Used for monitoring usage and costs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) usage: Option<Usage>,
+}
+
+/// A single choice delta in a streaming response chunk.
+///
+/// Represents an incremental update to one of potentially multiple completions
+/// being generated in parallel. Each choice is identified by its index and
+/// contains a delta with partial content to append.
+///
+/// ## Accumulation Pattern
+/// For each choice index, concatenate all deltas to build the complete message:
+/// ```ignore
+/// let mut messages: HashMap<u32, String> = HashMap::new();
+/// for chunk in stream {
+///     for choice in chunk.choices {
+///         messages.entry(choice.index)
+///             .or_default()
+///             .push_str(&choice.delta.content.unwrap_or_default());
+///     }
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ChatChoiceDelta {
+    /// Zero-based index of this choice in the list of choices.
+    ///
+    /// Used to track multiple parallel completions when `n > 1` in the request.
+    /// Most requests generate a single choice (index: 0).
+    /// Indices are stable throughout the stream.
+    pub(crate) index: u32,
+
+    /// The incremental message content for this chunk.
+    ///
+    /// Contains partial data that should be appended to previous deltas
+    /// with the same index to construct the complete message.
+    pub(crate) delta: ChatMessageDelta,
+
+    /// The reason why the model stopped generating tokens.
+    ///
+    /// Only present in the final chunk of a stream for each choice.
+    /// Indicates why this particular completion path ended.
+    /// See `FinishReason` enum for possible values and their meanings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) finish_reason: Option<FinishReason>,
+
+    /// Log probability information for the tokens in this chunk.
+    ///
+    /// Only present if `logprobs` parameter was set in the request.
+    /// Contains detailed probability information for generated tokens:
+    /// - `tokens`: Array of token strings
+    /// - `token_logprobs`: Log probabilities for each token
+    /// - `top_logprobs`: Alternative tokens and their probabilities
+    /// - `text_offset`: Character positions in the text
+    ///
+    /// Structure varies by provider but typically follows OpenAI's format.
+    /// Used for:
+    /// - Confidence analysis
+    /// - Alternative response exploration
+    /// - Token-level debugging
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) logprobs: Option<sonic_rs::Value>,
+}
+
+/// Incremental message content in a streaming chunk.
+///
+/// Contains partial content that should be appended to construct the complete
+/// message. Different fields are populated at different stages of streaming:
+/// - First chunk: Usually contains `role`
+/// - Middle chunks: Contain `content` text fragments
+/// - Tool chunks: Contain `tool_calls` or `function_call` updates
+/// - Final chunk: Often has empty delta (finish_reason is in the choice)
+///
+/// Type of tool call.
+/// Currently only "function" is supported by OpenAI and other providers.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ToolCallType {
+    /// Function tool call - the standard tool call type
+    Function,
+    /// Any other type not yet known (for forward compatibility)
+    #[serde(untagged)]
+    Other(String),
+}
+
+/// Represents a tool call chunk in streaming responses.
+/// Uses untagged enum to match OpenAI's varying chunk formats exactly.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum StreamingToolCall {
+    /// First chunk - contains full tool call structure
+    Start {
+        index: usize,
+        id: String,
+        r#type: ToolCallType,
+        function: FunctionStart,
+    },
+    /// Subsequent chunks - only contain incremental arguments
+    Delta { index: usize, function: FunctionDelta },
+}
+
+/// Initial function information in first tool call chunk
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct FunctionStart {
+    pub name: String,
+    pub arguments: String, // Empty string initially
+}
+
+/// Incremental function arguments in subsequent chunks
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct FunctionDelta {
+    pub arguments: String, // Incremental JSON fragment
+}
+
+/// Legacy function call format in streaming (also as untagged enum)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub(crate) enum StreamingFunctionCall {
+    /// First chunk with function name
+    Start { name: String, arguments: String },
+    /// Subsequent chunks with arguments only
+    Delta { arguments: String },
+}
+
+/// ## Content Accumulation
+/// Clients should handle None values and empty strings:
+/// ```ignore
+/// if let Some(content) = delta.content {
+///     message_buffer.push_str(&content); // May be empty string
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct ChatMessageDelta {
+    /// The role of the message sender.
+    ///
+    /// Present only in the first chunk of a new message to establish
+    /// who is speaking. Always "assistant" for model-generated responses.
+    /// Possible values: "system", "user", "assistant", "tool"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) role: Option<ChatRole>,
+
+    /// The incremental text content to append.
+    ///
+    /// Contains a fragment of text that should be concatenated with previous
+    /// content to build the complete message. Important notes:
+    /// - Can be an empty string ("") - still append it for proper spacing
+    /// - Can be None - skip appending in this case
+    /// - May contain partial words or characters at chunk boundaries
+    /// - Whitespace and formatting are preserved and significant
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) content: Option<String>,
+
+    /// Tool/function calls being constructed incrementally.
+    ///
+    /// Used when the model decides to invoke tools instead of responding with text.
+    /// Array structure with incremental updates:
+    /// - First chunk: Contains tool metadata (id, type, function.name)
+    /// - Subsequent chunks: Accumulate function.arguments as JSON string
+    ///
+    /// Each tool call object typically contains:
+    /// ```json
+    /// {
+    ///   "index": 0,
+    ///   "id": "call_abc123",
+    ///   "type": "function",
+    ///   "function": {
+    ///     "name": "get_weather",
+    ///     "arguments": "{\"location\":"
+    ///   }
+    /// }
+    /// ```
+    /// Arguments are built incrementally and may be partial JSON until complete.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tool_calls: Option<Vec<StreamingToolCall>>,
+
+    /// Legacy function calling format (deprecated).
+    ///
+    /// Deprecated in favor of `tool_calls` but still supported for backward
+    /// compatibility with older OpenAI API versions and applications.
+    ///
+    /// Structure:
+    /// ```json
+    /// {
+    ///   "name": "function_name",
+    ///   "arguments": "{\"param\": \"value\"}"
+    /// }
+    /// ```
+    ///
+    /// New integrations should use `tool_calls` which supports multiple
+    /// parallel function calls and better error handling.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) function_call: Option<StreamingFunctionCall>,
+}
+
+/// Tool definition for function calling.
+///
+/// Defines a tool that the model can use. Currently only "function" type
+/// is supported, but the structure allows for future tool types.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct Tool {
+    /// The type of tool. Currently only "function" is supported.
+    #[serde(rename = "type")]
+    pub(crate) tool_type: ToolCallType,
+
+    /// The function definition.
+    pub(crate) function: FunctionDefinition,
+}
+
+/// Function definition for tool calling.
+///
+/// Describes a function that the model can call, including its name,
+/// description, and parameter schema.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct FunctionDefinition {
+    /// The name of the function to be called.
+    pub(crate) name: String,
+
+    /// A description of what the function does.
+    pub(crate) description: String,
+
+    /// The parameters the function accepts, described as a JSON Schema object.
+    pub(crate) parameters: serde_json::Value,
+}
+
+/// Mode for tool choice behavior.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ToolChoiceMode {
+    /// Model cannot call any tools
+    None,
+    /// Model decides whether to call tools
+    Auto,
+    /// Model must call at least one tool
+    Required,
+    /// Alias for "required" used by some providers
+    #[serde(rename = "any")]
+    Any,
+    /// Any other mode not yet known (for forward compatibility)
+    #[serde(untagged)]
+    Other(String),
+}
+
+/// Controls how the model uses tools.
+///
+/// Can be a mode value ("none", "auto", "required") or a specific tool
+/// to force the model to use.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+pub(crate) enum ToolChoice {
+    /// Tool choice mode
+    Mode(ToolChoiceMode),
+
+    /// Force a specific tool to be used
+    Specific {
+        #[serde(rename = "type")]
+        tool_type: ToolCallType,
+        function: ToolChoiceFunction,
+    },
+}
+
+/// Specifies a particular function to call.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct ToolChoiceFunction {
+    /// The name of the function to call.
+    pub(crate) name: String,
+}
+
+/// A tool call made by the assistant.
+///
+/// Represents a request from the model to invoke a specific tool
+/// with given arguments.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct ToolCall {
+    /// Unique identifier for this tool call.
+    pub(crate) id: String,
+
+    /// The type of tool. Currently always "function".
+    #[serde(rename = "type")]
+    pub(crate) tool_type: ToolCallType,
+
+    /// The function to call.
+    pub(crate) function: FunctionCall,
+}
+
+/// A function call within a tool call.
+///
+/// Contains the function name and arguments to pass to it.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct FunctionCall {
+    /// The name of the function to call.
+    pub(crate) name: String,
+
+    /// The arguments to call the function with, as a JSON string.
+    pub(crate) arguments: String,
+}
+
+#[cfg(test)]
+mod streaming_tool_call_tests {
+    use super::*;
+    use sonic_rs::JsonValueTrait;
+
+    #[test]
+    fn test_streaming_tool_call_start_serialization() {
+        // Test that the Start variant serializes to the correct OpenAI format
+        let start = StreamingToolCall::Start {
+            index: 0,
+            id: "call_abc123".to_string(),
+            r#type: ToolCallType::Function,
+            function: FunctionStart {
+                name: "get_weather".to_string(),
+                arguments: String::new(),
+            },
+        };
+
+        let json = sonic_rs::to_string(&start).unwrap();
+        let parsed: sonic_rs::Value = sonic_rs::from_str(&json).unwrap();
+
+        // Verify the JSON structure matches OpenAI format
+        assert_eq!(parsed["index"], 0);
+        assert_eq!(parsed["id"], "call_abc123");
+        assert_eq!(parsed["type"], "function");
+        assert_eq!(parsed["function"]["name"], "get_weather");
+        assert_eq!(parsed["function"]["arguments"], "");
+    }
+
+    #[test]
+    fn test_streaming_tool_call_delta_serialization() {
+        // Test that the Delta variant serializes to the correct OpenAI format
+        let delta = StreamingToolCall::Delta {
+            index: 0,
+            function: FunctionDelta {
+                arguments: r#"{"location": "San Francisco"}"#.to_string(),
+            },
+        };
+
+        let json = sonic_rs::to_string(&delta).unwrap();
+        let parsed: sonic_rs::Value = sonic_rs::from_str(&json).unwrap();
+
+        // Verify the JSON structure matches OpenAI format
+        assert_eq!(parsed["index"], 0);
+        assert_eq!(parsed["function"]["arguments"], r#"{"location": "San Francisco"}"#);
+        // Importantly, the "id" and "type" fields should NOT be present in delta chunks
+        assert!(parsed.get("id").is_none());
+        assert!(parsed.get("type").is_none());
+    }
+
+    #[test]
+    fn test_streaming_function_call_start_serialization() {
+        // Test that the Start variant of function call serializes correctly
+        let start = StreamingFunctionCall::Start {
+            name: "get_weather".to_string(),
+            arguments: String::new(),
+        };
+
+        let json = sonic_rs::to_string(&start).unwrap();
+        let parsed: sonic_rs::Value = sonic_rs::from_str(&json).unwrap();
+
+        assert_eq!(parsed["name"], "get_weather");
+        assert_eq!(parsed["arguments"], "");
+    }
+
+    #[test]
+    fn test_streaming_function_call_delta_serialization() {
+        // Test that the Delta variant of function call serializes correctly
+        let delta = StreamingFunctionCall::Delta {
+            arguments: r#"{"location": "San Francisco"}"#.to_string(),
+        };
+
+        let json = sonic_rs::to_string(&delta).unwrap();
+        let parsed: sonic_rs::Value = sonic_rs::from_str(&json).unwrap();
+
+        assert_eq!(parsed["arguments"], r#"{"location": "San Francisco"}"#);
+        // The "name" field should NOT be present in delta chunks
+        assert!(parsed.get("name").is_none());
+    }
+}

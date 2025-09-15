@@ -68,15 +68,13 @@ async fn llm_endpoint_metrics() {
     });
 
     for _ in 0..2 {
-        let response = test_server
-            .client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .headers(headers.clone())
-            .json(&request)
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 200);
+        let (status, _body) = test_server
+            .openai_completions(request.clone())
+            .header("x-client-id", &client_id)
+            .header("x-client-group", "test-group")
+            .send_raw()
+            .await;
+        assert_eq!(status, 200);
     }
 
     // Query ClickHouse for metrics
@@ -150,15 +148,13 @@ async fn llm_non_streaming_operation_metrics() {
         "max_tokens": 10
     });
 
-    let response = test_server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .headers(headers.clone())
-        .json(&request)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 200);
+    let (status, _body) = test_server
+        .openai_completions(request.clone())
+        .header("x-client-id", &client_id)
+        .header("x-client-group", "llm-test-group")
+        .send_raw()
+        .await;
+    assert_eq!(status, 200);
 
     // Query ClickHouse for metrics
     let clickhouse = create_clickhouse_client().await;
@@ -241,15 +237,13 @@ async fn llm_token_usage_metrics() {
         "max_tokens": 50
     });
 
-    let response = test_server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .headers(headers.clone())
-        .json(&request)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 200);
+    let (status, _body) = test_server
+        .openai_completions(request.clone())
+        .header("x-client-id", &client_id)
+        .header("x-client-group", "token-test-group")
+        .send_raw()
+        .await;
+    assert_eq!(status, 200);
 
     // Query ClickHouse for token metrics
     let clickhouse = create_clickhouse_client().await;
@@ -367,11 +361,7 @@ async fn llm_streaming_token_usage_metrics() {
     headers.insert("x-client-id", client_id.parse().unwrap());
     headers.insert("x-client-group", "streaming-token-group".parse().unwrap());
 
-    // Make a streaming request using the llm_client helper
-    let mut llm_client = test_server.llm_client("/llm");
-    llm_client.push_header("x-client-id", client_id.clone());
-    llm_client.push_header("x-client-group", "streaming-token-group");
-
+    // Make a streaming request using the builder pattern
     let streaming_request = serde_json::json!({
         "model": "test_openai/gpt-4",
         "messages": [
@@ -383,7 +373,12 @@ async fn llm_streaming_token_usage_metrics() {
     });
 
     // Stream the completion and collect all chunks
-    let chunks = llm_client.stream_completions(streaming_request).await;
+    let chunks = test_server
+        .openai_completions_stream(streaming_request)
+        .header("x-client-id", &client_id)
+        .header("x-client-group", "streaming-token-group")
+        .send()
+        .await;
     assert!(!chunks.is_empty());
 
     // Query ClickHouse for token metrics
@@ -500,11 +495,7 @@ async fn llm_streaming_operation_metrics() {
     headers.insert("x-client-id", client_id.parse().unwrap());
     headers.insert("x-client-group", "streaming-test-group".parse().unwrap());
 
-    // Make a streaming request using the llm_client helper
-    let mut llm_client = test_server.llm_client("/llm");
-    llm_client.push_header("x-client-id", client_id.clone());
-    llm_client.push_header("x-client-group", "streaming-test-group");
-
+    // Make a streaming request using the builder pattern
     let streaming_request = serde_json::json!({
         "model": "test_openai/gpt-4",
         "messages": [{"role": "user", "content": "Hello"}],
@@ -512,7 +503,12 @@ async fn llm_streaming_operation_metrics() {
     });
 
     // Stream the completion and collect all chunks
-    let chunks = llm_client.stream_completions(streaming_request).await;
+    let chunks = test_server
+        .openai_completions_stream(streaming_request)
+        .header("x-client-id", &client_id)
+        .header("x-client-group", "streaming-test-group")
+        .send()
+        .await;
     assert!(!chunks.is_empty());
 
     // Query ClickHouse for metrics
@@ -668,26 +664,20 @@ path = "/llm"
     });
 
     // First request should succeed
-    let response = test_server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .headers(headers.clone())
-        .json(&request)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 200);
+    let (status, _body) = test_server
+        .openai_completions(request.clone())
+        .header("x-client-id", &client_id)
+        .send_raw()
+        .await;
+    assert_eq!(status, 200);
 
     // Second request should be rate limited
-    let response = test_server
-        .client
-        .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-        .headers(headers.clone())
-        .json(&request)
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(response.status(), 429);
+    let (status, _body) = test_server
+        .openai_completions(request.clone())
+        .header("x-client-id", &client_id)
+        .send_raw()
+        .await;
+    assert_eq!(status, 429);
 
     // Query ClickHouse for operation duration metrics with rate limit error
     let clickhouse = create_clickhouse_client().await;
@@ -781,15 +771,13 @@ async fn llm_finish_reason_metrics() {
 
     // Send requests
     for request in [request1, request2] {
-        let response = test_server
-            .client
-            .request(reqwest::Method::POST, "/llm/v1/chat/completions")
-            .headers(headers.clone())
-            .json(&request)
-            .send()
-            .await
-            .unwrap();
-        assert_eq!(response.status(), 200);
+        let (status, _body) = test_server
+            .openai_completions(request.clone())
+            .header("x-client-id", &client_id)
+            .header("x-client-group", "finish-reason-group")
+            .send_raw()
+            .await;
+        assert_eq!(status, 200);
     }
 
     // Query ClickHouse for operation duration metrics that include finish reason
@@ -878,11 +866,7 @@ async fn llm_streaming_finish_reason_metrics() {
     headers.insert("x-client-id", client_id.parse().unwrap());
     headers.insert("x-client-group", "streaming-finish-group".parse().unwrap());
 
-    // Make a streaming request using the llm_client helper
-    let mut llm_client = test_server.llm_client("/llm");
-    llm_client.push_header("x-client-id", client_id.clone());
-    llm_client.push_header("x-client-group", "streaming-finish-group");
-
+    // Make a streaming request using the builder pattern
     let request = serde_json::json!({
         "model": "test_openai/gpt-4",
         "messages": [{"role": "user", "content": "Hello"}],
@@ -891,7 +875,12 @@ async fn llm_streaming_finish_reason_metrics() {
     });
 
     // Stream the completion and collect all chunks
-    let chunks = llm_client.stream_completions(request).await;
+    let chunks = test_server
+        .openai_completions_stream(request)
+        .header("x-client-id", &client_id)
+        .header("x-client-group", "streaming-finish-group")
+        .send()
+        .await;
     assert!(!chunks.is_empty());
 
     // Verify that the stream includes finish_reason in the last chunk

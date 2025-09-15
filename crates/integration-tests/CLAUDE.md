@@ -49,6 +49,59 @@ async fn feature_works() {
 }
 ```
 
+### LLM Testing with Builder Pattern
+**REQUIRED**: Use builder methods instead of manual HTTP calls
+
+```rust
+// GOOD: Use builder pattern with fluent API
+let request = json!({
+    "model": "provider/model",
+    "messages": [{"role": "user", "content": "Hello"}]
+});
+
+let response = server
+    .openai_completions(request)
+    .header("X-Provider-API-Key", "test-key")
+    .send()
+    .await;
+
+assert_json_snapshot!(response);
+
+// For error testing - get status and body separately
+let (status, body) = server
+    .openai_completions(request)
+    .send_raw()
+    .await;
+assert_eq!(status, 401);
+assert_json_snapshot!(body);
+
+// Streaming completions
+let chunks = server
+    .openai_completions_stream(request)
+    .header("Authorization", "Bearer token")
+    .send()
+    .await;
+
+// BAD: Never use manual HTTP client calls
+let client = reqwest::Client::new();
+let response = client
+    .post(format!("http://{}/llm/openai/v1/chat/completions", server.address))
+    .json(&request)
+    .send()
+    .await;
+```
+
+#### Available Builder Methods
+- `server.openai_completions(request)` - OpenAI chat completions
+- `server.openai_completions_stream(request)` - OpenAI streaming completions
+- `server.anthropic_completions(request)` - Anthropic chat completions
+- `server.anthropic_completions_stream(request)` - Anthropic streaming completions
+
+#### Builder Methods
+- `.header(key, value)` - Add request header (chainable)
+- `.send()` - Send request, expect 200 status, return JSON body
+- `.send_raw()` - Send request, return `(status_code, json_body)` tuple
+
 ### MCP Testing
 ```rust
 let mcp = test.mcp_client("server_name");
