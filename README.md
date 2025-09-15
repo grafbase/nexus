@@ -134,7 +134,9 @@ cwd = "/workspace"
 #### LLM Configuration
 
 - `llm.enabled`: Enable LLM functionality (default: `true`)
-- `llm.path`: LLM endpoint path (default: `/llm`)
+- `llm.endpoints`: Array of LLM endpoint configurations, each with:
+  - `path`: Endpoint path (e.g., `/llm`)
+  - `protocol`: Protocol to use (`openai` or `anthropic`, default: `openai`)
 
 For detailed LLM provider configuration, see the LLM Provider Configuration section below.
 
@@ -519,7 +521,16 @@ Nexus provides a unified interface for multiple LLM providers, allowing you to r
 ```toml
 [llm]
 enabled = true  # Enable LLM functionality (default: true)
-path = "/llm"   # LLM endpoint path (default: "/llm")
+
+# Define one or more endpoints with their protocols
+[[llm.endpoints]]
+path = "/llm"      # OpenAI-compatible endpoint
+protocol = "openai"  # Protocol type (default: "openai")
+
+# You can add multiple endpoints with different protocols
+[[llm.endpoints]]
+path = "/claude"    # Anthropic-compatible endpoint
+protocol = "anthropic"
 ```
 
 #### Supported Providers

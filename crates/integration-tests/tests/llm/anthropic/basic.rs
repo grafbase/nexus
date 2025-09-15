@@ -266,6 +266,10 @@ async fn streaming_with_missing_fields() {
     let config = indoc! {r#"
         [llm]
         enabled = true
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#};
 
     let server = builder.build(config).await;
@@ -319,6 +323,10 @@ async fn streaming_json_snapshots() {
     let config = indoc! {r#"
         [llm]
         enabled = true
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#};
 
     let server = builder.build(config).await;

@@ -15,6 +15,10 @@ async fn google_tool_calling_basic() {
     let config = indoc! {r#"
         [llm]
         enabled = true
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#};
 
     let server = builder.build(config).await;
@@ -105,6 +109,10 @@ async fn google_tool_calling_with_parallel_tools() {
     let config = indoc! {r#"
         [llm]
         enabled = true
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#};
 
     let server = builder.build(config).await;
@@ -198,6 +206,10 @@ async fn google_tool_message_handling() {
     let config = indoc! {r#"
         [llm]
         enabled = true
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#};
 
     let server = builder.build(config).await;
@@ -273,6 +285,10 @@ async fn google_no_tools_regular_response() {
     let config = indoc! {r#"
         [llm]
         enabled = true
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#};
 
     let server = builder.build(config).await;
@@ -334,6 +350,10 @@ async fn google_tool_with_additional_properties_stripped() {
     let config = indoc! {r#"
         [llm]
         enabled = true
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#};
 
     let server = builder.build(config).await;
@@ -426,6 +446,10 @@ async fn google_tool_calling_streaming() {
     let config = indoc! {r#"
         [llm]
         enabled = true
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#};
 
     let server = builder.build(config).await;

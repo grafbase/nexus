@@ -55,6 +55,31 @@ pub(crate) fn validate_has_downstreams(config: &Config) -> anyhow::Result<()> {
         "#});
     }
 
+    // If LLM is enabled and has providers, it must have at least one protocol endpoint
+    if has_llm_providers && !config.llm.has_protocol_endpoints() {
+        bail!(indoc! {r#"
+            LLM providers are configured but no protocol endpoints are defined. At least one protocol endpoint must be configured.
+
+            Example configuration:
+
+              [llm.protocols.openai]
+              enabled = true
+              path = "/llm"
+
+              [llm.protocols.anthropic]
+              enabled = true
+              path = "/claude"
+        "#});
+    }
+
+    // Validate that protocol endpoint paths are unique
+    let mut seen_paths = std::collections::HashSet::new();
+    for (_protocol, endpoint_config) in config.llm.get_protocol_endpoints() {
+        if !seen_paths.insert(&endpoint_config.path) {
+            bail!("Duplicate LLM protocol endpoint path: {}", endpoint_config.path);
+        }
+    }
+
     Ok(())
 }
 
@@ -503,6 +528,10 @@ mod tests {
     #[test]
     fn validation_passes_with_llm_provider() {
         let config_str = indoc! {r#"
+            [llm.protocols.openai]
+            enabled = true
+            path = "/llm"
+
             [llm.providers.openai]
             type = "openai"
             api_key = "test-key"
@@ -521,6 +550,10 @@ mod tests {
             [mcp.servers.test]
             cmd = ["echo", "test"]
 
+            [llm.protocols.openai]
+            enabled = true
+            path = "/llm"
+
             [llm.providers.openai]
             type = "openai"
             api_key = "test-key"
@@ -538,6 +571,10 @@ mod tests {
         let config_str = indoc! {r#"
             [mcp]
             enabled = false
+
+            [llm.protocols.openai]
+            enabled = true
+            path = "/llm"
 
             [llm.providers.openai]
             type = "openai"
@@ -567,6 +604,48 @@ mod tests {
     }
 
     #[test]
+    fn validation_fails_when_llm_has_providers_but_no_endpoints() {
+        let config_str = indoc! {r#"
+            [llm.providers.openai]
+            type = "openai"
+            api_key = "test-key"
+
+            [llm.providers.openai.models.gpt-4]
+        "#};
+
+        let config: Config = toml::from_str(config_str).unwrap();
+        let result = super::validate_has_downstreams(&config);
+        assert!(result.is_err());
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("no protocol endpoints are defined"));
+    }
+
+    #[test]
+    fn validation_fails_with_duplicate_endpoint_paths() {
+        let config_str = indoc! {r#"
+            [llm.protocols.openai]
+            enabled = true
+            path = "/llm"
+
+            [llm.protocols.anthropic]
+            enabled = true
+            path = "/llm"
+
+            [llm.providers.openai]
+            type = "openai"
+            api_key = "test-key"
+
+            [llm.providers.openai.models.gpt-4]
+        "#};
+
+        let config: Config = toml::from_str(config_str).unwrap();
+        let result = super::validate_has_downstreams(&config);
+        assert!(result.is_err());
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("Duplicate LLM protocol endpoint path"));
+    }
+
+    #[test]
     fn rate_limit_validation_with_groups() {
         let config = indoc! {r#"
             [server.client_identification]
@@ -576,6 +655,10 @@ mod tests {
 
             [server.client_identification.validation]
             group_values = ["free", "pro"]
+
+            [llm.protocols.openai]
+            enabled = true
+            path = "/llm"
 
             [llm.providers.openai]
             type = "openai"
@@ -610,6 +693,10 @@ mod tests {
             [server.client_identification]
             enabled = false
 
+            [llm.protocols.openai]
+            enabled = true
+            path = "/llm"
+
             [llm.providers.openai]
             type = "openai"
             api_key = "test-key"
@@ -636,6 +723,10 @@ mod tests {
             [server.client_identification]
             enabled = false
 
+            [llm.protocols.openai]
+            enabled = true
+            path = "/llm"
+
             [llm.providers.openai]
             type = "openai"
             api_key = "test-key"
@@ -660,6 +751,10 @@ mod tests {
             enabled = true
             client_id.jwt_claim = "sub"
             group_id.jwt_claim = "plan"
+
+            [llm.protocols.openai]
+            enabled = true
+            path = "/llm"
 
             [llm.providers.openai]
             type = "openai"
@@ -687,6 +782,10 @@ mod tests {
             [server.client_identification]
             enabled = true
             client_id.jwt_claim = "sub"
+
+            [llm.protocols.openai]
+            enabled = true
+            path = "/llm"
 
             [llm.providers.openai]
             type = "openai"
@@ -732,6 +831,10 @@ mod tests {
 
             [server.client_identification.validation]
             group_values = ["free", "pro"]
+
+            [llm.protocols.openai]
+            enabled = true
+            path = "/llm"
 
             [llm.providers.openai]
             type = "openai"

@@ -379,7 +379,10 @@ async fn redis_token_rate_limit_creates_span() {
 
         [llm]
         enabled = true
-        
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
         [llm.providers.testprovider.rate_limits.per_user]
         input_token_limit = 1000
         interval = "60s"

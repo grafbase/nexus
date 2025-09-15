@@ -222,7 +222,13 @@ pub async fn serve(
             }
 
             if llm_actually_exposed {
-                log::info!("LLM endpoint available at: https://{listen_address}{}", config.llm.path);
+                for (protocol, endpoint_config) in config.llm.get_protocol_endpoints() {
+                    log::info!(
+                        "LLM endpoint ({:?} protocol) available at: https://{listen_address}{}",
+                        protocol,
+                        endpoint_config.path
+                    );
+                }
             }
 
             let server =
@@ -245,7 +251,13 @@ pub async fn serve(
             }
 
             if llm_actually_exposed {
-                log::info!("LLM endpoint available at: http://{listen_address}{}", config.llm.path);
+                for (protocol, endpoint_config) in config.llm.get_protocol_endpoints() {
+                    log::info!(
+                        "LLM endpoint ({:?} protocol) available at: http://{listen_address}{}",
+                        protocol,
+                        endpoint_config.path
+                    );
+                }
             }
 
             // Run with graceful shutdown

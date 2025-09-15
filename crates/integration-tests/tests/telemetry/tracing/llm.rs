@@ -61,7 +61,10 @@ fn create_llm_tracing_config(service_name: &str) -> String {
 
         [llm]
         enabled = true
-        path = "/llm"
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#}
 }
 

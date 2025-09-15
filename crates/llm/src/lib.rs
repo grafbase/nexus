@@ -31,12 +31,20 @@ pub async fn router(config: &config::Config) -> anyhow::Result<Router> {
             .map_err(|e| anyhow::anyhow!("Failed to initialize LLM server: {e}"))?,
     );
 
-    let ai_routes = Router::new()
-        .route("/v1/chat/completions", post(chat_completions))
-        .route("/v1/models", get(list_models))
-        .with_state(server);
+    // For now, create routers for all protocol endpoints
+    // TODO: In phase 2, we'll add protocol-specific routing
+    let mut router = Router::new();
 
-    Ok(Router::new().nest(&config.llm.path, ai_routes))
+    for (_protocol, endpoint_config) in config.llm.get_protocol_endpoints() {
+        let ai_routes = Router::new()
+            .route("/v1/chat/completions", post(chat_completions))
+            .route("/v1/models", get(list_models))
+            .with_state(server.clone());
+
+        router = router.nest(&endpoint_config.path, ai_routes);
+    }
+
+    Ok(router)
 }
 
 /// Handle chat completion requests.
