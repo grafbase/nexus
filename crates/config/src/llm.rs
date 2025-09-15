@@ -1,6 +1,5 @@
 //! LLM configuration structures for AI model providers.
 
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use crate::headers::HeaderRule;
@@ -72,6 +71,48 @@ impl ModelConfig {
     }
 }
 
+/// Protocol type for LLM endpoints.
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LlmProtocol {
+    /// OpenAI protocol (default).
+    OpenAI,
+    /// Anthropic protocol.
+    Anthropic,
+}
+
+impl Default for LlmProtocol {
+    fn default() -> Self {
+        Self::OpenAI
+    }
+}
+
+/// Configuration for a single LLM protocol endpoint.
+#[derive(Debug, Clone, Deserialize)]
+pub struct LlmProtocolConfig {
+    /// Whether this protocol endpoint is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// The path where this endpoint will be mounted.
+    pub path: String,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// Configuration for all LLM protocol endpoints.
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default)]
+pub struct LlmProtocolsConfig {
+    /// OpenAI protocol endpoint configuration.
+    pub openai: Option<LlmProtocolConfig>,
+
+    /// Anthropic protocol endpoint configuration.
+    pub anthropic: Option<LlmProtocolConfig>,
+}
+
 /// LLM configuration for AI model integration.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -79,8 +120,8 @@ pub struct LlmConfig {
     /// Whether the LLM functionality is enabled.
     enabled: bool,
 
-    /// The path where the LLM endpoints will be mounted.
-    pub path: Cow<'static, str>,
+    /// Protocol-specific endpoint configurations.
+    pub protocols: LlmProtocolsConfig,
 
     /// Map of LLM provider configurations.
     pub providers: BTreeMap<String, LlmProviderConfig>,
@@ -90,7 +131,7 @@ impl Default for LlmConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            path: Cow::Borrowed("/llm"),
+            protocols: LlmProtocolsConfig::default(),
             providers: BTreeMap::new(),
         }
     }
@@ -105,6 +146,30 @@ impl LlmConfig {
     /// Whether there are any LLM providers configured.
     pub fn has_providers(&self) -> bool {
         !self.providers.is_empty()
+    }
+
+    /// Get all configured protocol endpoints as (protocol, config) pairs.
+    pub fn get_protocol_endpoints(&self) -> Vec<(LlmProtocol, &LlmProtocolConfig)> {
+        let mut endpoints = Vec::new();
+
+        if let Some(openai_config) = &self.protocols.openai
+            && openai_config.enabled
+        {
+            endpoints.push((LlmProtocol::OpenAI, openai_config));
+        }
+
+        if let Some(anthropic_config) = &self.protocols.anthropic
+            && anthropic_config.enabled
+        {
+            endpoints.push((LlmProtocol::Anthropic, anthropic_config));
+        }
+
+        endpoints
+    }
+
+    /// Whether there are any protocol endpoints configured.
+    pub fn has_protocol_endpoints(&self) -> bool {
+        !self.get_protocol_endpoints().is_empty()
     }
 }
 
@@ -339,7 +404,10 @@ mod tests {
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
-            path: "/llm",
+            protocols: LlmProtocolsConfig {
+                openai: None,
+                anthropic: None,
+            },
             providers: {},
         }
         "#);
@@ -349,14 +417,17 @@ mod tests {
     fn llm_config_with_openai() {
         let config = indoc! {r#"
             enabled = true
+
+            [protocols.openai]
+            enabled = true
             path = "/llm"
 
             [providers.openai]
             type = "openai"
             api_key = "${OPENAI_API_KEY}"
-            
+
             [providers.openai.models.gpt-4]
-            
+
             [providers.openai.models.gpt-3-5-turbo]
         "#};
 
@@ -365,7 +436,15 @@ mod tests {
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
-            path: "/llm",
+            protocols: LlmProtocolsConfig {
+                openai: Some(
+                    LlmProtocolConfig {
+                        enabled: true,
+                        path: "/llm",
+                    },
+                ),
+                anthropic: None,
+            },
             providers: {
                 "openai": Openai(
                     ApiProviderConfig {
@@ -399,14 +478,17 @@ mod tests {
     fn llm_config_with_anthropic() {
         let config = indoc! {r#"
             enabled = true
+
+            [protocols.anthropic]
+            enabled = true
             path = "/llm"
 
             [providers.anthropic]
             type = "anthropic"
             api_key = "{{ env.ANTHROPIC_API_KEY }}"
-            
+
             [providers.anthropic.models.claude-3-opus]
-            
+
             [providers.anthropic.models.claude-3-sonnet]
         "#};
 
@@ -415,7 +497,15 @@ mod tests {
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
-            path: "/llm",
+            protocols: LlmProtocolsConfig {
+                openai: None,
+                anthropic: Some(
+                    LlmProtocolConfig {
+                        enabled: true,
+                        path: "/llm",
+                    },
+                ),
+            },
             providers: {
                 "anthropic": Anthropic(
                     ApiProviderConfig {
@@ -448,12 +538,16 @@ mod tests {
     #[test]
     fn llm_config_with_google() {
         let config = indoc! {r#"
+            [protocols.openai]
+            enabled = true
+            path = "/llm"
+
             [providers.google]
             type = "google"
             api_key = "{{ env.GOOGLE_KEY }}"
-            
+
             [providers.google.models.gemini-pro]
-            
+
             [providers.google.models.gemini-pro-vision]
         "#};
 
@@ -462,7 +556,15 @@ mod tests {
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
-            path: "/llm",
+            protocols: LlmProtocolsConfig {
+                openai: Some(
+                    LlmProtocolConfig {
+                        enabled: true,
+                        path: "/llm",
+                    },
+                ),
+                anthropic: None,
+            },
             providers: {
                 "google": Google(
                     ApiProviderConfig {
@@ -496,24 +598,26 @@ mod tests {
     fn llm_config_with_multiple_providers() {
         let config = indoc! {r#"
             enabled = true
-            path = "/ai"
 
-            [providers.openai]
+            [protocols.openai]
+enabled = true
+path = "/ai"
+[providers.openai]
             type = "openai"
             api_key = "${OPENAI_API_KEY}"
-            
+
             [providers.openai.models.gpt-4]
 
             [providers.anthropic]
             type = "anthropic"
             api_key = "{{ env.ANTHROPIC_API_KEY }}"
-            
+
             [providers.anthropic.models.claude-3-opus]
 
             [providers.google]
             type = "google"
             api_key = "{{ env.GOOGLE_KEY }}"
-            
+
             [providers.google.models.gemini-pro]
         "#};
 
@@ -522,7 +626,15 @@ mod tests {
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
-            path: "/ai",
+            protocols: LlmProtocolsConfig {
+                openai: Some(
+                    LlmProtocolConfig {
+                        enabled: true,
+                        path: "/ai",
+                    },
+                ),
+                anthropic: None,
+            },
             providers: {
                 "anthropic": Anthropic(
                     ApiProviderConfig {
@@ -591,27 +703,40 @@ mod tests {
 
         let config: LlmConfig = toml::from_str(config).unwrap();
 
-        assert_debug_snapshot!(&config, @r#"
+        assert_debug_snapshot!(&config, @r"
         LlmConfig {
             enabled: false,
-            path: "/llm",
+            protocols: LlmProtocolsConfig {
+                openai: None,
+                anthropic: None,
+            },
             providers: {},
         }
-        "#);
+        ");
     }
 
     #[test]
     fn llm_config_custom_path() {
         let config = indoc! {r#"
-            path = "/models"
-        "#};
+            [protocols.openai]
+enabled = true
+path = "/models"
+"#};
 
         let config: LlmConfig = toml::from_str(config).unwrap();
 
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
-            path: "/models",
+            protocols: LlmProtocolsConfig {
+                openai: Some(
+                    LlmProtocolConfig {
+                        enabled: true,
+                        path: "/models",
+                    },
+                ),
+                anthropic: None,
+            },
             providers: {},
         }
         "#);
@@ -635,10 +760,13 @@ mod tests {
     #[test]
     fn llm_config_with_static_api_key() {
         let config = indoc! {r#"
-            [providers.openai]
+            [protocols.openai]
+enabled = true
+path = "/llm"
+[providers.openai]
             type = "openai"
             api_key = "sk-1234567890abcdef"
-            
+
             [providers.openai.models.gpt-4]
         "#};
 
@@ -647,7 +775,15 @@ mod tests {
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
-            path: "/llm",
+            protocols: LlmProtocolsConfig {
+                openai: Some(
+                    LlmProtocolConfig {
+                        enabled: true,
+                        path: "/llm",
+                    },
+                ),
+                anthropic: None,
+            },
             providers: {
                 "openai": Openai(
                     ApiProviderConfig {
@@ -675,13 +811,16 @@ mod tests {
     #[test]
     fn llm_config_with_explicit_models() {
         let config = indoc! {r#"
-            [providers.openai]
+            [protocols.openai]
+enabled = true
+path = "/llm"
+[providers.openai]
             type = "openai"
             api_key = "key"
-            
+
             [providers.openai.models.gpt-4]
             rename = "gpt-4-turbo-preview"
-            
+
             [providers.openai.models.gpt-3-5]
             rename = "gpt-3.5-turbo"
         "#};
@@ -691,7 +830,15 @@ mod tests {
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
-            path: "/llm",
+            protocols: LlmProtocolsConfig {
+                openai: Some(
+                    LlmProtocolConfig {
+                        enabled: true,
+                        path: "/llm",
+                    },
+                ),
+                anthropic: None,
+            },
             providers: {
                 "openai": Openai(
                     ApiProviderConfig {
@@ -728,13 +875,16 @@ mod tests {
     #[test]
     fn llm_config_models_without_rename() {
         let config = indoc! {r#"
-            [providers.openai]
+            [protocols.openai]
+enabled = true
+path = "/llm"
+[providers.openai]
             type = "openai"
             api_key = "key"
-            
+
             [providers.openai.models.gpt-4]
             # No rename - will use "gpt-4" as-is
-            
+
             [providers.openai.models.custom-model]
             # No fields at all
         "#};
@@ -744,7 +894,15 @@ mod tests {
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
-            path: "/llm",
+            protocols: LlmProtocolsConfig {
+                openai: Some(
+                    LlmProtocolConfig {
+                        enabled: true,
+                        path: "/llm",
+                    },
+                ),
+                anthropic: None,
+            },
             providers: {
                 "openai": Openai(
                     ApiProviderConfig {
@@ -777,20 +935,23 @@ mod tests {
     #[test]
     fn llm_config_mixed_providers_with_models() {
         let config = indoc! {r#"
-            [providers.openai]
+            [protocols.openai]
+enabled = true
+path = "/llm"
+[providers.openai]
             type = "openai"
             api_key = "key1"
-            
+
             [providers.openai.models.gpt-4]
             rename = "gpt-4-turbo"
-            
+
             [providers.anthropic]
             type = "anthropic"
             api_key = "key2"
-            
+
             [providers.anthropic.models.claude-3]
             rename = "claude-3-opus-20240229"
-            
+
             [providers.anthropic.models.claude-instant]
             # No rename
         "#};
@@ -800,7 +961,15 @@ mod tests {
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
-            path: "/llm",
+            protocols: LlmProtocolsConfig {
+                openai: Some(
+                    LlmProtocolConfig {
+                        enabled: true,
+                        path: "/llm",
+                    },
+                ),
+                anthropic: None,
+            },
             providers: {
                 "anthropic": Anthropic(
                     ApiProviderConfig {
@@ -855,18 +1024,21 @@ mod tests {
     #[test]
     fn provider_rate_limits() {
         let config = indoc! {r#"
-            [providers.openai]
+            [protocols.openai]
+enabled = true
+path = "/llm"
+[providers.openai]
             type = "openai"
             api_key = "test-key"
-            
+
             [providers.openai.rate_limits.per_user]
             input_token_limit = 100000
             interval = "60s"
-            
+
             [providers.openai.rate_limits.per_user.groups]
             free = { input_token_limit = 10000, interval = "60s" }
             pro = { input_token_limit = 100000, interval = "60s" }
-            
+
             [providers.openai.models.gpt-4]
         "#};
 
@@ -899,14 +1071,17 @@ mod tests {
     #[test]
     fn model_rate_limits() {
         let config = indoc! {r#"
-            [providers.openai]
+            [protocols.openai]
+enabled = true
+path = "/llm"
+[providers.openai]
             type = "openai"
             api_key = "test-key"
-            
+
             [providers.openai.models.gpt-4.rate_limits.per_user]
             input_token_limit = 50000
             interval = "60s"
-            
+
             [providers.openai.models.gpt-4.rate_limits.per_user.groups]
             free = { input_token_limit = 5000, interval = "60s" }
             pro = { input_token_limit = 50000, interval = "60s" }
@@ -941,25 +1116,28 @@ mod tests {
     #[test]
     fn llm_config_with_forward_token_enabled() {
         let config = indoc! {r#"
-            [providers.openai]
+            [protocols.openai]
+enabled = true
+path = "/llm"
+[providers.openai]
             type = "openai"
             api_key = "sk-fallback-key"
             forward_token = true
-            
+
             [providers.openai.models.gpt-4]
 
             [providers.anthropic]
             type = "anthropic"
             forward_token = true
             # No api_key provided - relies entirely on token forwarding
-            
+
             [providers.anthropic.models.claude-3-opus]
 
             [providers.google]
             type = "google"
             api_key = "{{ env.GOOGLE_KEY }}"
             forward_token = false  # Explicitly disabled
-            
+
             [providers.google.models.gemini-pro]
         "#};
 
@@ -968,7 +1146,15 @@ mod tests {
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
-            path: "/llm",
+            protocols: LlmProtocolsConfig {
+                openai: Some(
+                    LlmProtocolConfig {
+                        enabled: true,
+                        path: "/llm",
+                    },
+                ),
+                anthropic: None,
+            },
             providers: {
                 "anthropic": Anthropic(
                     ApiProviderConfig {
@@ -1013,6 +1199,120 @@ mod tests {
                         forward_token: true,
                         models: {
                             "gpt-4": ApiModelConfig {
+                                rename: None,
+                                rate_limits: None,
+                                headers: [],
+                            },
+                        },
+                        rate_limits: None,
+                        headers: [],
+                    },
+                ),
+            },
+        }
+        "#);
+    }
+
+    #[test]
+    fn llm_config_multiple_endpoints() {
+        let config = indoc! {r#"
+            [protocols.openai]
+            enabled = true
+            path = "/llm"
+
+            [protocols.anthropic]
+            enabled = true
+            path = "/claude"
+
+            [providers.openai]
+            type = "openai"
+            api_key = "test-key"
+
+            [providers.openai.models.gpt-4]
+        "#};
+
+        let config: LlmConfig = toml::from_str(config).unwrap();
+
+        assert_debug_snapshot!(&config, @r#"
+        LlmConfig {
+            enabled: true,
+            protocols: LlmProtocolsConfig {
+                openai: Some(
+                    LlmProtocolConfig {
+                        enabled: true,
+                        path: "/llm",
+                    },
+                ),
+                anthropic: Some(
+                    LlmProtocolConfig {
+                        enabled: true,
+                        path: "/claude",
+                    },
+                ),
+            },
+            providers: {
+                "openai": Openai(
+                    ApiProviderConfig {
+                        api_key: Some(
+                            SecretBox<str>([REDACTED]),
+                        ),
+                        base_url: None,
+                        forward_token: false,
+                        models: {
+                            "gpt-4": ApiModelConfig {
+                                rename: None,
+                                rate_limits: None,
+                                headers: [],
+                            },
+                        },
+                        rate_limits: None,
+                        headers: [],
+                    },
+                ),
+            },
+        }
+        "#);
+    }
+
+    #[test]
+    fn llm_config_anthropic_protocol() {
+        let config = indoc! {r#"
+            [protocols.openai]
+enabled = true
+path = "/v1"
+protocol = "anthropic"
+
+            [providers.anthropic]
+            type = "anthropic"
+            api_key = "test-key"
+
+            [providers.anthropic.models.claude-3-opus]
+        "#};
+
+        let config: LlmConfig = toml::from_str(config).unwrap();
+
+        assert_debug_snapshot!(&config, @r#"
+        LlmConfig {
+            enabled: true,
+            protocols: LlmProtocolsConfig {
+                openai: Some(
+                    LlmProtocolConfig {
+                        enabled: true,
+                        path: "/v1",
+                    },
+                ),
+                anthropic: None,
+            },
+            providers: {
+                "anthropic": Anthropic(
+                    ApiProviderConfig {
+                        api_key: Some(
+                            SecretBox<str>([REDACTED]),
+                        ),
+                        base_url: None,
+                        forward_token: false,
+                        models: {
+                            "claude-3-opus": ApiModelConfig {
                                 rename: None,
                                 rate_limits: None,
                                 headers: [],

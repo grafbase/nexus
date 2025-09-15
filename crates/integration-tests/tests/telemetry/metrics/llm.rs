@@ -38,7 +38,10 @@ fn create_test_config_with_metrics(service_name: &str) -> String {
 
         [llm]
         enabled = true
-        path = "/llm"
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#}
 }
 
@@ -638,8 +641,10 @@ async fn llm_rate_limit_metrics() {
 
         [llm]
         enabled = true
-        path = "/llm"
 
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
         # Configure rate limiting to trigger on second request
         [llm.providers.test_openai.rate_limits.per_user]
         input_token_limit = 20

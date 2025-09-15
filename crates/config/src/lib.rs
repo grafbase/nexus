@@ -125,7 +125,10 @@ mod tests {
             },
             llm: LlmConfig {
                 enabled: true,
-                path: "/llm",
+                protocols: LlmProtocolsConfig {
+                    openai: None,
+                    anthropic: None,
+                },
                 providers: {},
             },
             telemetry: None,

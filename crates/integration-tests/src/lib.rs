@@ -692,12 +692,17 @@ impl TestServerBuilder {
         config.model_configs = model_configs;
         let provider_config_snippet = llms::generate_config_for_type(config.provider_type, &config);
 
+        // Don't add [llm] section here - let build() handle it
+        // This avoids conflicts with tests that define their own [llm] configuration
         self.config.push_str(&provider_config_snippet);
     }
 
     /// Spawn a test LLM server and configure Nexus to connect to it (legacy method for backward compatibility)
     pub async fn spawn_llm_server(&mut self, provider_name: &str) -> TestOpenAIServer {
         let llm_server = TestOpenAIServer::start().await;
+
+        // Don't add [llm] section here - let build() handle it
+        // This avoids conflicts with tests that define their own [llm] configuration
 
         // Add LLM configuration pointing to the test server
         // Include /v1 in the URL as the OpenAI provider expects this format
@@ -783,8 +788,28 @@ impl TestServerBuilder {
     }
 
     pub async fn build(self, config: &str) -> TestServer {
-        let config = format!("{config}\n{}", self.config);
+        let mut final_config = config.to_string();
 
-        TestServer::start(&config, self.test_service_tokens).await
+        // If test config doesn't have [llm] section but we have LLM providers configured
+        // (either in the test config or builder config), add default [llm] configuration with endpoints
+        let has_llm_section = config.contains("[llm]") || final_config.contains("[llm]");
+        let has_providers = config.contains("[llm.providers.") || self.config.contains("[llm.providers.");
+
+        if !has_llm_section && has_providers {
+            final_config.push_str(indoc::indoc! {r#"
+
+                [llm]
+                enabled = true
+
+                [llm.protocols.openai]
+                enabled = true
+                path = "/llm"
+            "#});
+        }
+
+        final_config.push('\n');
+        final_config.push_str(&self.config);
+
+        TestServer::start(&final_config, self.test_service_tokens).await
     }
 }

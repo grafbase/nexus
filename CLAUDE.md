@@ -158,6 +158,10 @@ Nexus requires at least one downstream service (MCP servers or LLM providers) to
   - Each LLM provider MUST have at least one model explicitly configured
   - Models are configured under `[llm.providers.<name>.models.<model-id>]`
   - Model IDs containing dots must be quoted: `[llm.providers.google.models."gemini-1.5-flash"]`
+  - **Endpoints**: LLM endpoints are configured using `[[llm.endpoints]]` array syntax
+    - Each endpoint has a `path` (e.g., `/llm`) and `protocol` (`openai` or `anthropic`)
+    - Multiple endpoints can be configured with different protocols
+    - Example: `[[llm.endpoints]]` with `path = "/llm"` and `protocol = "openai"`
 
 #### Client Identification for Rate Limiting
 
@@ -181,6 +185,15 @@ cmd = ["echo", "dummy"]
 For LLM providers in tests:
 
 ```toml
+# LLM endpoints configuration (required when providers are configured)
+[llm]
+enabled = true
+
+[[llm.endpoints]]
+path = "/llm"
+protocol = "openai"  # or "anthropic" (default: "openai")
+
+# Provider configuration
 [llm.providers.test]
 type = "openai"
 api_key = "test-key"
@@ -373,7 +386,7 @@ cargo nextest run
 # The .cargo/config.toml aliases 'cargo test' to 'cargo nextest run' for safety
 # But always explicitly use nextest in commands and documentation
 
-# Run tests with debug logs visible  
+# Run tests with debug logs visible
 cargo nextest run --no-capture
 
 # Or with specific log level

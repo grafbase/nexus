@@ -40,7 +40,10 @@ async fn list_models() {
 async fn custom_path() {
     let config = indoc! {r#"
         [llm]
-        path = "/custom"
+
+        [llm.protocols.openai]
+enabled = true
+path = "/custom"
     "#};
 
     let mut builder = TestServer::builder();
@@ -326,6 +329,10 @@ async fn handles_fragmented_chunks() {
     let config = indoc! {r#"
         [llm]
         enabled = true
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#};
 
     let server = builder.build(config).await;
@@ -349,6 +356,10 @@ async fn streaming_with_json_values() {
     let config = indoc! {r#"
         [llm]
         enabled = true
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#};
 
     let server = builder.build(config).await;
@@ -403,6 +414,10 @@ async fn collect_streaming_content() {
     let config = indoc! {r#"
         [llm]
         enabled = true
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#};
 
     let server = builder.build(config).await;

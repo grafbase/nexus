@@ -335,6 +335,10 @@ async fn streaming_error_returns_error_in_stream() {
     let config = indoc! {r#"
         [llm]
         enabled = true
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#};
 
     let server = builder.build(config).await;

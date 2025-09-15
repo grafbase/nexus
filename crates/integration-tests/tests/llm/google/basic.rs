@@ -166,6 +166,10 @@ async fn handles_escape_sequences_in_streaming() {
     let config = indoc! {r#"
         [llm]
         enabled = true
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#};
 
     let server = builder.build(config).await;
@@ -202,6 +206,10 @@ async fn streaming_with_long_content() {
     let config = indoc! {r#"
         [llm]
         enabled = true
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#};
 
     let server = builder.build(config).await;
@@ -272,6 +280,10 @@ async fn streaming_with_many_small_chunks() {
     let config = indoc! {r#"
         [llm]
         enabled = true
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#};
 
     let server = builder.build(config).await;
@@ -489,6 +501,10 @@ async fn streaming_json_snapshots() {
     let config = indoc! {r#"
         [llm]
         enabled = true
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
     "#};
 
     let server = builder.build(config).await;

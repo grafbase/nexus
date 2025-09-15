@@ -40,6 +40,9 @@ fn create_bedrock_config(models: &[(&str, &str)]) -> String {
         [llm]
         enabled = true
 
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
         [llm.providers.bedrock]
         type = "bedrock"
         region = "{region}"

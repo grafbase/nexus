@@ -24,7 +24,10 @@ async fn openai_header_rules() {
     let config = indoc! {r#"
         [llm]
         enabled = true
-        
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
         # Additional header rules for the provider
         [[llm.providers.test.headers]]
         rule = "forward"
@@ -102,7 +105,10 @@ async fn anthropic_header_rules() {
     let config = indoc! {r#"
         [llm]
         enabled = true
-        
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
         # Header rules for Anthropic
         [[llm.providers.claude.headers]]
         rule = "insert"
@@ -184,7 +190,10 @@ async fn google_header_rules() {
     let config = indoc! {r#"
         [llm]
         enabled = true
-        
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
         # Header rules for Google
         [[llm.providers.gemini.headers]]
         rule = "forward"
@@ -263,7 +272,10 @@ async fn model_level_headers_override() {
     let config = indoc! {r#"
         [llm]
         enabled = true
-        
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
         # Provider-level headers
         [[llm.providers.ai.headers]]
         rule = "insert"
@@ -382,7 +394,10 @@ async fn header_forwarding_with_default() {
     let config = indoc! {r#"
         [llm]
         enabled = true
-        
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
         [[llm.providers.test.headers]]
         rule = "forward"
         name = "X-Request-ID"
@@ -437,7 +452,10 @@ async fn header_forwarding_with_default_and_existing_header() {
     let config = indoc! {r#"
         [llm]
         enabled = true
-        
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
         [[llm.providers.test.headers]]
         rule = "forward"
         name = "X-Request-ID"
@@ -492,7 +510,10 @@ async fn regex_header_forwarding_should_not_duplicate() {
     let config = indoc! {r#"
         [llm]
         enabled = true
-        
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
         # Forward all X- headers
         [[llm.providers.test.headers]]
         rule = "forward"
@@ -558,7 +579,10 @@ async fn regex_header_forwarding_then_delete() {
     let config = indoc! {r#"
         [llm]
         enabled = true
-        
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
         # Forward all X- headers
         [[llm.providers.claude.headers]]
         rule = "forward"
@@ -628,7 +652,10 @@ async fn regex_header_forwarding_then_delete_with_regex() {
     let config = indoc! {r#"
         [llm]
         enabled = true
-        
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
         # Forward all X- headers
         [[llm.providers.test.headers]]
         rule = "forward"
@@ -695,7 +722,10 @@ async fn rename_duplicate_no_default() {
     let config = indoc! {r#"
         [llm]
         enabled = true
-        
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
         [[llm.providers.test.headers]]
         rule = "rename_duplicate"
         name = "X-Original"
@@ -754,7 +784,10 @@ async fn rename_duplicate_default() {
     let config = indoc! {r#"
         [llm]
         enabled = true
-        
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
         [[llm.providers.claude.headers]]
         rule = "rename_duplicate"
         name = "X-Original"
@@ -813,7 +846,10 @@ async fn rename_duplicate_default_with_existing_value() {
     let config = indoc! {r#"
         [llm]
         enabled = true
-        
+
+        [llm.protocols.openai]
+enabled = true
+path = "/llm"
         [[llm.providers.test.headers]]
         rule = "rename_duplicate"
         name = "X-Original"
