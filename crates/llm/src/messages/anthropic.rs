@@ -224,7 +224,6 @@ pub struct AnthropicChatResponse {
     pub id: String,
 
     /// The type of response (always "message" for completions)
-    #[serde(rename = "type")]
     pub r#type: String,
 
     /// The role of the response (always "assistant")
