@@ -4,7 +4,7 @@ mod stream;
 
 use crate::{
     error::LlmError,
-    messages::{ChatCompletionRequest, ChatCompletionResponse, ModelsResponse},
+    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, ModelsResponse},
     provider::ChatCompletionStream,
     request::RequestContext,
     server::LlmService,

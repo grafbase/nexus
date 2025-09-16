@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::messages::{ChatCompletionRequest, ChatMessage, Tool, ToolChoice};
+use crate::messages::openai;
 
 /// Request body for OpenAI Chat Completions API.
 ///
@@ -16,7 +16,7 @@ pub struct OpenAIRequest {
 
     /// A list of messages comprising the conversation so far.
     /// Each message has a role (system, user, or assistant) and content.
-    pub messages: Vec<ChatMessage>,
+    pub messages: Vec<openai::ChatMessage>,
 
     /// What sampling temperature to use, between 0 and 2.
     /// Higher values like 0.8 will make the output more random, while lower values like 0.2
@@ -64,7 +64,7 @@ pub struct OpenAIRequest {
     /// A list of tools the model may call. Currently, only functions are supported as a tool.
     /// Use this to provide a list of functions the model may generate JSON inputs for.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tools: Option<Vec<Tool>>,
+    pub tools: Option<Vec<openai::Tool>>,
 
     /// Controls which (if any) tool is called by the model.
     /// none means the model will not call any tool and instead generates a message.
@@ -73,16 +73,16 @@ pub struct OpenAIRequest {
     /// Specifying a particular tool via {"type": "function", "function": {"name": "my_function"}}
     /// forces the model to call that tool.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_choice: Option<ToolChoice>,
+    pub tool_choice: Option<openai::ToolChoice>,
 
     /// Whether to enable parallel function calling during tool use.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parallel_tool_calls: Option<bool>,
 }
 
-impl From<ChatCompletionRequest> for OpenAIRequest {
-    fn from(request: ChatCompletionRequest) -> Self {
-        let ChatCompletionRequest {
+impl From<openai::ChatCompletionRequest> for OpenAIRequest {
+    fn from(request: openai::ChatCompletionRequest) -> Self {
+        let openai::ChatCompletionRequest {
             model,
             messages,
             temperature,

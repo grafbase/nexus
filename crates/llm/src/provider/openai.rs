@@ -16,7 +16,7 @@ use self::{
 
 use crate::{
     error::LlmError,
-    messages::{ChatCompletionRequest, ChatCompletionResponse, Model},
+    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, Model},
     provider::{ChatCompletionStream, HttpProvider, ModelManager, Provider, token},
     request::RequestContext,
 };

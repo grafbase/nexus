@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::messages::{ChatCompletionRequest, ChatMessage, ChatRole, Tool, ToolChoice};
+use crate::messages::openai;
 
 /// Request body for Anthropic Messages API.
 ///
@@ -97,7 +97,7 @@ pub struct AnthropicRequest {
 pub struct AnthropicMessage {
     /// The role of the message sender.
     /// Must be either "user" or "assistant".
-    pub role: ChatRole,
+    pub role: openai::ChatRole,
 
     /// The content of the message.
     /// Can be a string or an array of content blocks for tool responses.
@@ -161,8 +161,8 @@ pub struct AnthropicTool {
     pub input_schema: serde_json::Value,
 }
 
-impl From<Tool> for AnthropicTool {
-    fn from(tool: Tool) -> Self {
+impl From<openai::Tool> for AnthropicTool {
+    fn from(tool: openai::Tool) -> Self {
         Self {
             name: tool.function.name,
             description: tool.function.description,
@@ -185,19 +185,18 @@ pub enum AnthropicToolChoice {
     Tool { name: String },
 }
 
-impl From<ToolChoice> for AnthropicToolChoice {
-    fn from(choice: ToolChoice) -> Self {
+impl From<openai::ToolChoice> for AnthropicToolChoice {
+    fn from(choice: openai::ToolChoice) -> Self {
         match choice {
-            ToolChoice::Mode(mode) => {
-                use crate::messages::ToolChoiceMode;
+            openai::ToolChoice::Mode(mode) => {
                 match mode {
-                    ToolChoiceMode::Auto => AnthropicToolChoice::Auto,
-                    ToolChoiceMode::Required | ToolChoiceMode::Any => AnthropicToolChoice::Any,
-                    ToolChoiceMode::None => AnthropicToolChoice::Auto, // Anthropic doesn't have "none", use "auto"
-                    ToolChoiceMode::Other(_) => AnthropicToolChoice::Auto, // Default to auto for unknown values
+                    openai::ToolChoiceMode::Auto => AnthropicToolChoice::Auto,
+                    openai::ToolChoiceMode::Required | openai::ToolChoiceMode::Any => AnthropicToolChoice::Any,
+                    openai::ToolChoiceMode::None => AnthropicToolChoice::Auto, // Anthropic doesn't have "none", use "auto"
+                    openai::ToolChoiceMode::Other(_) => AnthropicToolChoice::Auto, // Default to auto for unknown values
                 }
             }
-            ToolChoice::Specific { function, tool_type: _ } => {
+            openai::ToolChoice::Specific { function, tool_type: _ } => {
                 // For Anthropic, we need to use the function name directly
                 // regardless of the tool_type from OpenAI format
                 AnthropicToolChoice::Tool { name: function.name }
@@ -206,11 +205,11 @@ impl From<ToolChoice> for AnthropicToolChoice {
     }
 }
 
-impl From<ChatMessage> for AnthropicMessage {
-    fn from(msg: ChatMessage) -> Self {
+impl From<openai::ChatMessage> for AnthropicMessage {
+    fn from(msg: openai::ChatMessage) -> Self {
         // Handle tool role messages and assistant messages with tool calls
         let content = match msg.role {
-            ChatRole::Tool => {
+            openai::ChatRole::Tool => {
                 // Tool role: create a tool_result block
                 if let Some(tool_call_id) = msg.tool_call_id {
                     AnthropicMessageContent::Blocks(vec![AnthropicContentBlock::ToolResult {
@@ -223,7 +222,7 @@ impl From<ChatMessage> for AnthropicMessage {
                     AnthropicMessageContent::Text(msg.content.unwrap_or_default())
                 }
             }
-            ChatRole::Assistant if msg.tool_calls.is_some() => {
+            openai::ChatRole::Assistant if msg.tool_calls.is_some() => {
                 // Assistant with tool calls: create content blocks
                 let mut blocks = Vec::new();
 
@@ -259,7 +258,7 @@ impl From<ChatMessage> for AnthropicMessage {
 
         Self {
             role: match msg.role {
-                ChatRole::Tool => ChatRole::User, // Anthropic requires tool results to be from "user"
+                openai::ChatRole::Tool => openai::ChatRole::User, // Anthropic requires tool results to be from "user"
                 role => role,
             },
             content,
@@ -267,9 +266,9 @@ impl From<ChatMessage> for AnthropicMessage {
     }
 }
 
-impl From<ChatCompletionRequest> for AnthropicRequest {
-    fn from(request: ChatCompletionRequest) -> Self {
-        let ChatCompletionRequest {
+impl From<openai::ChatCompletionRequest> for AnthropicRequest {
+    fn from(request: openai::ChatCompletionRequest) -> Self {
+        let openai::ChatCompletionRequest {
             model,
             messages,
             temperature,
@@ -289,16 +288,16 @@ impl From<ChatCompletionRequest> for AnthropicRequest {
 
         for msg in messages {
             match msg.role {
-                ChatRole::System => {
+                openai::ChatRole::System => {
                     system_message = msg.content;
                 }
-                ChatRole::Assistant | ChatRole::User | ChatRole::Tool => {
+                openai::ChatRole::Assistant | openai::ChatRole::User | openai::ChatRole::Tool => {
                     anthropic_messages.push(AnthropicMessage::from(msg));
                 }
-                ChatRole::Other(ref role) => {
+                openai::ChatRole::Other(ref role) => {
                     log::warn!("Unknown chat role from request: {role}, treating as user");
                     anthropic_messages.push(AnthropicMessage {
-                        role: ChatRole::User,
+                        role: openai::ChatRole::User,
                         content: AnthropicMessageContent::Text(msg.content.unwrap_or_default()),
                     });
                 }

@@ -6,7 +6,7 @@ use std::{
 use fastrace::prelude::LocalSpan;
 use futures::Stream;
 
-use crate::{messages::ChatCompletionChunk, provider::ChatCompletionStream};
+use crate::{messages::openai::ChatCompletionChunk, provider::ChatCompletionStream};
 
 /// Stream wrapper that adds tracing attributes for streaming responses
 pub(super) struct TracingStream {

@@ -2,10 +2,7 @@ use std::borrow::Cow;
 
 use serde::Deserialize;
 
-use crate::messages::{
-    ChatChoice, ChatChoiceDelta, ChatCompletionChunk, ChatCompletionResponse, ChatMessage, ChatMessageDelta, ChatRole,
-    FinishReason, FunctionDelta, FunctionStart, ObjectType, StreamingToolCall, Usage,
-};
+use crate::messages::openai;
 
 /// Describes the type of content in an Anthropic message.
 ///
@@ -87,7 +84,7 @@ pub struct AnthropicResponse {
 
     /// Conversational role of the generated message.
     /// This will always be "assistant".
-    pub role: ChatRole,
+    pub role: openai::ChatRole,
 
     /// Content blocks in the response.
     /// Each block contains a portion of the response with its type.
@@ -151,27 +148,25 @@ pub struct AnthropicUsage {
     pub output_tokens: i32,
 }
 
-impl From<StopReason> for FinishReason {
+impl From<StopReason> for openai::FinishReason {
     fn from(reason: StopReason) -> Self {
         match reason {
-            StopReason::EndTurn => FinishReason::Stop,
-            StopReason::MaxTokens => FinishReason::Length,
-            StopReason::StopSequence => FinishReason::Stop,
-            StopReason::ToolUse => FinishReason::ToolCalls,
-            StopReason::PauseTurn => FinishReason::Other("pause".to_string()),
-            StopReason::Refusal => FinishReason::ContentFilter,
+            StopReason::EndTurn => openai::FinishReason::Stop,
+            StopReason::MaxTokens => openai::FinishReason::Length,
+            StopReason::StopSequence => openai::FinishReason::Stop,
+            StopReason::ToolUse => openai::FinishReason::ToolCalls,
+            StopReason::PauseTurn => openai::FinishReason::Other("pause".to_string()),
+            StopReason::Refusal => openai::FinishReason::ContentFilter,
             StopReason::Other(s) => {
                 log::warn!("Unknown stop reason from Anthropic: {s}");
-                FinishReason::Other(s)
+                openai::FinishReason::Other(s)
             }
         }
     }
 }
 
-impl From<AnthropicResponse> for ChatCompletionResponse {
+impl From<AnthropicResponse> for openai::ChatCompletionResponse {
     fn from(response: AnthropicResponse) -> Self {
-        use crate::messages::{FunctionCall, ToolCall};
-
         // Extract text content
         let message_content = response
             .content
@@ -184,17 +179,17 @@ impl From<AnthropicResponse> for ChatCompletionResponse {
             .join("");
 
         // Extract tool calls
-        let tool_calls: Vec<ToolCall> = response
+        let tool_calls: Vec<openai::ToolCall> = response
             .content
             .iter()
             .filter_map(|c| match &c.r#type {
-                ContentType::ToolUse => Some(ToolCall {
+                ContentType::ToolUse => Some(openai::ToolCall {
                     id: c
                         .id
                         .clone()
                         .unwrap_or_else(|| format!("toolu_{}", uuid::Uuid::new_v4())),
-                    tool_type: crate::messages::ToolCallType::Function,
-                    function: FunctionCall {
+                    tool_type: openai::ToolCallType::Function,
+                    function: openai::FunctionCall {
                         name: c.name.clone().unwrap_or_default(),
                         arguments: c
                             .input
@@ -218,23 +213,26 @@ impl From<AnthropicResponse> for ChatCompletionResponse {
 
         Self {
             id: response.id,
-            object: ObjectType::ChatCompletion,
+            object: openai::ObjectType::ChatCompletion,
             created: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs(),
             model: String::new(), // Will be set by the provider
-            choices: vec![ChatChoice {
+            choices: vec![openai::ChatChoice {
                 index: 0,
-                message: ChatMessage {
+                message: openai::ChatMessage {
                     role: response.role,
                     content,
                     tool_calls: tool_calls_opt,
                     tool_call_id: None,
                 },
-                finish_reason: response.stop_reason.map(Into::into).unwrap_or(FinishReason::Stop),
+                finish_reason: response
+                    .stop_reason
+                    .map(Into::into)
+                    .unwrap_or(openai::FinishReason::Stop),
             }],
-            usage: Usage {
+            usage: openai::Usage {
                 prompt_tokens: response.usage.input_tokens as u32,
                 completion_tokens: response.usage.output_tokens as u32,
                 total_tokens: (response.usage.input_tokens + response.usage.output_tokens) as u32,
@@ -547,7 +545,7 @@ impl AnthropicStreamProcessor {
     }
 
     /// Process an Anthropic stream event and convert to OpenAI-compatible chunk if applicable.
-    pub fn process_event(&mut self, event: AnthropicStreamEvent<'_>) -> Option<ChatCompletionChunk> {
+    pub fn process_event(&mut self, event: AnthropicStreamEvent<'_>) -> Option<openai::ChatCompletionChunk> {
         match event {
             AnthropicStreamEvent::MessageStart { message } => {
                 // Store message metadata for later chunks with provider prefix
@@ -556,15 +554,15 @@ impl AnthropicStreamProcessor {
                 self.usage = Some(message.usage);
 
                 // Emit initial chunk with role
-                Some(ChatCompletionChunk {
+                Some(openai::ChatCompletionChunk {
                     id: self.message_id.clone().unwrap_or_default(),
-                    object: ObjectType::ChatCompletionChunk,
+                    object: openai::ObjectType::ChatCompletionChunk,
                     created: self.created,
                     model: self.model.clone().unwrap_or_default(),
-                    choices: vec![ChatChoiceDelta {
+                    choices: vec![openai::ChatChoiceDelta {
                         index: 0,
-                        delta: ChatMessageDelta {
-                            role: Some(ChatRole::Assistant),
+                        delta: openai::ChatMessageDelta {
+                            role: Some(openai::ChatRole::Assistant),
                             content: None,
                             tool_calls: None,
                             function_call: None,
@@ -590,24 +588,24 @@ impl AnthropicStreamProcessor {
                         self.current_tool_calls.insert(index, tool_call.clone());
 
                         // Emit tool call start chunk
-                        let tool_call_value = StreamingToolCall::Start {
+                        let tool_call_value = openai::StreamingToolCall::Start {
                             index: 0,
                             id: tool_call.id.unwrap_or_default(),
-                            r#type: crate::messages::ToolCallType::Function,
-                            function: FunctionStart {
+                            r#type: openai::ToolCallType::Function,
+                            function: openai::FunctionStart {
                                 name: tool_call.name.unwrap_or_default(),
                                 arguments: String::new(),
                             },
                         };
 
-                        Some(ChatCompletionChunk {
+                        Some(openai::ChatCompletionChunk {
                             id: self.message_id.clone().unwrap_or_default(),
-                            object: ObjectType::ChatCompletionChunk,
+                            object: openai::ObjectType::ChatCompletionChunk,
                             created: self.created,
                             model: self.model.clone().unwrap_or_default(),
-                            choices: vec![ChatChoiceDelta {
+                            choices: vec![openai::ChatChoiceDelta {
                                 index: 0,
-                                delta: ChatMessageDelta {
+                                delta: openai::ChatMessageDelta {
                                     role: None,
                                     content: None,
                                     tool_calls: Some(vec![tool_call_value]),
@@ -633,14 +631,14 @@ impl AnthropicStreamProcessor {
                         // Handle text content
                         self.current_text.push_str(&text);
 
-                        Some(ChatCompletionChunk {
+                        Some(openai::ChatCompletionChunk {
                             id: self.message_id.clone().unwrap_or_default(),
-                            object: ObjectType::ChatCompletionChunk,
+                            object: openai::ObjectType::ChatCompletionChunk,
                             created: self.created,
                             model: self.model.clone().unwrap_or_default(),
-                            choices: vec![ChatChoiceDelta {
+                            choices: vec![openai::ChatChoiceDelta {
                                 index: 0,
-                                delta: ChatMessageDelta {
+                                delta: openai::ChatMessageDelta {
                                     role: None,
                                     content: Some(text.into_owned()),
                                     tool_calls: None,
@@ -660,21 +658,21 @@ impl AnthropicStreamProcessor {
                             tool_call.arguments.push_str(&partial_json);
 
                             // Emit tool call arguments chunk
-                            let tool_call_value = StreamingToolCall::Delta {
+                            let tool_call_value = openai::StreamingToolCall::Delta {
                                 index: 0,
-                                function: FunctionDelta {
+                                function: openai::FunctionDelta {
                                     arguments: partial_json.into_owned(),
                                 },
                             };
 
-                            Some(ChatCompletionChunk {
+                            Some(openai::ChatCompletionChunk {
                                 id: self.message_id.clone().unwrap_or_default(),
-                                object: ObjectType::ChatCompletionChunk,
+                                object: openai::ObjectType::ChatCompletionChunk,
                                 created: self.created,
                                 model: self.model.clone().unwrap_or_default(),
-                                choices: vec![ChatChoiceDelta {
+                                choices: vec![openai::ChatChoiceDelta {
                                     index: 0,
-                                    delta: ChatMessageDelta {
+                                    delta: openai::ChatMessageDelta {
                                         role: None,
                                         content: None,
                                         tool_calls: Some(vec![tool_call_value]),
@@ -698,21 +696,21 @@ impl AnthropicStreamProcessor {
                 self.usage = Some(usage);
 
                 let finish_reason = delta.stop_reason.as_deref().map(|reason| match reason {
-                    "end_turn" => FinishReason::Stop,
-                    "max_tokens" => FinishReason::Length,
-                    "stop_sequence" => FinishReason::Stop,
-                    "tool_use" => FinishReason::ToolCalls,
-                    other => FinishReason::Other(other.to_string()),
+                    "end_turn" => openai::FinishReason::Stop,
+                    "max_tokens" => openai::FinishReason::Length,
+                    "stop_sequence" => openai::FinishReason::Stop,
+                    "tool_use" => openai::FinishReason::ToolCalls,
+                    other => openai::FinishReason::Other(other.to_string()),
                 });
 
-                Some(ChatCompletionChunk {
+                Some(openai::ChatCompletionChunk {
                     id: self.message_id.clone().unwrap_or_default(),
-                    object: ObjectType::ChatCompletionChunk,
+                    object: openai::ObjectType::ChatCompletionChunk,
                     created: self.created,
                     model: self.model.clone().unwrap_or_default(),
-                    choices: vec![ChatChoiceDelta {
+                    choices: vec![openai::ChatChoiceDelta {
                         index: 0,
-                        delta: ChatMessageDelta {
+                        delta: openai::ChatMessageDelta {
                             role: None,
                             content: None,
                             tool_calls: None,
@@ -722,7 +720,7 @@ impl AnthropicStreamProcessor {
                         logprobs: None,
                     }],
                     system_fingerprint: None,
-                    usage: self.usage.as_ref().map(|u| Usage {
+                    usage: self.usage.as_ref().map(|u| openai::Usage {
                         prompt_tokens: u.input_tokens as u32,
                         completion_tokens: u.output_tokens as u32,
                         total_tokens: (u.input_tokens + u.output_tokens) as u32,

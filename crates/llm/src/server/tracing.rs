@@ -4,7 +4,7 @@ use fastrace::{Span, future::FutureExt, prelude::LocalSpan};
 use fastrace_futures::StreamExt as FastraceStreamExt;
 
 use crate::{
-    messages::{ChatCompletionRequest, ChatCompletionResponse},
+    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, ModelsResponse},
     provider::ChatCompletionStream,
     request::RequestContext,
     server::LlmService,
@@ -28,7 +28,7 @@ impl<S> LlmService for LlmServerWithTracing<S>
 where
     S: LlmService,
 {
-    fn models(&self) -> crate::messages::ModelsResponse {
+    fn models(&self) -> ModelsResponse {
         let span = Span::enter_with_local_parent("llm:list_models");
         let _guard = span.set_local_parent();
         self.inner.models()

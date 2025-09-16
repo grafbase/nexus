@@ -1,7 +1,7 @@
 //! LLM service trait for middleware composition
 
 use crate::{
-    messages::{ChatCompletionRequest, ChatCompletionResponse, ModelsResponse},
+    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, ModelsResponse},
     provider::ChatCompletionStream,
     request::RequestContext,
 };

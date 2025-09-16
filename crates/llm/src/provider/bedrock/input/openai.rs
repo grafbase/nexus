@@ -14,7 +14,7 @@ use aws_sdk_bedrockruntime::{
 
 use crate::{
     error::LlmError,
-    messages::{
+    messages::openai::{
         ChatCompletionRequest, ChatMessage, ChatRole, Tool as OpenAITool, ToolChoice as OpenAIToolChoice,
         ToolChoiceMode,
     },

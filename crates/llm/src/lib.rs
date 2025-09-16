@@ -8,7 +8,7 @@ use axum::{
     routing::{get, post},
 };
 use futures::StreamExt;
-use messages::ChatCompletionRequest;
+use messages::openai;
 
 mod error;
 mod messages;
@@ -43,8 +43,13 @@ pub async fn router(config: &config::Config) -> anyhow::Result<Router> {
     }
 
     if config.llm.protocols.anthropic.enabled {
-        // TODO: Implement Anthropic-specific routes
-        todo!("Anthropic protocol implementation")
+        let anthropic_routes = Router::new()
+            // TODO: Implement anthropic_messages handler in Phase 2
+            // .route("/v1/messages", post(anthropic_messages))
+            // .route("/v1/models", get(anthropic_list_models))
+            .with_state(server.clone());
+
+        router = router.nest(&config.llm.protocols.anthropic.path, anthropic_routes);
     }
 
     Ok(router)
@@ -60,7 +65,7 @@ async fn chat_completions(
     headers: HeaderMap,
     client_identity: Option<Extension<config::ClientIdentity>>,
     span_context: Option<Extension<fastrace::collector::SpanContext>>,
-    Json(request): Json<ChatCompletionRequest>,
+    Json(request): Json<openai::ChatCompletionRequest>,
 ) -> Result<impl IntoResponse> {
     log::info!("LLM chat completions handler called for model: {}", request.model);
     log::debug!("Request has {} messages", request.messages.len());

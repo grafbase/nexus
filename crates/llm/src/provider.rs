@@ -12,7 +12,7 @@ use futures::Stream;
 use std::pin::Pin;
 
 use crate::{
-    messages::{ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, Model},
+    messages::openai::{ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, Model},
     request::RequestContext,
 };
 use config::{HeaderRule, ModelConfig};

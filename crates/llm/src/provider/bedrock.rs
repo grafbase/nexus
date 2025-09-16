@@ -18,7 +18,7 @@ use secrecy::ExposeSecret;
 
 use crate::{
     error::LlmError,
-    messages::{ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, Model, ObjectType},
+    messages::openai::{ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, Model, ObjectType},
     provider::{ChatCompletionStream, ModelManager, Provider},
     request::RequestContext,
 };

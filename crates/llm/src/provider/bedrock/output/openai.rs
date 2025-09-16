@@ -8,14 +8,10 @@ use aws_sdk_bedrockruntime::{
     types::{self, ContentBlock, ContentBlockDelta, ConverseStreamOutput, StopReason},
 };
 
-use crate::messages::{
-    ChatChoice, ChatChoiceDelta, ChatCompletionChunk, ChatCompletionResponse, ChatMessage, ChatMessageDelta, ChatRole,
-    FinishReason, FunctionCall, FunctionDelta, FunctionStart, ObjectType, StreamingToolCall, ToolCall, ToolCallType,
-    Usage,
-};
+use crate::messages::openai;
 
 /// Convert a Bedrock Converse response to OpenAI format.
-impl From<ConverseOutput> for ChatCompletionResponse {
+impl From<ConverseOutput> for openai::ChatCompletionResponse {
     fn from(output: ConverseOutput) -> Self {
         let converse_output = output.output.unwrap_or_else(|| {
             log::debug!("Missing output in Converse response - using empty message");
@@ -55,10 +51,10 @@ impl From<ConverseOutput> for ChatCompletionResponse {
                     content.push_str(text);
                 }
                 ContentBlock::ToolUse(tool_use) => {
-                    tool_calls.push(ToolCall {
+                    tool_calls.push(openai::ToolCall {
                         id: tool_use.tool_use_id.clone(),
-                        tool_type: crate::messages::ToolCallType::Function,
-                        function: FunctionCall {
+                        tool_type: openai::ToolCallType::Function,
+                        function: openai::FunctionCall {
                             name: tool_use.name.clone(),
                             arguments: document_to_string(&tool_use.input),
                         },
@@ -70,10 +66,10 @@ impl From<ConverseOutput> for ChatCompletionResponse {
             }
         }
 
-        let finish_reason = FinishReason::from(output.stop_reason);
+        let finish_reason = openai::FinishReason::from(output.stop_reason);
 
-        let message = ChatMessage {
-            role: ChatRole::Assistant,
+        let message = openai::ChatMessage {
+            role: openai::ChatRole::Assistant,
             content: if content.is_empty() { None } else { Some(content) },
             tool_calls: if tool_calls.is_empty() { None } else { Some(tool_calls) },
             tool_call_id: None,
@@ -81,26 +77,26 @@ impl From<ConverseOutput> for ChatCompletionResponse {
 
         let usage = output
             .usage
-            .map(|u| Usage {
+            .map(|u| openai::Usage {
                 prompt_tokens: u.input_tokens as u32,
                 completion_tokens: u.output_tokens as u32,
                 total_tokens: u.total_tokens as u32,
             })
-            .unwrap_or(Usage {
+            .unwrap_or(openai::Usage {
                 prompt_tokens: 0,
                 completion_tokens: 0,
                 total_tokens: 0,
             });
 
-        ChatCompletionResponse {
+        openai::ChatCompletionResponse {
             id: format!("bedrock-{}", uuid::Uuid::new_v4()),
-            object: ObjectType::ChatCompletion,
+            object: openai::ObjectType::ChatCompletion,
             created: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs(),
             model: String::new(), // Will be set by provider
-            choices: vec![ChatChoice {
+            choices: vec![openai::ChatChoice {
                 index: 0,
                 message,
                 finish_reason,
@@ -111,42 +107,42 @@ impl From<ConverseOutput> for ChatCompletionResponse {
 }
 
 /// Convert Bedrock StopReason to OpenAI FinishReason.
-impl From<StopReason> for FinishReason {
+impl From<StopReason> for openai::FinishReason {
     fn from(reason: StopReason) -> Self {
         match reason {
-            StopReason::EndTurn => FinishReason::Stop,
-            StopReason::MaxTokens => FinishReason::Length,
-            StopReason::StopSequence => FinishReason::Stop,
-            StopReason::ToolUse => FinishReason::ToolCalls,
-            StopReason::ContentFiltered => FinishReason::ContentFilter,
-            StopReason::GuardrailIntervened => FinishReason::ContentFilter,
+            StopReason::EndTurn => openai::FinishReason::Stop,
+            StopReason::MaxTokens => openai::FinishReason::Length,
+            StopReason::StopSequence => openai::FinishReason::Stop,
+            StopReason::ToolUse => openai::FinishReason::ToolCalls,
+            StopReason::ContentFiltered => openai::FinishReason::ContentFilter,
+            StopReason::GuardrailIntervened => openai::FinishReason::ContentFilter,
             _ => {
                 log::warn!("Unknown stop reason: {:?}", reason);
-                FinishReason::Stop
+                openai::FinishReason::Stop
             }
         }
     }
 }
 
-impl TryFrom<ConverseStreamOutput> for ChatCompletionChunk {
+impl TryFrom<ConverseStreamOutput> for openai::ChatCompletionChunk {
     type Error = ();
 
     fn try_from(event: ConverseStreamOutput) -> Result<Self, Self::Error> {
         match event {
             ConverseStreamOutput::MessageStart(_) => {
                 // First chunk with role
-                Ok(ChatCompletionChunk {
+                Ok(openai::ChatCompletionChunk {
                     id: format!("bedrock-{}", uuid::Uuid::new_v4()),
-                    object: ObjectType::ChatCompletionChunk,
+                    object: openai::ObjectType::ChatCompletionChunk,
                     created: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_secs(),
                     model: String::new(), // Will be set by provider
-                    choices: vec![ChatChoiceDelta {
+                    choices: vec![openai::ChatChoiceDelta {
                         index: 0,
-                        delta: ChatMessageDelta {
-                            role: Some(ChatRole::Assistant),
+                        delta: openai::ChatMessageDelta {
+                            role: Some(openai::ChatRole::Assistant),
                             content: None,
                             tool_calls: None,
                             function_call: None,
@@ -165,17 +161,17 @@ impl TryFrom<ConverseStreamOutput> for ChatCompletionChunk {
 
                 match delta {
                     ContentBlockDelta::Text(text) => {
-                        Ok(ChatCompletionChunk {
+                        Ok(openai::ChatCompletionChunk {
                             id: format!("bedrock-{}", uuid::Uuid::new_v4()),
-                            object: ObjectType::ChatCompletionChunk,
+                            object: openai::ObjectType::ChatCompletionChunk,
                             created: std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
                                 .as_secs(),
                             model: String::new(), // Will be set by provider
-                            choices: vec![ChatChoiceDelta {
+                            choices: vec![openai::ChatChoiceDelta {
                                 index: 0,
-                                delta: ChatMessageDelta {
+                                delta: openai::ChatMessageDelta {
                                     role: None,
                                     content: Some(text.to_string()),
                                     tool_calls: None,
@@ -190,24 +186,24 @@ impl TryFrom<ConverseStreamOutput> for ChatCompletionChunk {
                     }
                     ContentBlockDelta::ToolUse(tool_use_delta) => {
                         // Handle incremental tool arguments
-                        let tool_call = StreamingToolCall::Delta {
+                        let tool_call = openai::StreamingToolCall::Delta {
                             index: 0,
-                            function: FunctionDelta {
+                            function: openai::FunctionDelta {
                                 arguments: tool_use_delta.input().to_string(),
                             },
                         };
 
-                        Ok(ChatCompletionChunk {
+                        Ok(openai::ChatCompletionChunk {
                             id: format!("bedrock-{}", uuid::Uuid::new_v4()),
-                            object: ObjectType::ChatCompletionChunk,
+                            object: openai::ObjectType::ChatCompletionChunk,
                             created: std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
                                 .as_secs(),
                             model: String::new(), // Will be set by provider
-                            choices: vec![ChatChoiceDelta {
+                            choices: vec![openai::ChatChoiceDelta {
                                 index: 0,
-                                delta: ChatMessageDelta {
+                                delta: openai::ChatMessageDelta {
                                     role: None,
                                     content: None,
                                     tool_calls: Some(vec![tool_call]),
@@ -225,19 +221,19 @@ impl TryFrom<ConverseStreamOutput> for ChatCompletionChunk {
             }
             ConverseStreamOutput::MessageStop(msg_stop) => {
                 // Final chunk with finish reason
-                let finish_reason = Some(FinishReason::from(msg_stop.stop_reason));
+                let finish_reason = Some(openai::FinishReason::from(msg_stop.stop_reason));
 
-                Ok(ChatCompletionChunk {
+                Ok(openai::ChatCompletionChunk {
                     id: format!("bedrock-{}", uuid::Uuid::new_v4()),
-                    object: ObjectType::ChatCompletionChunk,
+                    object: openai::ObjectType::ChatCompletionChunk,
                     created: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_secs(),
                     model: String::new(), // Will be set by provider
-                    choices: vec![ChatChoiceDelta {
+                    choices: vec![openai::ChatChoiceDelta {
                         index: 0,
-                        delta: ChatMessageDelta {
+                        delta: openai::ChatMessageDelta {
                             role: None,
                             content: None,
                             tool_calls: None,
@@ -259,27 +255,27 @@ impl TryFrom<ConverseStreamOutput> for ChatCompletionChunk {
                 match start {
                     aws_sdk_bedrockruntime::types::ContentBlockStart::ToolUse(tool_use) => {
                         // Create tool call start chunk
-                        let tool_call = StreamingToolCall::Start {
+                        let tool_call = openai::StreamingToolCall::Start {
                             index: 0,
                             id: tool_use.tool_use_id().to_string(),
-                            r#type: ToolCallType::Function,
-                            function: FunctionStart {
+                            r#type: openai::ToolCallType::Function,
+                            function: openai::FunctionStart {
                                 name: tool_use.name().to_string(),
                                 arguments: String::new(), // Arguments come in delta events
                             },
                         };
 
-                        Ok(ChatCompletionChunk {
+                        Ok(openai::ChatCompletionChunk {
                             id: format!("bedrock-{}", uuid::Uuid::new_v4()),
-                            object: ObjectType::ChatCompletionChunk,
+                            object: openai::ObjectType::ChatCompletionChunk,
                             created: std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
                                 .as_secs(),
                             model: String::new(), // Will be set by provider
-                            choices: vec![ChatChoiceDelta {
+                            choices: vec![openai::ChatChoiceDelta {
                                 index: 0,
-                                delta: ChatMessageDelta {
+                                delta: openai::ChatMessageDelta {
                                     role: None,
                                     content: None,
                                     tool_calls: Some(vec![tool_call]),
@@ -308,9 +304,9 @@ impl TryFrom<ConverseStreamOutput> for ChatCompletionChunk {
                     return Err(());
                 };
 
-                Ok(ChatCompletionChunk {
+                Ok(openai::ChatCompletionChunk {
                     id: format!("bedrock-{}", uuid::Uuid::new_v4()),
-                    object: ObjectType::ChatCompletionChunk,
+                    object: openai::ObjectType::ChatCompletionChunk,
                     created: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
@@ -318,7 +314,7 @@ impl TryFrom<ConverseStreamOutput> for ChatCompletionChunk {
                     model: String::new(), // Will be set by provider
                     choices: vec![],
                     system_fingerprint: None,
-                    usage: Some(Usage {
+                    usage: Some(openai::Usage {
                         prompt_tokens: usage.input_tokens as u32,
                         completion_tokens: usage.output_tokens as u32,
                         total_tokens: usage.total_tokens as u32,
