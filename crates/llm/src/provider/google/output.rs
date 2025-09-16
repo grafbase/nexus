@@ -35,6 +35,7 @@ impl From<openai::ChatRole> for GoogleRole {
 ///
 /// Indicates the completion status of the generation.
 #[derive(Debug, Deserialize, PartialEq)]
+#[cfg_attr(test, derive(serde::Serialize))]
 pub enum FinishReason {
     /// Natural stop point was reached.
     #[serde(rename = "STOP")]
@@ -109,6 +110,7 @@ pub struct GooglePart {
 /// Contains the model's generated response along with metadata.
 /// Documented in the [Google AI API Reference](https://ai.google.dev/api/generate-content#response-body).
 #[derive(Debug, Deserialize)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(rename_all = "camelCase")]
 pub struct GoogleGenerateResponse {
     /// List of response candidates from the model.
@@ -127,6 +129,7 @@ pub struct GoogleGenerateResponse {
 ///
 /// Represents one possible response to the input prompt.
 #[derive(Debug, Deserialize)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(rename_all = "camelCase")]
 pub struct GoogleCandidate {
     /// Generated content from the model.
@@ -152,6 +155,7 @@ pub struct GoogleCandidate {
 ///
 /// Indicates the probability that content is harmful for a specific category.
 #[derive(Debug, Deserialize)]
+#[cfg_attr(test, derive(serde::Serialize))]
 pub struct GoogleSafetyRating {
     /// The category of potential harm.
     ///
@@ -178,6 +182,7 @@ pub struct GoogleSafetyRating {
 ///
 /// Provides detailed token counts for billing and usage tracking.
 #[derive(Debug, Deserialize)]
+#[cfg_attr(test, derive(serde::Serialize))]
 #[serde(rename_all = "camelCase")]
 pub struct GoogleUsageMetadata {
     /// Number of tokens in the prompt (input).
@@ -203,6 +208,12 @@ pub struct GoogleFunctionCall {
 
     /// Arguments to pass to the function as a JSON object.
     pub args: serde_json::Value,
+
+    /// Thought signature - appears to be some kind of internal Google field
+    /// We don't use it but need to accept it to parse responses correctly
+    #[serde(rename = "thoughtSignature", skip_serializing, default)]
+    #[allow(dead_code)]
+    pub thought_signature: Option<String>,
 }
 
 /// Response/result from a function call.
@@ -580,5 +591,128 @@ impl<'a> GoogleStreamChunk<'a> {
                 }
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use insta::assert_json_snapshot;
+
+    #[test]
+    fn deserialize_function_call_with_thought_signature() {
+        // Test that we can deserialize a function call with the thoughtSignature field
+        let json_with_thought = json!({
+            "name": "get_weather",
+            "args": {
+                "location": "San Francisco"
+            },
+            "thoughtSignature": "Co8DAdHtim/74q7Pz1h2uGY/tC+o1kuINeM9VIQrxG8BOYbo0qvQ3dkUGt/tP2iFiXOMnkkFTn+K3hThEpB0ZrNzHx12pGpJAOg3XBMBFRmhl1VI6W1f/fdSXT0o6WWtn5NHW9wV8adPgvT3wb3XBcn4cFSJ7Sg9qUfOVfrqoGQ+mlHZj2FH2e8WTtiiEui3n+gEqtVboVHNgcjWBH5ntFBNb3clLK1XGo9yzsyMeB16Q52az6yZr92eCME8Y0jkhNsnqQ0bHMCRw4zkiuKdttFq5qBIMZPEecqXq87coVeGteTv3Q7X9hTaTBnWQQBZYQ4HQd3Du3xm7WMhFWmxJR15GDCk4qmRQmwyADh+WbYB1DNMXROI1Vdh+SQp9CU9SfYd6CWTiu1GrT1/KUjIkePPg4sZzlaQqEGpT8o9QG3gxvDfsy1yhdtqytMzKw2B4c+MSwnZY6Us532CgNVGzDuptvWgtImfJbxYv5iqAxgEbGXbeM915xV0vO9QVtdP4hyvZmu0M9oYuZ3y664ERYqL"
+        });
+
+        let function_call: GoogleFunctionCall = serde_json::from_value(json_with_thought).unwrap();
+        assert!(function_call.thought_signature.is_some());
+
+        // Use snapshot for the full structure
+        assert_json_snapshot!(function_call, @r#"
+        {
+          "name": "get_weather",
+          "args": {
+            "location": "San Francisco"
+          }
+        }
+        "#);
+    }
+
+    #[test]
+    fn deserialize_function_call_without_thought_signature() {
+        // Test that we can still deserialize a function call without the thoughtSignature field
+        let json_without_thought = json!({
+            "name": "get_weather",
+            "args": {
+                "location": "San Francisco"
+            }
+        });
+
+        let function_call: GoogleFunctionCall = serde_json::from_value(json_without_thought).unwrap();
+        assert!(function_call.thought_signature.is_none());
+
+        // Use snapshot for the full structure
+        assert_json_snapshot!(function_call, @r#"
+        {
+          "name": "get_weather",
+          "args": {
+            "location": "San Francisco"
+          }
+        }
+        "#);
+    }
+
+    #[test]
+    fn deserialize_full_response_with_thought_signature() {
+        // Test a full Google response with thoughtSignature in a function call
+        let response_json = json!({
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "functionCall": {
+                                    "name": "search",
+                                    "args": {
+                                        "query": "weather today"
+                                    },
+                                    "thoughtSignature": "SomeInternalGoogleSignature123"
+                                }
+                            }
+                        ],
+                        "role": "model"
+                    },
+                    "finishReason": "STOP",
+                    "index": 0
+                }
+            ],
+            "usageMetadata": {
+                "promptTokenCount": 10,
+                "candidatesTokenCount": 20,
+                "totalTokenCount": 30
+            }
+        });
+
+        let response: GoogleGenerateResponse = serde_json::from_value(response_json).unwrap();
+
+        // Snapshot the entire response to ensure it parses correctly
+        assert_json_snapshot!(response, @r#"
+        {
+          "candidates": [
+            {
+              "content": {
+                "parts": [
+                  {
+                    "text": null,
+                    "functionCall": {
+                      "name": "search",
+                      "args": {
+                        "query": "weather today"
+                      }
+                    },
+                    "functionResponse": null
+                  }
+                ],
+                "role": "model"
+              },
+              "finishReason": "STOP",
+              "index": 0,
+              "safetyRatings": null
+            }
+          ],
+          "usageMetadata": {
+            "promptTokenCount": 10,
+            "candidatesTokenCount": 20,
+            "totalTokenCount": 30
+          }
+        }
+        "#);
     }
 }

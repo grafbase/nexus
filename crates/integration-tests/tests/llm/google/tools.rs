@@ -571,3 +571,160 @@ path = "/llm"
     }
     "#);
 }
+
+#[tokio::test]
+async fn google_tool_calling_with_thought_signature_anthropic_protocol() {
+    // Test that Google's thoughtSignature field is properly handled when using Anthropic protocol
+    // This simulates Claude Code calling through Nexus to Google
+    let mock = GoogleMock::new("google")
+        .with_models(vec!["gemini-2.5-flash".to_string()])
+        .with_tool_call("Bash", r#"{"command": "ls nexus/", "description": "List files in the nexus/ directory"}"#);
+
+    let mut builder = TestServer::builder();
+    builder.spawn_llm(mock).await;
+
+    let config = indoc! {r#"
+        [llm.protocols.anthropic]
+        enabled = true
+        path = "/anthropic"
+    "#};
+
+    let server = builder.build(config).await;
+
+    // Send request in Anthropic format (as Claude Code would)
+    let request = json!({
+        "model": "google/gemini-2.5-flash",
+        "messages": [{
+            "role": "user",
+            "content": "List the files in the nexus directory"
+        }],
+        "max_tokens": 1000,
+        "tools": [{
+            "name": "Bash",
+            "description": "Execute a bash command",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "The bash command to execute"
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Description of what the command does"
+                    }
+                },
+                "required": ["command"]
+            }
+        }]
+    });
+
+    let response = server.anthropic_completions(request).send().await;
+
+    // Response should be in Anthropic format with tool_use content blocks
+    insta::assert_json_snapshot!(response, {
+        ".id" => "[id]",
+        ".content[0].id" => "[tool_id]",
+        ".usage" => "[usage]"
+    }, @r###"
+    {
+      "id": "[id]",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "[tool_id]",
+          "name": "Bash",
+          "input": {
+            "command": "ls nexus/",
+            "description": "List files in the nexus/ directory"
+          }
+        }
+      ],
+      "model": "google/gemini-2.5-flash",
+      "stop_reason": null,
+      "stop_sequence": null,
+      "usage": "[usage]"
+    }
+    "###);
+}
+
+#[tokio::test]
+async fn google_handles_claude_code_tool_result_format() {
+    // Test that tool results from Claude Code (string format) are properly handled
+    let mock = GoogleMock::new("google")
+        .with_models(vec!["gemini-2.5-pro".to_string()])
+        .with_response("result", "Command executed successfully");
+
+    let mut builder = TestServer::builder();
+    builder.spawn_llm(mock).await;
+
+    let config = indoc! {r#"
+        [llm.protocols.anthropic]
+        enabled = true
+        path = "/anthropic"
+    "#};
+
+    let server = builder.build(config).await;
+
+    // Send request with tool result in Claude Code format (string content)
+    let request = json!({
+        "model": "google/gemini-2.5-pro",
+        "messages": [
+            {
+                "role": "user",
+                "content": "Run ls command"
+            },
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "call_123",
+                        "name": "Bash",
+                        "input": {
+                            "command": "ls"
+                        }
+                    }
+                ]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call_123",
+                        "content": "Cargo.toml\nsrc"  // String format as Claude Code sends
+                    }
+                ]
+            }
+        ],
+        "max_tokens": 1000
+    });
+
+    let response = server.anthropic_completions(request).send().await;
+
+    // Should get a valid response back
+    insta::assert_json_snapshot!(response, {
+        ".id" => "[id]",
+        ".content[0].text" => "[response_text]",
+        ".usage" => "[usage]"
+    }, @r#"
+    {
+      "id": "[id]",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "[response_text]"
+        }
+      ],
+      "model": "google/gemini-2.5-pro",
+      "stop_reason": null,
+      "stop_sequence": null,
+      "usage": "[usage]"
+    }
+    "#);
+}

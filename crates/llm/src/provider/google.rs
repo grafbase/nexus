@@ -102,6 +102,18 @@ impl Provider for GoogleProvider {
         // Convert to Google format
         let google_request = GoogleGenerateRequest::from(request);
 
+        // Log the Google request for debugging
+        log::debug!("Sending request to Google API at URL: {}", url);
+        if let Ok(json) = serde_json::to_string_pretty(&google_request) {
+            // Truncate for readability if too long
+            let preview = if json.len() > 3000 {
+                format!("{}... (truncated, {} bytes total)", &json[..3000], json.len())
+            } else {
+                json
+            };
+            log::debug!("Google API request body:\n{}", preview);
+        }
+
         // Use create_post_request to ensure headers are applied
         let request_builder = self.request_builder(Method::POST, &url, context, model_config);
 
@@ -138,10 +150,17 @@ impl Provider for GoogleProvider {
             LlmError::InternalError(None)
         })?;
 
+        // Log the actual response for debugging
+        if response_text.len() < 1000 {
+            log::debug!("Google API response: {}", response_text);
+        } else {
+            log::debug!("Google API response (first 1000 chars): {}...", &response_text[..1000]);
+        }
+
         // Try to parse the response
         let google_response: GoogleGenerateResponse = sonic_rs::from_str(&response_text).map_err(|e| {
             log::error!("Failed to parse Google chat completion response: {e}");
-            log::debug!("Response parsing failed, length: {} bytes", response_text.len());
+            log::error!("Full response text that failed to parse: {}", response_text);
 
             LlmError::InternalError(None)
         })?;

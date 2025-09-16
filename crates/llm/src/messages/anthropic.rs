@@ -35,7 +35,9 @@ pub struct AnthropicChatRequest {
     /// System prompt to set context for the assistant.
     ///
     /// Optional. Sets the behavior and context for the assistant.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Can be either a string or an array of content blocks.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "deserialize_system")]
     pub system: Option<String>,
 
     /// Controls randomness in the response.
@@ -88,6 +90,7 @@ pub struct AnthropicMessage {
     pub role: AnthropicRole,
 
     /// The content of the message as an array of content blocks.
+    #[serde(deserialize_with = "deserialize_content")]
     pub content: Vec<AnthropicContent>,
 }
 
@@ -139,6 +142,7 @@ pub enum AnthropicContent {
         /// The tool use ID this result corresponds to
         tool_use_id: String,
         /// The result content (can be text or error)
+        #[serde(deserialize_with = "deserialize_tool_result_content")]
         content: Vec<AnthropicToolResultContent>,
     },
 }
@@ -447,6 +451,209 @@ pub struct AnthropicMessageDelta {
     pub stop_sequence: Option<String>,
 }
 
+/// Custom deserializer for content field that handles both string and array formats.
+///
+/// Claude Code may send the content field as a string directly for simple messages,
+/// while the standard Anthropic API expects an array of content blocks.
+fn deserialize_content<'de, D>(deserializer: D) -> Result<Vec<AnthropicContent>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, Visitor};
+
+    struct ContentVisitor;
+
+    impl<'de> Visitor<'de> for ContentVisitor {
+        type Value = Vec<AnthropicContent>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a string or array of content blocks")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            // Convert string to a single text content block
+            Ok(vec![AnthropicContent::Text {
+                text: value.to_string(),
+            }])
+        }
+
+        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            // Convert string to a single text content block
+            Ok(vec![AnthropicContent::Text { text: value }])
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: de::SeqAccess<'de>,
+        {
+            let mut contents = Vec::new();
+            while let Some(content) = seq.next_element::<AnthropicContent>()? {
+                contents.push(content);
+            }
+            Ok(contents)
+        }
+    }
+
+    deserializer.deserialize_any(ContentVisitor)
+}
+
+/// Custom deserializer for the system field that handles both string and array formats.
+///
+/// Claude Code may send the system field as an array of content blocks,
+/// while the standard Anthropic API expects a string.
+fn deserialize_system<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, Visitor};
+
+    struct SystemVisitor;
+
+    impl<'de> Visitor<'de> for SystemVisitor {
+        type Value = Option<String>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a string or array of content blocks")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: serde::Deserializer<'de>,
+        {
+            deserializer.deserialize_any(SystemContentVisitor)
+        }
+    }
+
+    struct SystemContentVisitor;
+
+    impl<'de> Visitor<'de> for SystemContentVisitor {
+        type Value = Option<String>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a string or array of content blocks")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(value.to_string()))
+        }
+
+        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            Ok(Some(value))
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: de::SeqAccess<'de>,
+        {
+            // Extract text from content blocks and join them
+            let mut text_parts = Vec::new();
+
+            while let Some(value) = seq.next_element::<Value>()? {
+                // Handle different content block types
+                if let Some(block_type) = value.get("type").and_then(|v| v.as_str()) {
+                    match block_type {
+                        "text" => {
+                            if let Some(text) = value.get("text").and_then(|v| v.as_str()) {
+                                text_parts.push(text.to_string());
+                            }
+                        }
+                        "image" => {
+                            // Skip image blocks in system messages
+                            continue;
+                        }
+                        _ => {
+                            // Skip unknown block types
+                            continue;
+                        }
+                    }
+                } else if let Some(text) = value.as_str() {
+                    // Handle plain string items
+                    text_parts.push(text.to_string());
+                }
+            }
+
+            if text_parts.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(text_parts.join("\n")))
+            }
+        }
+    }
+
+    deserializer.deserialize_option(SystemVisitor)
+}
+
+/// Custom deserializer for tool_result content field that handles both string and array formats.
+///
+/// Claude Code may send the content field as a string directly for simple tool results,
+/// while the standard Anthropic API expects an array of content blocks.
+fn deserialize_tool_result_content<'de, D>(deserializer: D) -> Result<Vec<AnthropicToolResultContent>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, Visitor};
+
+    struct ToolResultContentVisitor;
+
+    impl<'de> Visitor<'de> for ToolResultContentVisitor {
+        type Value = Vec<AnthropicToolResultContent>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a string or array of tool result content blocks")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            // Convert string to a single text content block
+            Ok(vec![AnthropicToolResultContent::Text {
+                text: value.to_string(),
+            }])
+        }
+
+        fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+        where
+            E: de::Error,
+        {
+            // Convert string to a single text content block
+            Ok(vec![AnthropicToolResultContent::Text { text: value }])
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: de::SeqAccess<'de>,
+        {
+            let mut contents = Vec::new();
+            while let Some(content) = seq.next_element::<AnthropicToolResultContent>()? {
+                contents.push(content);
+            }
+            Ok(contents)
+        }
+    }
+
+    deserializer.deserialize_any(ToolResultContentVisitor)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -655,5 +862,135 @@ mod tests {
         assert_eq!(error.error_type, "error");
         assert_eq!(error.error.error_type, "invalid_request_error");
         assert_eq!(error.error.message, "Invalid model specified");
+    }
+
+    #[test]
+    fn deserialize_content_as_string() {
+        // Test deserializing content as string (Claude Code format)
+        let json = json!({
+            "role": "user",
+            "content": "Hello, Claude!"
+        });
+
+        let msg: AnthropicMessage = serde_json::from_value(json).unwrap();
+
+        assert_eq!(msg.role, AnthropicRole::User);
+        assert_eq!(msg.content.len(), 1);
+
+        let AnthropicContent::Text { text } = &msg.content[0] else {
+            unreachable!("Expected text content");
+        };
+        assert_eq!(text, "Hello, Claude!");
+    }
+
+    #[test]
+    fn deserialize_mixed_content_formats() {
+        // Test a conversation with mixed formats like Claude Code might send
+        let messages_json = json!([
+            {
+                "role": "user",
+                "content": "What's the weather?"
+            },
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "I'll help you check the weather."}
+                ]
+            },
+            {
+                "role": "user",
+                "content": "Thanks!"
+            }
+        ]);
+
+        let messages: Vec<AnthropicMessage> = serde_json::from_value(messages_json).unwrap();
+
+        assert_eq!(messages.len(), 3);
+        assert_eq!(messages[0].content.len(), 1);
+        assert_eq!(messages[1].content.len(), 1);
+        assert_eq!(messages[2].content.len(), 1);
+    }
+
+    #[test]
+    fn deserialize_tool_result_with_string_content() {
+        // Test that tool_result content can be deserialized from a string
+        // This is what Claude Code sends
+        let message_json = json!({
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "test-id",
+                    "content": "Cargo.toml\nsrc"
+                }
+            ]
+        });
+
+        let msg: AnthropicMessage = serde_json::from_value(message_json).unwrap();
+        assert_eq!(msg.role, AnthropicRole::User);
+        assert_eq!(msg.content.len(), 1);
+
+        match &msg.content[0] {
+            AnthropicContent::ToolResult { tool_use_id, content } => {
+                assert_eq!(tool_use_id, "test-id");
+                assert_eq!(content.len(), 1);
+                match &content[0] {
+                    AnthropicToolResultContent::Text { text } => {
+                        assert_eq!(text, "Cargo.toml\nsrc");
+                    }
+                    _ => unreachable!("Expected Text content"),
+                }
+            }
+            _ => unreachable!("Expected ToolResult content"),
+        }
+    }
+
+    #[test]
+    fn deserialize_tool_result_with_array_content() {
+        // Test that tool_result content can still be deserialized from array format
+        // This is the standard Anthropic format
+        let message_json = json!({
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "test-id",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Result line 1"
+                        },
+                        {
+                            "type": "text",
+                            "text": "Result line 2"
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let msg: AnthropicMessage = serde_json::from_value(message_json).unwrap();
+        assert_eq!(msg.role, AnthropicRole::User);
+        assert_eq!(msg.content.len(), 1);
+
+        match &msg.content[0] {
+            AnthropicContent::ToolResult { tool_use_id, content } => {
+                assert_eq!(tool_use_id, "test-id");
+                assert_eq!(content.len(), 2);
+                match &content[0] {
+                    AnthropicToolResultContent::Text { text } => {
+                        assert_eq!(text, "Result line 1");
+                    }
+                    _ => unreachable!("Expected Text content"),
+                }
+                match &content[1] {
+                    AnthropicToolResultContent::Text { text } => {
+                        assert_eq!(text, "Result line 2");
+                    }
+                    _ => unreachable!("Expected Text content"),
+                }
+            }
+            _ => unreachable!("Expected ToolResult content"),
+        }
     }
 }

@@ -160,44 +160,74 @@ impl From<unified::UnifiedResponse> for anthropic::AnthropicChatResponse {
     fn from(resp: unified::UnifiedResponse) -> Self {
         // Extract content from the first choice's message
         let content = if let Some(choice) = resp.choices.first() {
+            let mut content_blocks = Vec::new();
+
+            // First handle regular content
             match &choice.message.content {
                 unified::UnifiedContentContainer::Text(text) => {
-                    vec![anthropic::AnthropicContent::Text { text: text.clone() }]
+                    if !text.is_empty() {
+                        content_blocks.push(anthropic::AnthropicContent::Text { text: text.clone() });
+                    }
                 }
-                unified::UnifiedContentContainer::Blocks(blocks) => blocks
-                    .iter()
-                    .map(|block| match block {
-                        unified::UnifiedContent::Text { text } => {
-                            anthropic::AnthropicContent::Text { text: text.clone() }
+                unified::UnifiedContentContainer::Blocks(blocks) => {
+                    for block in blocks {
+                        match block {
+                            unified::UnifiedContent::Text { text } => {
+                                content_blocks.push(anthropic::AnthropicContent::Text { text: text.clone() });
+                            }
+                            unified::UnifiedContent::Image { source } => {
+                                content_blocks.push(anthropic::AnthropicContent::Image {
+                                    source: match source {
+                                        unified::UnifiedImageSource::Base64 { media_type, data } => {
+                                            anthropic::AnthropicImageSource {
+                                                source_type: "base64".to_string(),
+                                                media_type: media_type.clone(),
+                                                data: data.clone(),
+                                            }
+                                        }
+                                        unified::UnifiedImageSource::Url { url } => anthropic::AnthropicImageSource {
+                                            source_type: "url".to_string(),
+                                            media_type: "image/jpeg".to_string(),
+                                            data: url.clone(),
+                                        },
+                                    },
+                                });
+                            }
+                            unified::UnifiedContent::ToolUse { id, name, input } => {
+                                content_blocks.push(anthropic::AnthropicContent::ToolUse {
+                                    id: id.clone(),
+                                    name: name.clone(),
+                                    input: input.clone(),
+                                });
+                            }
+                            unified::UnifiedContent::ToolResult { .. } => {
+                                // Tool results shouldn't appear in responses
+                            }
                         }
-                        unified::UnifiedContent::Image { source } => anthropic::AnthropicContent::Image {
-                            source: match source {
-                                unified::UnifiedImageSource::Base64 { media_type, data } => {
-                                    anthropic::AnthropicImageSource {
-                                        source_type: "base64".to_string(),
-                                        media_type: media_type.clone(),
-                                        data: data.clone(),
-                                    }
-                                }
-                                unified::UnifiedImageSource::Url { url } => anthropic::AnthropicImageSource {
-                                    source_type: "url".to_string(),
-                                    media_type: "image/jpeg".to_string(),
-                                    data: url.clone(),
-                                },
-                            },
-                        },
-                        unified::UnifiedContent::ToolUse { id, name, input } => anthropic::AnthropicContent::ToolUse {
-                            id: id.clone(),
-                            name: name.clone(),
-                            input: input.clone(),
-                        },
-                        unified::UnifiedContent::ToolResult { .. } => {
-                            // Tool results shouldn't appear in responses
-                            anthropic::AnthropicContent::Text { text: String::new() }
-                        }
-                    })
-                    .collect(),
+                    }
+                }
             }
+
+            // Now handle tool_calls from OpenAI format and convert to Anthropic ToolUse blocks
+            if let Some(tool_calls) = &choice.message.tool_calls {
+                for tool_call in tool_calls {
+                    // Convert arguments to JSON Value
+                    let input = match &tool_call.function.arguments {
+                        unified::UnifiedArguments::String(s) => {
+                            serde_json::from_str(s).unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()))
+                        }
+                        unified::UnifiedArguments::Value(v) => v.clone(),
+                    };
+
+                    content_blocks.push(anthropic::AnthropicContent::ToolUse {
+                        id: tool_call.id.clone(),
+                        name: tool_call.function.name.clone(),
+                        input,
+                    });
+                }
+            }
+
+            content_blocks
         } else {
             vec![]
         };
@@ -316,5 +346,208 @@ impl From<crate::messages::openai::ModelsResponse> for anthropic::AnthropicModel
                 .collect(),
             has_more: false, // OpenAI doesn't paginate models, so this is always false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::messages::{anthropic, unified};
+    use insta::assert_json_snapshot;
+
+    #[test]
+    fn convert_tool_calls_from_unified_to_anthropic() {
+        // Test that tool_calls in UnifiedResponse are converted to ToolUse content blocks
+        let unified_resp = unified::UnifiedResponse {
+            id: "test-response".to_string(),
+            created: 1234567890,
+            model: "test-model".to_string(),
+            choices: vec![unified::UnifiedChoice {
+                index: 0,
+                message: unified::UnifiedMessage {
+                    role: unified::UnifiedRole::Assistant,
+                    content: unified::UnifiedContentContainer::Text("I'll help you with that.".to_string()),
+                    tool_calls: Some(vec![
+                        unified::UnifiedToolCall {
+                            id: "call_123".to_string(),
+                            function: unified::UnifiedFunctionCall {
+                                name: "get_weather".to_string(),
+                                arguments: unified::UnifiedArguments::String(r#"{"location": "San Francisco"}"#.to_string()),
+                            },
+                        },
+                        unified::UnifiedToolCall {
+                            id: "call_456".to_string(),
+                            function: unified::UnifiedFunctionCall {
+                                name: "search".to_string(),
+                                arguments: unified::UnifiedArguments::Value(serde_json::json!({
+                                    "query": "restaurants nearby"
+                                })),
+                            },
+                        },
+                    ]),
+                    tool_call_id: None,
+                },
+                finish_reason: Some(unified::UnifiedFinishReason::ToolCalls),
+            }],
+            usage: unified::UnifiedUsage {
+                prompt_tokens: 10,
+                completion_tokens: 20,
+                total_tokens: 30,
+            },
+            stop_reason: Some(unified::UnifiedStopReason::ToolUse),
+            stop_sequence: None,
+        };
+
+        let anthropic_resp: anthropic::AnthropicChatResponse = unified_resp.into();
+
+        // The response should have both the text and the tool use blocks
+        assert_json_snapshot!(anthropic_resp, @r###"
+        {
+          "id": "test-response",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "I'll help you with that."
+            },
+            {
+              "type": "tool_use",
+              "id": "call_123",
+              "name": "get_weather",
+              "input": {
+                "location": "San Francisco"
+              }
+            },
+            {
+              "type": "tool_use",
+              "id": "call_456",
+              "name": "search",
+              "input": {
+                "query": "restaurants nearby"
+              }
+            }
+          ],
+          "model": "test-model",
+          "stop_reason": "tool_use",
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 10,
+            "output_tokens": 20
+          }
+        }
+        "###);
+    }
+
+    #[test]
+    fn convert_response_without_tool_calls() {
+        // Test that responses without tool calls work correctly
+        let unified_resp = unified::UnifiedResponse {
+            id: "test-response".to_string(),
+            created: 1234567890,
+            model: "test-model".to_string(),
+            choices: vec![unified::UnifiedChoice {
+                index: 0,
+                message: unified::UnifiedMessage {
+                    role: unified::UnifiedRole::Assistant,
+                    content: unified::UnifiedContentContainer::Text("Here's a simple response.".to_string()),
+                    tool_calls: None,
+                    tool_call_id: None,
+                },
+                finish_reason: Some(unified::UnifiedFinishReason::Stop),
+            }],
+            usage: unified::UnifiedUsage {
+                prompt_tokens: 5,
+                completion_tokens: 10,
+                total_tokens: 15,
+            },
+            stop_reason: Some(unified::UnifiedStopReason::EndTurn),
+            stop_sequence: None,
+        };
+
+        let anthropic_resp: anthropic::AnthropicChatResponse = unified_resp.into();
+
+        assert_json_snapshot!(anthropic_resp, @r###"
+        {
+          "id": "test-response",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Here's a simple response."
+            }
+          ],
+          "model": "test-model",
+          "stop_reason": "end_turn",
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 5,
+            "output_tokens": 10
+          }
+        }
+        "###);
+    }
+
+    #[test]
+    fn convert_empty_text_with_tool_calls() {
+        // Test that tool calls are converted even when there's no text content
+        let unified_resp = unified::UnifiedResponse {
+            id: "test-response".to_string(),
+            created: 1234567890,
+            model: "test-model".to_string(),
+            choices: vec![unified::UnifiedChoice {
+                index: 0,
+                message: unified::UnifiedMessage {
+                    role: unified::UnifiedRole::Assistant,
+                    content: unified::UnifiedContentContainer::Text("".to_string()), // Empty text
+                    tool_calls: Some(vec![
+                        unified::UnifiedToolCall {
+                            id: "call_789".to_string(),
+                            function: unified::UnifiedFunctionCall {
+                                name: "calculate".to_string(),
+                                arguments: unified::UnifiedArguments::String(r#"{"expression": "2+2"}"#.to_string()),
+                            },
+                        },
+                    ]),
+                    tool_call_id: None,
+                },
+                finish_reason: Some(unified::UnifiedFinishReason::ToolCalls),
+            }],
+            usage: unified::UnifiedUsage {
+                prompt_tokens: 8,
+                completion_tokens: 12,
+                total_tokens: 20,
+            },
+            stop_reason: Some(unified::UnifiedStopReason::ToolUse),
+            stop_sequence: None,
+        };
+
+        let anthropic_resp: anthropic::AnthropicChatResponse = unified_resp.into();
+
+        // Should only have the tool use block, no text block for empty text
+        assert_json_snapshot!(anthropic_resp, @r###"
+        {
+          "id": "test-response",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "tool_use",
+              "id": "call_789",
+              "name": "calculate",
+              "input": {
+                "expression": "2+2"
+              }
+            }
+          ],
+          "model": "test-model",
+          "stop_reason": "tool_use",
+          "stop_sequence": null,
+          "usage": {
+            "input_tokens": 8,
+            "output_tokens": 12
+          }
+        }
+        "###);
     }
 }

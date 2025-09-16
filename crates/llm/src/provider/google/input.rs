@@ -145,9 +145,9 @@ pub struct GoogleFunctionDeclaration {
 
 impl From<openai::Tool> for GoogleFunctionDeclaration {
     fn from(tool: openai::Tool) -> Self {
-        // Google's API doesn't support additionalProperties in JSON schemas
-        // We need to strip it from the parameters
-        let parameters = Some(strip_additional_properties(tool.function.parameters));
+        // Google's API doesn't support certain JSON Schema fields
+        // We need to strip them from the parameters
+        let parameters = Some(strip_unsupported_schema_fields(tool.function.parameters));
 
         Self {
             name: tool.function.name,
@@ -157,25 +157,36 @@ impl From<openai::Tool> for GoogleFunctionDeclaration {
     }
 }
 
-/// Recursively removes 'additionalProperties' from JSON schema objects
-/// as Google's API doesn't support this JSON Schema feature
-fn strip_additional_properties(mut value: serde_json::Value) -> serde_json::Value {
+/// Recursively removes unsupported JSON Schema fields from the schema
+/// Google's API doesn't support fields like 'additionalProperties' and '$schema'
+fn strip_unsupported_schema_fields(mut value: serde_json::Value) -> serde_json::Value {
     if let Some(obj) = value.as_object_mut() {
-        // Remove additionalProperties at this level
+        // Remove unsupported fields at this level
         obj.remove("additionalProperties");
+        obj.remove("$schema");
+        obj.remove("default");  // Gemini doesn't support default values
+
+        // Handle format field restrictions for string types
+        // Gemini only supports "enum" and "date-time" formats
+        if obj.get("type").and_then(|v| v.as_str()) == Some("string")
+            && let Some(format) = obj.get("format").and_then(|v| v.as_str())
+            && format != "enum" && format != "date-time"
+        {
+            obj.remove("format");
+        }
 
         // Recursively process nested properties
         if let Some(properties) = obj.get_mut("properties")
             && let Some(props_obj) = properties.as_object_mut()
         {
             for (_, prop_value) in props_obj.iter_mut() {
-                *prop_value = strip_additional_properties(prop_value.take());
+                *prop_value = strip_unsupported_schema_fields(prop_value.take());
             }
         }
 
         // Process items for array types
         if let Some(items) = obj.get_mut("items") {
-            *items = strip_additional_properties(items.take());
+            *items = strip_unsupported_schema_fields(items.take());
         }
     }
 
@@ -239,15 +250,35 @@ impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
 
         // Extract tools and tool_choice before consuming request
         let tools = request.tools.map(|tools| {
+            let tool_count = tools.len();
+            log::debug!("Converting {} tools to Google format", tool_count);
+
+            let function_declarations: Vec<GoogleFunctionDeclaration> = tools
+                .into_iter()
+                .map(|tool| {
+                    let declaration = GoogleFunctionDeclaration::from(tool);
+                    log::debug!(
+                        "Converted tool '{}' with parameters: {}",
+                        declaration.name,
+                        serde_json::to_string(&declaration.parameters).unwrap_or_else(|_| "<serialization failed>".to_string())
+                    );
+                    declaration
+                })
+                .collect();
             vec![GoogleTool {
-                function_declarations: Some(tools.into_iter().map(GoogleFunctionDeclaration::from).collect()),
+                function_declarations: Some(function_declarations),
             }]
         });
 
         let tool_config = request.tool_choice.map(|choice| {
             let (mode, allowed_names) = match choice {
-                openai::ToolChoice::Mode(mode) => (GoogleFunctionCallingMode::from(mode), None),
+                openai::ToolChoice::Mode(mode) => {
+                    let google_mode = GoogleFunctionCallingMode::from(mode.clone());
+                    log::debug!("Tool choice mode: {:?} -> {:?}", mode, google_mode);
+                    (google_mode, None)
+                },
                 openai::ToolChoice::Specific { function, .. } => {
+                    log::debug!("Tool choice specific function: {}", function.name);
                     (GoogleFunctionCallingMode::Any, Some(vec![function.name]))
                 }
             };
@@ -313,6 +344,7 @@ impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
                                 function_call: Some(GoogleFunctionCall {
                                     name: tool_call.function.name,
                                     args,
+                                    thought_signature: None,
                                 }),
                                 function_response: None,
                             });
@@ -434,14 +466,34 @@ impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
             response_schema: None,
         };
 
-        Self {
+        let result = Self {
             contents: google_contents,
             generation_config: Some(generation_config),
             safety_settings: None,
             tools,
             tool_config,
             system_instruction,
+        };
+
+        // Log the final request structure for debugging
+        log::debug!(
+            "Final Google request - has tools: {}, has tool_config: {}, contents count: {}",
+            result.tools.is_some(),
+            result.tool_config.is_some(),
+            result.contents.len()
+        );
+
+        if let Ok(json) = serde_json::to_string(&result) {
+            // Truncate for readability if too long
+            let preview = if json.len() > 2000 {
+                format!("{}... (truncated, {} bytes total)", &json[..2000], json.len())
+            } else {
+                json
+            };
+            log::debug!("Complete Google request JSON: {}", preview);
         }
+
+        result
     }
 }
 
@@ -450,5 +502,61 @@ impl From<unified::UnifiedRequest> for GoogleGenerateRequest {
         // Convert unified to OpenAI first, then use existing conversion
         let openai_request = openai::ChatCompletionRequest::from(request);
         Self::from(openai_request)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_strip_unsupported_schema_fields() {
+        let schema = json!({
+            "$schema": "http://json-schema.org/draft-07/schema#",
+            "type": "object",
+            "properties": {
+                "field1": {
+                    "type": "string"
+                },
+                "nested": {
+                    "type": "object",
+                    "properties": {
+                        "subfield": {
+                            "type": "number"
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "array_field": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                    }
+                }
+            },
+            "additionalProperties": false
+        });
+
+        let cleaned = strip_unsupported_schema_fields(schema);
+
+        // Check that $schema is removed from root
+        assert!(cleaned.get("$schema").is_none());
+
+        // Check that additionalProperties is removed from root
+        assert!(cleaned.get("additionalProperties").is_none());
+
+        // Check that nested additionalProperties is removed
+        let nested = &cleaned["properties"]["nested"];
+        assert!(nested.get("additionalProperties").is_none());
+
+        // Check that array item additionalProperties is removed
+        let items = &cleaned["properties"]["array_field"]["items"];
+        assert!(items.get("additionalProperties").is_none());
+
+        // Check that valid fields are preserved
+        assert_eq!(cleaned["type"], "object");
+        assert_eq!(cleaned["properties"]["field1"]["type"], "string");
     }
 }
