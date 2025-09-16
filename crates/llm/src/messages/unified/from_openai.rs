@@ -198,6 +198,28 @@ impl From<openai::StreamingToolCall> for unified::UnifiedStreamingToolCall {
     }
 }
 
+impl From<openai::Model> for unified::UnifiedModel {
+    fn from(model: openai::Model) -> Self {
+        Self {
+            id: model.id.clone(),
+            object_type: unified::UnifiedObjectType::Model,
+            display_name: model.id, // OpenAI uses id as display name
+            created: model.created,
+            owned_by: model.owned_by,
+        }
+    }
+}
+
+impl From<openai::ModelsResponse> for unified::UnifiedModelsResponse {
+    fn from(response: openai::ModelsResponse) -> Self {
+        Self {
+            object_type: unified::UnifiedObjectType::List,
+            models: response.data.into_iter().map(unified::UnifiedModel::from).collect(),
+            has_more: false, // OpenAI doesn't paginate models
+        }
+    }
+}
+
 impl From<openai::ChatCompletionChunk> for unified::UnifiedChunk {
     fn from(chunk: openai::ChatCompletionChunk) -> Self {
         Self {

@@ -248,6 +248,28 @@ impl From<anthropic::AnthropicStopReason> for unified::UnifiedStopReason {
     }
 }
 
+impl From<anthropic::AnthropicModel> for unified::UnifiedModel {
+    fn from(model: anthropic::AnthropicModel) -> Self {
+        Self {
+            id: model.id.clone(),
+            object_type: unified::UnifiedObjectType::Model,
+            display_name: model.display_name,
+            created: model.created_at,
+            owned_by: "anthropic".to_string(),
+        }
+    }
+}
+
+impl From<anthropic::AnthropicModelsResponse> for unified::UnifiedModelsResponse {
+    fn from(response: anthropic::AnthropicModelsResponse) -> Self {
+        Self {
+            object_type: unified::UnifiedObjectType::List,
+            models: response.data.into_iter().map(unified::UnifiedModel::from).collect(),
+            has_more: response.has_more,
+        }
+    }
+}
+
 impl From<anthropic::AnthropicStreamEvent> for unified::UnifiedChunk {
     fn from(event: anthropic::AnthropicStreamEvent) -> Self {
         use anthropic::AnthropicStreamEvent;

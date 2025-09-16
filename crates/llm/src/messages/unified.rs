@@ -416,3 +416,55 @@ pub struct UnifiedFunctionStart {
 pub struct UnifiedFunctionDelta {
     pub arguments: String,
 }
+
+/// Unified object type for API responses.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UnifiedObjectType {
+    /// Single model object
+    Model,
+    /// List of objects
+    List,
+    /// Chat completion response
+    #[serde(rename = "chat.completion")]
+    ChatCompletion,
+    /// Streaming chat completion chunk
+    #[serde(rename = "chat.completion.chunk")]
+    ChatCompletionChunk,
+    /// Message (Anthropic-style)
+    Message,
+}
+
+/// Unified model information that can represent both OpenAI and Anthropic model formats.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnifiedModel {
+    /// The model identifier (e.g., "gpt-4", "claude-3-opus")
+    pub id: String,
+
+    /// The object type (always Model for single models)
+    #[serde(rename = "type", alias = "object")]
+    pub object_type: UnifiedObjectType,
+
+    /// Display name for the model (may be same as id for OpenAI)
+    pub display_name: String,
+
+    /// Unix timestamp when the model was created (0 for Anthropic models)
+    pub created: u64,
+
+    /// Owner/organization of the model (e.g., "openai", "anthropic")
+    pub owned_by: String,
+}
+
+/// Unified models listing response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnifiedModelsResponse {
+    /// The object type (always List for model lists)
+    #[serde(rename = "type", alias = "object")]
+    pub object_type: UnifiedObjectType,
+
+    /// List of available models
+    pub models: Vec<UnifiedModel>,
+
+    /// Whether there are more models to fetch (for pagination)
+    pub has_more: bool,
+}

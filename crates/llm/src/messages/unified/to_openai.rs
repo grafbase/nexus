@@ -237,3 +237,23 @@ impl From<unified::UnifiedChunk> for openai::ChatCompletionChunk {
         }
     }
 }
+
+impl From<unified::UnifiedModel> for openai::Model {
+    fn from(model: unified::UnifiedModel) -> Self {
+        Self {
+            id: model.id,
+            object: openai::ObjectType::Model,
+            created: model.created,
+            owned_by: model.owned_by,
+        }
+    }
+}
+
+impl From<unified::UnifiedModelsResponse> for openai::ModelsResponse {
+    fn from(response: unified::UnifiedModelsResponse) -> Self {
+        Self {
+            object: openai::ObjectType::List,
+            data: response.models.into_iter().map(openai::Model::from).collect(),
+        }
+    }
+}

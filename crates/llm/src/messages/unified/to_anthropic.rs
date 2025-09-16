@@ -271,6 +271,30 @@ impl From<unified::UnifiedChunk> for anthropic::AnthropicStreamEvent {
     }
 }
 
+impl From<unified::UnifiedModel> for anthropic::AnthropicModel {
+    fn from(model: unified::UnifiedModel) -> Self {
+        Self {
+            id: model.id,
+            model_type: "model".to_string(),
+            display_name: model.display_name,
+            created_at: model.created,
+        }
+    }
+}
+
+impl From<unified::UnifiedModelsResponse> for anthropic::AnthropicModelsResponse {
+    fn from(response: unified::UnifiedModelsResponse) -> Self {
+        Self {
+            data: response
+                .models
+                .into_iter()
+                .map(anthropic::AnthropicModel::from)
+                .collect(),
+            has_more: response.has_more,
+        }
+    }
+}
+
 impl From<crate::messages::openai::Model> for anthropic::AnthropicModel {
     fn from(openai_model: crate::messages::openai::Model) -> Self {
         Self {
