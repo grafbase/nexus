@@ -17,7 +17,10 @@ use rate_limit::{TokenRateLimitManager, TokenRateLimitRequest};
 
 use crate::{
     error::LlmError,
-    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, Model, ModelsResponse, ObjectType},
+    messages::{
+        openai::{ChatCompletionRequest, Model, ModelsResponse, ObjectType},
+        unified::{UnifiedRequest, UnifiedResponse},
+    },
     provider::{ChatCompletionStream, Provider},
     request::RequestContext,
 };
@@ -42,7 +45,7 @@ impl LlmServer {
     /// Check rate limits and return an error if exceeded.
     async fn check_and_enforce_rate_limit(
         &self,
-        request: &ChatCompletionRequest,
+        request: &UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<()> {
         if let Some(wait_duration) = self.check_token_rate_limit(request, context).await {
@@ -91,7 +94,7 @@ impl LlmServer {
     /// Returns the duration to wait before retrying if rate limited, or None if the request can proceed.
     pub async fn check_token_rate_limit(
         &self,
-        request: &ChatCompletionRequest,
+        request: &UnifiedRequest,
         context: &RequestContext,
     ) -> Option<std::time::Duration> {
         // Check if client identification is available
@@ -137,7 +140,9 @@ impl LlmServer {
         );
 
         // Count request tokens (input only, no output buffering)
-        let input_tokens = crate::token_counter::count_input_tokens(request);
+        // Convert to OpenAI format for token counting since the counter uses OpenAI-specific logic
+        let openai_request = ChatCompletionRequest::from(request.clone());
+        let input_tokens = crate::token_counter::count_input_tokens(&openai_request);
 
         log::debug!("Token accounting: input={input_tokens} (output tokens not counted for rate limiting)",);
 
@@ -162,20 +167,19 @@ impl LlmServer {
         }
     }
 
-    /// Process a chat completion request.
-    pub async fn completions(
+    /// Process a unified chat completion request (protocol-agnostic).
+    pub async fn unified_completions(
         &self,
-        mut request: ChatCompletionRequest,
+        request: UnifiedRequest,
         context: &RequestContext,
-    ) -> crate::Result<ChatCompletionResponse> {
-        // Note: Streaming is handled by completions_stream(), this method is for non-streaming only
-
+    ) -> crate::Result<UnifiedResponse> {
         // Check token rate limits first
         self.check_and_enforce_rate_limit(&request, context).await?;
 
         // Extract provider name from the model string (format: "provider/model")
-        let Some((provider_name, model_name)) = request.model.split_once('/') else {
-            return Err(LlmError::InvalidModelFormat(request.model.clone()));
+        let model_string = request.model.clone();
+        let Some((provider_name, model_name)) = model_string.split_once('/') else {
+            return Err(LlmError::InvalidModelFormat(model_string));
         };
 
         let Some(provider) = self.get_provider(provider_name) else {
@@ -189,32 +193,34 @@ impl LlmServer {
 
         // Store the original model name before stripping the prefix
         let original_model = request.model.clone();
-        request.model = model_name.to_string();
 
-        let mut response = provider.chat_completion(request, context).await?;
+        // Create a modified request with the stripped model name
+        let mut modified_request = request;
+        modified_request.model = model_name.to_string();
+
+        // Call provider with unified types directly
+        let unified_response = provider.chat_completion(modified_request, context).await?;
 
         // Restore the full model name with provider prefix in the response
-        response.model = original_model;
+        let mut final_response = unified_response;
+        final_response.model = original_model;
 
-        Ok(response)
+        Ok(final_response)
     }
 
-    /// Process a streaming chat completion request.
-    ///
-    /// Returns a stream of completion chunks that are sent incrementally as the
-    /// model generates the response. The stream is prefixed with the provider name
-    /// to maintain consistency with the non-streaming API.
-    pub async fn completions_stream(
+    /// Process a unified streaming chat completion request (protocol-agnostic).
+    pub async fn unified_completions_stream(
         &self,
-        mut request: ChatCompletionRequest,
+        request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
         // Check token rate limits first
         self.check_and_enforce_rate_limit(&request, context).await?;
 
         // Extract provider name from the model string (format: "provider/model")
-        let Some((provider_name, model_name)) = request.model.split_once('/') else {
-            return Err(LlmError::InvalidModelFormat(request.model.clone()));
+        let model_string = request.model.clone();
+        let Some((provider_name, model_name)) = model_string.split_once('/') else {
+            return Err(LlmError::InvalidModelFormat(model_string));
         };
 
         let Some(provider) = self.get_provider(provider_name) else {
@@ -235,17 +241,18 @@ impl LlmServer {
         // Store the original model name for later
         let original_model = request.model.clone();
 
-        // Strip the provider prefix from the model name for the provider
-        request.model = model_name.to_string();
+        // Create a modified request with the stripped model name
+        let mut modified_request = request;
+        modified_request.model = model_name.to_string();
 
         // Get the stream from the provider
-        let stream = provider.chat_completion_stream(request, context).await?;
+        let stream = provider.chat_completion_stream(modified_request, context).await?;
 
         // Transform the stream to restore the full model name with prefix
         let transformed_stream = stream.map(move |chunk_result| {
             chunk_result.map(|mut chunk| {
                 // Restore the full model name with provider prefix
-                chunk.model = original_model.clone();
+                chunk.model = original_model.clone().into();
                 chunk
             })
         });
@@ -259,19 +266,15 @@ impl LlmService for LlmServer {
         self.models()
     }
 
-    async fn completions(
-        &self,
-        request: ChatCompletionRequest,
-        context: &RequestContext,
-    ) -> crate::Result<ChatCompletionResponse> {
-        self.completions(request, context).await
+    async fn completions(&self, request: UnifiedRequest, context: &RequestContext) -> crate::Result<UnifiedResponse> {
+        self.unified_completions(request, context).await
     }
 
     async fn completions_stream(
         &self,
-        request: ChatCompletionRequest,
+        request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
-        self.completions_stream(request, context).await
+        self.unified_completions_stream(request, context).await
     }
 }

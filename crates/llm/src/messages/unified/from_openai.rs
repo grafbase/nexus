@@ -53,15 +53,21 @@ impl From<openai::ChatCompletionRequest> for unified::UnifiedRequest {
     }
 }
 
-impl From<openai::ChatMessage> for unified::UnifiedMessage {
-    fn from(msg: openai::ChatMessage) -> Self {
-        let role = match msg.role {
+impl From<openai::ChatRole> for unified::UnifiedRole {
+    fn from(role: openai::ChatRole) -> Self {
+        match role {
             openai::ChatRole::System => unified::UnifiedRole::System,
             openai::ChatRole::User => unified::UnifiedRole::User,
             openai::ChatRole::Assistant => unified::UnifiedRole::Assistant,
             openai::ChatRole::Tool => unified::UnifiedRole::Tool,
             openai::ChatRole::Other(_) => unified::UnifiedRole::Assistant, // Default to assistant
-        };
+        }
+    }
+}
+
+impl From<openai::ChatMessage> for unified::UnifiedMessage {
+    fn from(msg: openai::ChatMessage) -> Self {
+        let role = unified::UnifiedRole::from(msg.role);
 
         let content = if let Some(text) = msg.content {
             unified::UnifiedContentContainer::Text(text)
@@ -104,17 +110,23 @@ impl From<openai::Tool> for unified::UnifiedTool {
     }
 }
 
+impl From<openai::ToolChoiceMode> for unified::UnifiedToolChoiceMode {
+    fn from(mode: openai::ToolChoiceMode) -> Self {
+        match mode {
+            openai::ToolChoiceMode::None => unified::UnifiedToolChoiceMode::None,
+            openai::ToolChoiceMode::Auto => unified::UnifiedToolChoiceMode::Auto,
+            openai::ToolChoiceMode::Required | openai::ToolChoiceMode::Any => unified::UnifiedToolChoiceMode::Required,
+            openai::ToolChoiceMode::Other(_) => unified::UnifiedToolChoiceMode::Auto, // Default
+        }
+    }
+}
+
 impl From<openai::ToolChoice> for unified::UnifiedToolChoice {
     fn from(choice: openai::ToolChoice) -> Self {
         match choice {
-            openai::ToolChoice::Mode(mode) => unified::UnifiedToolChoice::Mode(match mode {
-                openai::ToolChoiceMode::None => unified::UnifiedToolChoiceMode::None,
-                openai::ToolChoiceMode::Auto => unified::UnifiedToolChoiceMode::Auto,
-                openai::ToolChoiceMode::Required | openai::ToolChoiceMode::Any => {
-                    unified::UnifiedToolChoiceMode::Required
-                }
-                openai::ToolChoiceMode::Other(_) => unified::UnifiedToolChoiceMode::Auto, // Default
-            }),
+            openai::ToolChoice::Mode(mode) => {
+                unified::UnifiedToolChoice::Mode(unified::UnifiedToolChoiceMode::from(mode))
+            }
             openai::ToolChoice::Specific { function, .. } => unified::UnifiedToolChoice::Specific {
                 function: unified::UnifiedFunctionChoice { name: function.name },
             },
@@ -160,6 +172,32 @@ impl From<openai::FinishReason> for unified::UnifiedFinishReason {
     }
 }
 
+impl From<openai::StreamingToolCall> for unified::UnifiedStreamingToolCall {
+    fn from(call: openai::StreamingToolCall) -> Self {
+        match call {
+            openai::StreamingToolCall::Start {
+                index,
+                id,
+                r#type: _,
+                function,
+            } => unified::UnifiedStreamingToolCall::Start {
+                index,
+                id,
+                function: unified::UnifiedFunctionStart {
+                    name: function.name,
+                    arguments: function.arguments,
+                },
+            },
+            openai::StreamingToolCall::Delta { index, function } => unified::UnifiedStreamingToolCall::Delta {
+                index,
+                function: unified::UnifiedFunctionDelta {
+                    arguments: function.arguments,
+                },
+            },
+        }
+    }
+}
+
 impl From<openai::ChatCompletionChunk> for unified::UnifiedChunk {
     fn from(chunk: openai::ChatCompletionChunk) -> Self {
         Self {
@@ -171,42 +209,12 @@ impl From<openai::ChatCompletionChunk> for unified::UnifiedChunk {
                 .map(|choice| unified::UnifiedChoiceDelta {
                     index: choice.index,
                     delta: unified::UnifiedMessageDelta {
-                        role: choice.delta.role.map(|r| match r {
-                            openai::ChatRole::System => unified::UnifiedRole::System,
-                            openai::ChatRole::User => unified::UnifiedRole::User,
-                            openai::ChatRole::Assistant => unified::UnifiedRole::Assistant,
-                            openai::ChatRole::Tool => unified::UnifiedRole::Tool,
-                            openai::ChatRole::Other(_) => unified::UnifiedRole::Assistant,
-                        }),
+                        role: choice.delta.role.map(unified::UnifiedRole::from),
                         content: choice.delta.content,
-                        tool_calls: choice.delta.tool_calls.map(|calls| {
-                            calls
-                                .into_iter()
-                                .map(|call| match call {
-                                    openai::StreamingToolCall::Start {
-                                        index,
-                                        id,
-                                        r#type: _,
-                                        function,
-                                    } => unified::UnifiedStreamingToolCall::Start {
-                                        index,
-                                        id,
-                                        function: unified::UnifiedFunctionStart {
-                                            name: function.name,
-                                            arguments: function.arguments,
-                                        },
-                                    },
-                                    openai::StreamingToolCall::Delta { index, function } => {
-                                        unified::UnifiedStreamingToolCall::Delta {
-                                            index,
-                                            function: unified::UnifiedFunctionDelta {
-                                                arguments: function.arguments,
-                                            },
-                                        }
-                                    }
-                                })
-                                .collect()
-                        }),
+                        tool_calls: choice
+                            .delta
+                            .tool_calls
+                            .map(|calls| calls.into_iter().map(unified::UnifiedStreamingToolCall::from).collect()),
                     },
                     finish_reason: choice.finish_reason.map(unified::UnifiedFinishReason::from),
                 })

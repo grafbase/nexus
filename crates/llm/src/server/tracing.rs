@@ -4,7 +4,10 @@ use fastrace::{Span, future::FutureExt, prelude::LocalSpan};
 use fastrace_futures::StreamExt as FastraceStreamExt;
 
 use crate::{
-    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, ModelsResponse},
+    messages::{
+        openai::ModelsResponse,
+        unified::{UnifiedRequest, UnifiedResponse},
+    },
     provider::ChatCompletionStream,
     request::RequestContext,
     server::LlmService,
@@ -34,11 +37,7 @@ where
         self.inner.models()
     }
 
-    async fn completions(
-        &self,
-        request: ChatCompletionRequest,
-        context: &RequestContext,
-    ) -> crate::Result<ChatCompletionResponse> {
+    async fn completions(&self, request: UnifiedRequest, context: &RequestContext) -> crate::Result<UnifiedResponse> {
         let span = context.new_span("llm:chat_completion");
 
         // Add request attributes
@@ -82,8 +81,10 @@ where
                         )
                     });
                     LocalSpan::add_property(|| ("gen_ai.usage.total_tokens", response.usage.total_tokens.to_string()));
-                    if let Some(choice) = response.choices.first() {
-                        LocalSpan::add_property(|| ("gen_ai.response.finish_reason", choice.finish_reason.to_string()));
+                    if let Some(choice) = response.choices.first()
+                        && let Some(finish_reason) = &choice.finish_reason
+                    {
+                        LocalSpan::add_property(|| ("gen_ai.response.finish_reason", finish_reason.to_string()));
                     }
                 }
                 Err(e) => {
@@ -101,7 +102,7 @@ where
 
     async fn completions_stream(
         &self,
-        request: ChatCompletionRequest,
+        request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
         let result = self.inner.completions_stream(request.clone(), context).await;

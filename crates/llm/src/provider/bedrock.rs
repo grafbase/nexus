@@ -18,7 +18,10 @@ use secrecy::ExposeSecret;
 
 use crate::{
     error::LlmError,
-    messages::openai::{ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, Model, ObjectType},
+    messages::{
+        openai::{self, Model, ObjectType},
+        unified::{UnifiedChunk, UnifiedRequest, UnifiedResponse},
+    },
     provider::{ChatCompletionStream, ModelManager, Provider},
     request::RequestContext,
 };
@@ -66,11 +69,7 @@ impl BedrockProvider {
 
 #[async_trait]
 impl Provider for BedrockProvider {
-    async fn chat_completion(
-        &self,
-        request: ChatCompletionRequest,
-        _: &RequestContext,
-    ) -> crate::Result<ChatCompletionResponse> {
+    async fn chat_completion(&self, request: UnifiedRequest, _: &RequestContext) -> crate::Result<UnifiedResponse> {
         log::debug!("Processing Bedrock chat completion for model: {}", request.model);
 
         // Resolve the configured model to the actual Bedrock model ID
@@ -101,7 +100,7 @@ impl Provider for BedrockProvider {
             })?;
 
         // Convert response using From trait
-        let mut response = ChatCompletionResponse::from(output);
+        let mut response = UnifiedResponse::from(output);
         response.model = original_model;
 
         Ok(response)
@@ -109,7 +108,7 @@ impl Provider for BedrockProvider {
 
     async fn chat_completion_stream(
         &self,
-        request: ChatCompletionRequest,
+        request: UnifiedRequest,
         _: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
         log::debug!("Processing Bedrock streaming for model: {}", request.model);
@@ -148,8 +147,9 @@ impl Provider for BedrockProvider {
                 loop {
                     match event_receiver.recv().await {
                         Ok(Some(event)) => {
-                            if let Ok(mut chunk) = ChatCompletionChunk::try_from(event) {
-                                chunk.model = model.clone(); // Set model like other providers
+                            if let Ok(openai_chunk) = openai::ChatCompletionChunk::try_from(event) {
+                                let mut chunk = UnifiedChunk::from(openai_chunk);
+                                chunk.model = model.clone().into(); // Set model like other providers
                                 return Some((Ok(chunk), (event_receiver, model)));
                             }
                         }

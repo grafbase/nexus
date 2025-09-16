@@ -4,7 +4,10 @@ mod stream;
 
 use crate::{
     error::LlmError,
-    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, ModelsResponse},
+    messages::{
+        openai::ModelsResponse,
+        unified::{UnifiedRequest, UnifiedResponse},
+    },
     provider::ChatCompletionStream,
     request::RequestContext,
     server::LlmService,
@@ -50,11 +53,7 @@ where
     }
 
     /// Process a chat completion request with metrics.
-    async fn completions(
-        &self,
-        request: ChatCompletionRequest,
-        context: &RequestContext,
-    ) -> crate::Result<ChatCompletionResponse> {
+    async fn completions(&self, request: UnifiedRequest, context: &RequestContext) -> crate::Result<UnifiedResponse> {
         let mut recorder = create_recorder(GEN_AI_CLIENT_OPERATION_DURATION, &request.model, context);
 
         let result = self.inner.completions(request.clone(), context).await;
@@ -70,8 +69,9 @@ where
         // finish reasons are typically consistent across choices.
         if let Ok(ref response) = result
             && let Some(choice) = response.choices.first()
+            && let Some(finish_reason) = &choice.finish_reason
         {
-            recorder.push_attribute("gen_ai.response.finish_reason", choice.finish_reason.to_string());
+            recorder.push_attribute("gen_ai.response.finish_reason", finish_reason.to_string());
         }
 
         recorder.record();
@@ -97,7 +97,7 @@ where
     /// Process a streaming chat completion request with metrics.
     async fn completions_stream(
         &self,
-        request: ChatCompletionRequest,
+        request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
         let operation_recorder = create_recorder(GEN_AI_CLIENT_OPERATION_DURATION, &request.model, context);

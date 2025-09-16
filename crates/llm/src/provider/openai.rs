@@ -10,13 +10,16 @@ use reqwest::{Client, Method, header::AUTHORIZATION};
 use secrecy::ExposeSecret;
 
 use self::{
-    input::openai::OpenAIRequest,
-    output::openai::{OpenAIResponse, OpenAIStreamChunk},
+    input::OpenAIRequest,
+    output::{OpenAIResponse, OpenAIStreamChunk},
 };
 
 use crate::{
     error::LlmError,
-    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, Model},
+    messages::{
+        openai::Model,
+        unified::{UnifiedRequest, UnifiedResponse},
+    },
     provider::{ChatCompletionStream, HttpProvider, ModelManager, Provider, token},
     request::RequestContext,
 };
@@ -74,9 +77,9 @@ impl OpenAIProvider {
 impl Provider for OpenAIProvider {
     async fn chat_completion(
         &self,
-        request: ChatCompletionRequest,
+        request: UnifiedRequest,
         context: &RequestContext,
-    ) -> crate::Result<ChatCompletionResponse> {
+    ) -> crate::Result<UnifiedResponse> {
         let url = format!("{}/chat/completions", self.base_url);
 
         let model_name = extract_model_from_full_name(&request.model);
@@ -142,7 +145,7 @@ impl Provider for OpenAIProvider {
             LlmError::InternalError(None)
         })?;
 
-        let mut response = ChatCompletionResponse::from(openai_response);
+        let mut response = UnifiedResponse::from(openai_response);
         response.model = original_model;
         Ok(response)
     }
@@ -154,7 +157,7 @@ impl Provider for OpenAIProvider {
 
     async fn chat_completion_stream(
         &self,
-        request: ChatCompletionRequest,
+        request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
         let url = format!("{}/chat/completions", self.base_url);

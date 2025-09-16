@@ -2,20 +2,14 @@
 //!
 //! These types serve as an internal representation that can losslessly
 //! convert to/from both OpenAI and Anthropic protocol formats.
-//!
-//! Design principles:
-//! - Must not lose any information from either protocol
-//! - Should be as close as possible to both protocols to minimize conversion complexity
-//! - Should handle protocol-specific features gracefully
-//! - ZERO allocations - all data is moved, not cloned
-
-#![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
 pub(crate) mod from_anthropic;
 pub(crate) mod from_openai;
+pub(crate) mod to_anthropic;
+pub(crate) mod to_openai;
 
 /// Unified request that can represent both OpenAI and Anthropic requests without information loss.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -321,6 +315,17 @@ pub enum UnifiedFinishReason {
     ContentFilter,
     /// Tool calls were made.
     ToolCalls,
+}
+
+impl std::fmt::Display for UnifiedFinishReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UnifiedFinishReason::Stop => write!(f, "stop"),
+            UnifiedFinishReason::Length => write!(f, "length"),
+            UnifiedFinishReason::ContentFilter => write!(f, "content_filter"),
+            UnifiedFinishReason::ToolCalls => write!(f, "tool_calls"),
+        }
+    }
 }
 
 /// Anthropic-style stop reason (kept separate for fidelity).

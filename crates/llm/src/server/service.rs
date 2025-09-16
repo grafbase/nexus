@@ -1,7 +1,10 @@
 //! LLM service trait for middleware composition
 
 use crate::{
-    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, ModelsResponse},
+    messages::{
+        openai::ModelsResponse,
+        unified::{UnifiedRequest, UnifiedResponse},
+    },
     provider::ChatCompletionStream,
     request::RequestContext,
 };
@@ -11,17 +14,17 @@ pub(crate) trait LlmService: Send + Sync {
     /// List all available models from all providers.
     fn models(&self) -> ModelsResponse;
 
-    /// Process a chat completion request.
+    /// Process a unified chat completion request (protocol-agnostic).
     fn completions(
         &self,
-        request: ChatCompletionRequest,
+        request: UnifiedRequest,
         context: &RequestContext,
-    ) -> impl std::future::Future<Output = crate::Result<ChatCompletionResponse>> + Send;
+    ) -> impl std::future::Future<Output = crate::Result<UnifiedResponse>> + Send;
 
-    /// Process a streaming chat completion request.
+    /// Process a unified streaming chat completion request (protocol-agnostic).
     fn completions_stream(
         &self,
-        request: ChatCompletionRequest,
+        request: UnifiedRequest,
         context: &RequestContext,
     ) -> impl std::future::Future<Output = crate::Result<ChatCompletionStream>> + Send;
 }

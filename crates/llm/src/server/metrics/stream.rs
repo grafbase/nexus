@@ -8,7 +8,7 @@ use futures::Stream;
 use opentelemetry::metrics::Counter;
 use telemetry::metrics::Recorder;
 
-use crate::{messages::openai::ChatCompletionChunk, provider::ChatCompletionStream};
+use crate::{messages::unified::UnifiedChunk, provider::ChatCompletionStream};
 
 /// Configuration for token metrics in streaming responses
 pub(super) struct TokenMetricsConfig {
@@ -98,7 +98,7 @@ impl MetricsStream {
 }
 
 impl Stream for MetricsStream {
-    type Item = crate::Result<ChatCompletionChunk>;
+    type Item = crate::Result<UnifiedChunk>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let poll_result = self.inner.as_mut().poll_next(cx);

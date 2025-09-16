@@ -16,7 +16,10 @@ use futures::StreamExt;
 
 use crate::{
     error::LlmError,
-    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, Model},
+    messages::{
+        openai::Model,
+        unified::{UnifiedChunk, UnifiedRequest, UnifiedResponse},
+    },
     provider::{HttpProvider, ModelManager, Provider, openai::extract_model_from_full_name, token},
     request::RequestContext,
 };
@@ -70,9 +73,9 @@ impl GoogleProvider {
 impl Provider for GoogleProvider {
     async fn chat_completion(
         &self,
-        request: ChatCompletionRequest,
+        request: UnifiedRequest,
         context: &RequestContext,
-    ) -> crate::Result<ChatCompletionResponse> {
+    ) -> crate::Result<UnifiedResponse> {
         let model_name = extract_model_from_full_name(&request.model);
 
         // Check if the model is configured and get the actual model name to use
@@ -149,7 +152,7 @@ impl Provider for GoogleProvider {
             return Err(LlmError::InternalError(None));
         }
 
-        let mut response = ChatCompletionResponse::from(google_response);
+        let mut response = UnifiedResponse::from(google_response);
         response.model = original_model;
 
         Ok(response)
@@ -162,7 +165,7 @@ impl Provider for GoogleProvider {
 
     async fn chat_completion_stream(
         &self,
-        request: ChatCompletionRequest,
+        request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<crate::provider::ChatCompletionStream> {
         let model_name = extract_model_from_full_name(&request.model);
@@ -237,7 +240,7 @@ impl Provider for GoogleProvider {
                     return None;
                 };
 
-                Some(Ok(chunk.into_chunk(&provider, &model)))
+                Some(Ok(UnifiedChunk::from(chunk.into_chunk(&provider, &model))))
             }
         });
 

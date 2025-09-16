@@ -12,7 +12,10 @@ use futures::Stream;
 use std::pin::Pin;
 
 use crate::{
-    messages::openai::{ChatCompletionChunk, ChatCompletionRequest, ChatCompletionResponse, Model},
+    messages::{
+        openai::Model,
+        unified::{UnifiedChunk, UnifiedRequest, UnifiedResponse},
+    },
     request::RequestContext,
 };
 use config::{HeaderRule, ModelConfig};
@@ -23,7 +26,7 @@ use reqwest::{Client, Method, RequestBuilder};
 /// This represents an asynchronous stream of completion chunks that are sent
 /// incrementally during a streaming response. The stream is pinned and boxed
 /// to allow for dynamic dispatch across different provider implementations.
-pub(crate) type ChatCompletionStream = Pin<Box<dyn Stream<Item = crate::Result<ChatCompletionChunk>> + Send>>;
+pub(crate) type ChatCompletionStream = Pin<Box<dyn Stream<Item = crate::Result<UnifiedChunk>> + Send>>;
 
 /// Trait for LLM provider implementations.
 ///
@@ -34,9 +37,9 @@ pub(crate) trait Provider: Send + Sync {
     /// Process a chat completion request.
     async fn chat_completion(
         &self,
-        request: ChatCompletionRequest,
+        request: UnifiedRequest,
         context: &RequestContext,
-    ) -> crate::Result<ChatCompletionResponse>;
+    ) -> crate::Result<UnifiedResponse>;
 
     /// Process a streaming chat completion request.
     ///
@@ -50,7 +53,7 @@ pub(crate) trait Provider: Send + Sync {
     /// streaming or if streaming is disabled in configuration.
     async fn chat_completion_stream(
         &self,
-        _request: ChatCompletionRequest,
+        _request: UnifiedRequest,
         _context: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
         // Default implementation returns an error for providers that don't support streaming

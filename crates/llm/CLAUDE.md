@@ -1,10 +1,32 @@
 # LLM Provider Implementation Guide
 
-Unified interface for LLM providers with required tool calling support.
+Unified interface for LLM providers with protocol-agnostic internal types.
+
+## Architecture Overview
+
+The LLM crate now uses a **unified type system** that serves as an internal representation for all protocols (OpenAI, Anthropic). This approach:
+- Eliminates complex protocol-specific conversions between providers
+- Ensures no information loss across different protocols
+- Simplifies provider implementations
+- Enables zero-allocation conversions through data movement
+
+## Unified Types System
+
+### Core Types (in `messages/unified.rs`)
+- `UnifiedRequest`: Protocol-agnostic request format
+- `UnifiedResponse`: Protocol-agnostic response format
+- `UnifiedChunk`: Streaming chunk format
+- `UnifiedMessage`, `UnifiedRole`, `UnifiedContent`: Message components
+- `UnifiedTool`, `UnifiedToolChoice`: Tool calling structures
+
+### Conversion Flow
+```
+Protocol Request → UnifiedRequest → Provider → UnifiedResponse → Protocol Response
+```
 
 ## Required Features
 - **Tool Calling**: Function definitions, tool choice ("auto"/"none"/"required"/specific), parallel calls
-- **Streaming**: SSE-based streaming with OpenAI-compatible chunks
+- **Streaming**: SSE-based streaming with protocol-specific chunks
 - **Model Management**: List models, dynamic fetching, caching
 
 ## Implementation Checklist
@@ -23,19 +45,20 @@ Add to `LlmProviderConfig` enum, test with insta snapshots.
 ```rust
 #[async_trait]
 impl Provider for YourProvider {
-    async fn chat_completion(&self, request: ChatCompletionRequest) -> Result<ChatCompletionResponse>;
-    async fn chat_completion_stream(&self, request: ChatCompletionRequest) -> Result<ChatCompletionStream>;
-    async fn list_models(&self) -> Result<Vec<Model>>;
+    async fn chat_completion(&self, request: UnifiedRequest, context: &RequestContext) -> Result<UnifiedResponse>;
+    async fn chat_completion_stream(&self, request: UnifiedRequest, context: &RequestContext) -> Result<ChatCompletionStream>;
+    fn list_models(&self) -> Vec<Model>;
     fn name(&self) -> &str;
     fn supports_streaming(&self) -> bool;
 }
 ```
 
 ### 3. Type Conversion
-- `input.rs`: Convert OpenAI → provider format
-- `output.rs`: Convert provider → OpenAI format
-- Use `Other(String)` variants for forward compatibility
-- Transform tool calls bidirectionally
+- `input.rs`: Convert UnifiedRequest → provider-specific format
+- `output.rs`: Convert provider-specific → UnifiedResponse format
+- NO protocol-specific subdirectories (e.g., no `input/openai.rs`)
+- Use unified types as the intermediate representation
+- Preserve all protocol-specific features through unified types
 
 ### 4. Error Mapping
 - 400 → `InvalidRequest`

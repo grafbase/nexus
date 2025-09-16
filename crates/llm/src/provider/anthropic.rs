@@ -16,7 +16,10 @@ use self::{
 
 use crate::{
     error::LlmError,
-    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, Model},
+    messages::{
+        openai::Model,
+        unified::{UnifiedRequest, UnifiedResponse},
+    },
     provider::{ChatCompletionStream, HttpProvider, ModelManager, Provider, token},
     request::RequestContext,
 };
@@ -90,9 +93,9 @@ impl AnthropicProvider {
 impl Provider for AnthropicProvider {
     async fn chat_completion(
         &self,
-        mut request: ChatCompletionRequest,
+        mut request: UnifiedRequest,
         context: &RequestContext,
-    ) -> crate::Result<ChatCompletionResponse> {
+    ) -> crate::Result<UnifiedResponse> {
         let url = format!("{}/messages", self.base_url);
         let temp_api_key = self.config.api_key.clone();
         let api_key = token::get(self.config.forward_token, &temp_api_key, context)?;
@@ -156,7 +159,7 @@ impl Provider for AnthropicProvider {
             LlmError::InternalError(None)
         })?;
 
-        let mut response = ChatCompletionResponse::from(anthropic_response);
+        let mut response = UnifiedResponse::from(anthropic_response);
         response.model = original_model;
 
         Ok(response)
@@ -169,7 +172,7 @@ impl Provider for AnthropicProvider {
 
     async fn chat_completion_stream(
         &self,
-        mut request: ChatCompletionRequest,
+        mut request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
         let url = format!("{}/messages", self.base_url);

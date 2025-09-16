@@ -6,7 +6,7 @@ use std::{
 use fastrace::prelude::LocalSpan;
 use futures::Stream;
 
-use crate::{messages::openai::ChatCompletionChunk, provider::ChatCompletionStream};
+use crate::{messages::unified::UnifiedChunk, provider::ChatCompletionStream};
 
 /// Stream wrapper that adds tracing attributes for streaming responses
 pub(super) struct TracingStream {
@@ -28,7 +28,7 @@ impl TracingStream {
 }
 
 impl Stream for TracingStream {
-    type Item = crate::Result<ChatCompletionChunk>;
+    type Item = crate::Result<UnifiedChunk>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let poll_result = self.inner.as_mut().poll_next(cx);
@@ -37,7 +37,7 @@ impl Stream for TracingStream {
             Poll::Ready(Some(Ok(chunk))) => {
                 // Record model from chunk if not already recorded
                 if !self.model_recorded {
-                    LocalSpan::add_property(|| ("gen_ai.response.model", chunk.model.clone()));
+                    LocalSpan::add_property(|| ("gen_ai.response.model", chunk.model.to_string()));
                     self.model_recorded = true;
                 }
 

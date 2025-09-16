@@ -1,6 +1,4 @@
 //! Conversions from Anthropic protocol types to unified types.
-//!
-//! ZERO ALLOCATIONS - All data is moved, not cloned.
 
 use crate::messages::{anthropic, unified};
 use std::borrow::Cow;
@@ -30,12 +28,18 @@ impl From<anthropic::AnthropicChatRequest> for unified::UnifiedRequest {
     }
 }
 
-impl From<anthropic::AnthropicMessage> for unified::UnifiedMessage {
-    fn from(msg: anthropic::AnthropicMessage) -> Self {
-        let role = match msg.role {
+impl From<anthropic::AnthropicRole> for unified::UnifiedRole {
+    fn from(role: anthropic::AnthropicRole) -> Self {
+        match role {
             anthropic::AnthropicRole::User => unified::UnifiedRole::User,
             anthropic::AnthropicRole::Assistant => unified::UnifiedRole::Assistant,
-        };
+        }
+    }
+}
+
+impl From<anthropic::AnthropicMessage> for unified::UnifiedMessage {
+    fn from(msg: anthropic::AnthropicMessage) -> Self {
+        let role = unified::UnifiedRole::from(msg.role);
 
         // For assistant messages, we may need tool calls
         // Start with a small capacity - most messages don't have many tool uses
