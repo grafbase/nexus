@@ -132,7 +132,7 @@ pub enum AnthropicContent {
         id: String,
         /// Name of the tool to use
         name: String,
-        /// Input parameters for the tool
+        /// Input parameters for the tool (arbitrary JSON data)
         input: Value,
     },
 
@@ -198,7 +198,7 @@ pub struct AnthropicTool {
     pub description: String,
 
     /// JSON Schema for the tool's input parameters
-    pub input_schema: Value,
+    pub input_schema: Box<super::openai::JsonSchema>,
 }
 
 /// Tool choice configuration.
@@ -752,16 +752,25 @@ mod tests {
             tools: Some(vec![AnthropicTool {
                 name: "get_weather".to_string(),
                 description: "Get the weather for a location".to_string(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                            "type": "string",
-                            "description": "The city and state"
-                        }
-                    },
-                    "required": ["location"]
-                }),
+                input_schema: {
+                    use std::collections::BTreeMap;
+                    let mut properties = BTreeMap::new();
+                    properties.insert(
+                        "location".to_string(),
+                        crate::messages::openai::JsonSchema {
+                            r#type: Some("string".to_string()),
+                            description: Some("The city and state".to_string()),
+                            ..Default::default()
+                        },
+                    );
+
+                    Box::new(crate::messages::openai::JsonSchema {
+                        r#type: Some("object".to_string()),
+                        properties: Some(properties),
+                        required: Some(vec!["location".to_string()]),
+                        ..Default::default()
+                    })
+                },
             }]),
             tool_choice: Some(AnthropicToolChoice::Auto),
         };
@@ -811,7 +820,13 @@ mod tests {
         };
         assert_eq!(id, "tool_use_456");
         assert_eq!(name, "get_weather");
-        assert_eq!(input["location"], "San Francisco, CA");
+
+        // Verify input contains the expected location data by serializing and parsing
+        let json_str = serde_json::to_string(input).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+        assert!(parsed.is_object());
+        assert!(parsed.get("location").is_some());
+        assert_eq!(parsed.get("location").unwrap().as_str().unwrap(), "San Francisco, CA");
     }
 
     #[test]
@@ -992,5 +1007,39 @@ mod tests {
             }
             _ => unreachable!("Expected ToolResult content"),
         }
+    }
+
+    #[test]
+    fn deserialize_request_with_tool_use_blocks() {
+        let json = json!({
+            "model": "anthropic/claude-3-5-haiku-latest",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Help me find and run files"
+                },
+                {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "I'll search for files and run a command."
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_01XyzAbc123",
+                            "name": "Glob",
+                            "input": {"pattern": "*.toml"}
+                        }
+                    ]
+                }
+            ],
+            "max_tokens": 100,
+            "stream": false
+        });
+
+        let request: AnthropicChatRequest = serde_json::from_value(json).unwrap();
+        assert_eq!(request.messages.len(), 2);
+        assert_eq!(request.messages[1].content.len(), 2);
     }
 }

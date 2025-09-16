@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use serde::Deserialize;
+use serde_json::Value;
 
 use crate::messages::{openai, unified};
 
@@ -130,7 +131,7 @@ pub struct AnthropicContent {
 
     /// Input arguments for the tool as JSON.
     #[serde(default)]
-    pub input: Option<serde_json::Value>,
+    pub input: Option<Value>,
 }
 
 /// Token usage information for an Anthropic API request.
@@ -194,7 +195,7 @@ impl From<AnthropicResponse> for openai::ChatCompletionResponse {
                         arguments: c
                             .input
                             .as_ref()
-                            .map(|v| v.to_string())
+                            .map(|v| serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string()))
                             .unwrap_or_else(|| "{}".to_string()),
                     },
                 }),
@@ -243,9 +244,60 @@ impl From<AnthropicResponse> for openai::ChatCompletionResponse {
 
 impl From<AnthropicResponse> for unified::UnifiedResponse {
     fn from(response: AnthropicResponse) -> Self {
-        // First convert to OpenAI format, then to unified
-        let openai_response = openai::ChatCompletionResponse::from(response);
-        unified::UnifiedResponse::from(openai_response)
+        // Convert content blocks to unified format directly
+        let content: Vec<unified::UnifiedContent> = response
+            .content
+            .into_iter()
+            .map(|block| match block.r#type {
+                ContentType::Text => unified::UnifiedContent::Text {
+                    text: block.text.unwrap_or_default(),
+                },
+                ContentType::ToolUse => unified::UnifiedContent::ToolUse {
+                    id: block.id.unwrap_or_default(),
+                    name: block.name.unwrap_or_default(),
+                    input: block.input.unwrap_or_default(),
+                },
+                _ => unified::UnifiedContent::Text {
+                    text: format!("[Unsupported content type: {:?}]", block.r#type),
+                },
+            })
+            .collect();
+
+        let message = unified::UnifiedMessage {
+            role: unified::UnifiedRole::Assistant,
+            content: unified::UnifiedContentContainer::Blocks(content),
+            tool_calls: None, // Will be computed on demand via compute_tool_calls()
+            tool_call_id: None,
+        };
+
+        // Convert stop reason
+        let finish_reason = response.stop_reason.map(|reason| match reason {
+            StopReason::EndTurn => unified::UnifiedFinishReason::Stop,
+            StopReason::MaxTokens => unified::UnifiedFinishReason::Length,
+            StopReason::StopSequence => unified::UnifiedFinishReason::Stop,
+            StopReason::ToolUse => unified::UnifiedFinishReason::ToolCalls,
+            StopReason::PauseTurn => unified::UnifiedFinishReason::Stop,
+            StopReason::Refusal => unified::UnifiedFinishReason::ContentFilter,
+            StopReason::Other(_) => unified::UnifiedFinishReason::Stop,
+        });
+
+        Self {
+            id: response.id,
+            model: "anthropic-model".to_string(), // Model info not provided in this conversion
+            choices: vec![unified::UnifiedChoice {
+                index: 0,
+                message,
+                finish_reason,
+            }],
+            usage: unified::UnifiedUsage {
+                prompt_tokens: response.usage.input_tokens as u32,
+                completion_tokens: response.usage.output_tokens as u32,
+                total_tokens: (response.usage.input_tokens + response.usage.output_tokens) as u32,
+            },
+            created: 0,        // Anthropic doesn't provide timestamp
+            stop_reason: None, // Not needed for unified response
+            stop_sequence: None,
+        }
     }
 }
 
@@ -361,7 +413,7 @@ pub struct AnthropicMessageStart<'a> {
     /// Always empty (`[]`) in the message_start event.
     /// Gets filled through content_block_start/delta/stop events.
     /// We don't process this field as we build content from deltas instead.
-    pub content: Vec<sonic_rs::Value>,
+    pub content: Vec<Value>,
 
     /// The reason the model stopped generating.
     ///

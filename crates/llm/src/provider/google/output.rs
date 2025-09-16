@@ -207,7 +207,7 @@ pub struct GoogleFunctionCall {
     pub name: String,
 
     /// Arguments to pass to the function as a JSON object.
-    pub args: serde_json::Value,
+    pub args: sonic_rs::OwnedLazyValue,
 
     /// Thought signature - appears to be some kind of internal Google field
     /// We don't use it but need to accept it to parse responses correctly
@@ -226,7 +226,7 @@ pub struct GoogleFunctionResponse {
     pub name: String,
 
     /// Result of the function execution as a JSON object.
-    pub response: serde_json::Value,
+    pub response: sonic_rs::OwnedLazyValue,
 }
 
 impl From<FinishReason> for openai::FinishReason {
@@ -336,9 +336,86 @@ impl From<GoogleGenerateResponse> for openai::ChatCompletionResponse {
 
 impl From<GoogleGenerateResponse> for unified::UnifiedResponse {
     fn from(response: GoogleGenerateResponse) -> Self {
-        // First convert to OpenAI format, then to unified
-        let openai_response = openai::ChatCompletionResponse::from(response);
-        unified::UnifiedResponse::from(openai_response)
+        let candidate = response
+            .candidates
+            .into_iter()
+            .next()
+            .expect("No candidates in Google response");
+
+        // Convert Google parts to unified content blocks and track if we have tool calls
+        let mut has_tool_calls = false;
+        let content: Vec<unified::UnifiedContent> = candidate
+            .content
+            .parts
+            .into_iter()
+            .filter_map(|part| {
+                if let Some(text) = part.text {
+                    Some(unified::UnifiedContent::Text { text })
+                } else if let Some(function_call) = part.function_call {
+                    has_tool_calls = true;
+                    Some(unified::UnifiedContent::ToolUse {
+                        id: format!("call_{}", uuid::Uuid::new_v4()),
+                        name: function_call.name,
+                        input: {
+                            // Convert Value to JsonData
+                            let json = sonic_rs::to_string(&function_call.args).unwrap_or_else(|_| "{}".to_string());
+                            sonic_rs::from_str(json.as_str()).unwrap_or_default()
+                        },
+                    })
+                } else {
+                    None // Skip parts that are neither text nor function calls
+                }
+            })
+            .collect();
+
+        let message = unified::UnifiedMessage {
+            role: unified::UnifiedRole::Assistant,
+            content: unified::UnifiedContentContainer::Blocks(content),
+            tool_calls: None, // Will be computed on demand via compute_tool_calls()
+            tool_call_id: None,
+        };
+
+        // Convert finish reason - override with ToolCalls if we detected function calls
+        let finish_reason = if has_tool_calls {
+            Some(unified::UnifiedFinishReason::ToolCalls)
+        } else {
+            candidate.finish_reason.map(|reason| match reason {
+                FinishReason::Stop => unified::UnifiedFinishReason::Stop,
+                FinishReason::MaxTokens => unified::UnifiedFinishReason::Length,
+                FinishReason::Safety => unified::UnifiedFinishReason::ContentFilter,
+                FinishReason::Recitation => unified::UnifiedFinishReason::ContentFilter,
+                FinishReason::Other => unified::UnifiedFinishReason::Stop,
+                FinishReason::Unknown(_) => unified::UnifiedFinishReason::Stop,
+            })
+        };
+
+        Self {
+            id: format!("gen-{}", uuid::Uuid::new_v4()),
+            model: "google-model".to_string(), // Model info not provided in this conversion
+            choices: vec![unified::UnifiedChoice {
+                index: candidate.index as u32,
+                message,
+                finish_reason,
+            }],
+            usage: response.usage_metadata.map_or_else(
+                || unified::UnifiedUsage {
+                    prompt_tokens: 0,
+                    completion_tokens: 0,
+                    total_tokens: 0,
+                },
+                |usage| unified::UnifiedUsage {
+                    prompt_tokens: usage.prompt_token_count as u32,
+                    completion_tokens: usage.candidates_token_count as u32,
+                    total_tokens: usage.total_token_count as u32,
+                },
+            ),
+            created: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            stop_reason: None,
+            stop_sequence: None,
+        }
     }
 }
 
@@ -432,7 +509,7 @@ pub struct GoogleStreamCandidate<'a> {
     /// - `blocked`: Whether content was blocked for this category
     #[serde(skip_serializing_if = "Option::is_none")]
     #[allow(dead_code)]
-    pub safety_ratings: Option<Vec<sonic_rs::Value>>,
+    pub safety_ratings: Option<Vec<sonic_rs::OwnedLazyValue>>,
 }
 
 /// Streaming content from Google.
@@ -491,7 +568,7 @@ pub struct GoogleStreamFunctionCall<'a> {
     pub name: Cow<'a, str>,
 
     /// Arguments being built up incrementally as a JSON string.
-    pub args: serde_json::Value,
+    pub args: sonic_rs::OwnedLazyValue,
 }
 
 impl<'a> GoogleStreamChunk<'a> {
@@ -524,7 +601,7 @@ impl<'a> GoogleStreamChunk<'a> {
                         r#type: openai::ToolCallType::Function,
                         function: openai::FunctionStart {
                             name: function_call.name.to_string(),
-                            arguments: function_call.args.to_string(),
+                            arguments: sonic_rs::to_string(&function_call.args).unwrap_or_else(|_| "{}".to_string()),
                         },
                     };
                     streaming_tool_calls = Some(vec![tool_call]);
@@ -598,7 +675,7 @@ impl<'a> GoogleStreamChunk<'a> {
 mod tests {
     use super::*;
     use insta::assert_json_snapshot;
-    use serde_json::json;
+    use sonic_rs::json;
 
     #[test]
     fn deserialize_function_call_with_thought_signature() {
@@ -611,11 +688,19 @@ mod tests {
             "thoughtSignature": "Co8DAdHtim/74q7Pz1h2uGY/tC+o1kuINeM9VIQrxG8BOYbo0qvQ3dkUGt/tP2iFiXOMnkkFTn+K3hThEpB0ZrNzHx12pGpJAOg3XBMBFRmhl1VI6W1f/fdSXT0o6WWtn5NHW9wV8adPgvT3wb3XBcn4cFSJ7Sg9qUfOVfrqoGQ+mlHZj2FH2e8WTtiiEui3n+gEqtVboVHNgcjWBH5ntFBNb3clLK1XGo9yzsyMeB16Q52az6yZr92eCME8Y0jkhNsnqQ0bHMCRw4zkiuKdttFq5qBIMZPEecqXq87coVeGteTv3Q7X9hTaTBnWQQBZYQ4HQd3Du3xm7WMhFWmxJR15GDCk4qmRQmwyADh+WbYB1DNMXROI1Vdh+SQp9CU9SfYd6CWTiu1GrT1/KUjIkePPg4sZzlaQqEGpT8o9QG3gxvDfsy1yhdtqytMzKw2B4c+MSwnZY6Us532CgNVGzDuptvWgtImfJbxYv5iqAxgEbGXbeM915xV0vO9QVtdP4hyvZmu0M9oYuZ3y664ERYqL"
         });
 
-        let function_call: GoogleFunctionCall = serde_json::from_value(json_with_thought).unwrap();
+        let function_call: GoogleFunctionCall =
+            sonic_rs::from_str(&sonic_rs::to_string(&json_with_thought).unwrap()).unwrap();
         assert!(function_call.thought_signature.is_some());
 
-        // Use snapshot for the full structure
-        assert_json_snapshot!(function_call, @r#"
+        let snapshot = serde_json::json!({
+            "name": function_call.name,
+            "args": serde_json::from_str::<serde_json::Value>(
+                &sonic_rs::to_string(&function_call.args).unwrap()
+            )
+            .unwrap(),
+        });
+
+        assert_json_snapshot!(snapshot, @r#"
         {
           "name": "get_weather",
           "args": {
@@ -635,11 +720,19 @@ mod tests {
             }
         });
 
-        let function_call: GoogleFunctionCall = serde_json::from_value(json_without_thought).unwrap();
+        let function_call: GoogleFunctionCall =
+            sonic_rs::from_str(&sonic_rs::to_string(&json_without_thought).unwrap()).unwrap();
         assert!(function_call.thought_signature.is_none());
 
-        // Use snapshot for the full structure
-        assert_json_snapshot!(function_call, @r#"
+        let snapshot = serde_json::json!({
+            "name": function_call.name,
+            "args": serde_json::from_str::<serde_json::Value>(
+                &sonic_rs::to_string(&function_call.args).unwrap()
+            )
+            .unwrap(),
+        });
+
+        assert_json_snapshot!(snapshot, @r#"
         {
           "name": "get_weather",
           "args": {
@@ -680,10 +773,13 @@ mod tests {
             }
         });
 
-        let response: GoogleGenerateResponse = serde_json::from_value(response_json).unwrap();
+        let response: GoogleGenerateResponse =
+            sonic_rs::from_str(&sonic_rs::to_string(&response_json).unwrap()).unwrap();
+
+        let snapshot = serde_json::from_str::<serde_json::Value>(&sonic_rs::to_string(&response).unwrap()).unwrap();
 
         // Snapshot the entire response to ensure it parses correctly
-        assert_json_snapshot!(response, @r#"
+        assert_json_snapshot!(snapshot, @r#"
         {
           "candidates": [
             {

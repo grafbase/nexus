@@ -106,8 +106,17 @@ impl Provider for OpenAIProvider {
         let key = token::get(self.config.forward_token, &temp_api_key, context)?;
         request_builder = request_builder.header(AUTHORIZATION, format!("Bearer {}", key.expose_secret()));
 
+        // Serialize with sonic_rs to handle sonic_rs::Value fields properly
+        let body = sonic_rs::to_vec(&openai_request)
+            .map_err(|e| LlmError::InvalidRequest(format!("Failed to serialize request: {e}")))?;
+
+        // Debug: Log the serialized body
+        if let Ok(body_str) = std::str::from_utf8(&body) {
+            log::debug!("Serialized OpenAI request body: {}", body_str);
+        }
         let response = request_builder
-            .json(&openai_request)
+            .header("Content-Type", "application/json")
+            .body(body)
             .send()
             .await
             .map_err(|e| LlmError::ConnectionError(format!("Failed to send request to OpenAI: {e}")))?;
@@ -185,8 +194,17 @@ impl Provider for OpenAIProvider {
         // Add authorization header (can be overridden by header rules)
         request_builder = request_builder.header(AUTHORIZATION, format!("Bearer {}", key.expose_secret()));
 
+        // Serialize with sonic_rs to handle sonic_rs::Value fields properly
+        let body = sonic_rs::to_vec(&openai_request)
+            .map_err(|e| LlmError::InvalidRequest(format!("Failed to serialize request: {e}")))?;
+
+        // Debug: Log the serialized body
+        if let Ok(body_str) = std::str::from_utf8(&body) {
+            log::debug!("Serialized OpenAI request body: {}", body_str);
+        }
         let response = request_builder
-            .json(&openai_request)
+            .header("Content-Type", "application/json")
+            .body(body)
             .send()
             .await
             .map_err(|e| LlmError::ConnectionError(format!("Failed to send streaming request to OpenAI: {e}")))?;

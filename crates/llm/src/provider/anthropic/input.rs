@@ -1,4 +1,5 @@
 use serde::Serialize;
+use serde_json::Value;
 
 use crate::messages::{openai, unified};
 
@@ -129,11 +130,7 @@ pub enum AnthropicContentBlock {
 
     /// Tool use block (when assistant calls a tool)
     #[serde(rename = "tool_use")]
-    ToolUse {
-        id: String,
-        name: String,
-        input: serde_json::Value,
-    },
+    ToolUse { id: String, name: String, input: Value },
 
     /// Tool result block (response from tool execution)
     #[serde(rename = "tool_result")]
@@ -158,7 +155,7 @@ pub struct AnthropicTool {
     pub description: String,
 
     /// The parameters the tool accepts, described as a JSON Schema object.
-    pub input_schema: serde_json::Value,
+    pub input_schema: Box<openai::JsonSchema>,
 }
 
 impl From<openai::Tool> for AnthropicTool {
@@ -166,7 +163,7 @@ impl From<openai::Tool> for AnthropicTool {
         Self {
             name: tool.function.name,
             description: tool.function.description,
-            input_schema: tool.function.parameters,
+            input_schema: Box::new(tool.function.parameters),
         }
     }
 }
@@ -176,7 +173,7 @@ impl From<unified::UnifiedTool> for AnthropicTool {
         Self {
             name: tool.function.name,
             description: tool.function.description,
-            input_schema: tool.function.parameters,
+            input_schema: tool.function.parameters, // Already Box<JsonSchema>
         }
     }
 }
@@ -259,14 +256,13 @@ impl From<openai::ChatMessage> for AnthropicMessage {
                 // Add tool use blocks
                 if let Some(tool_calls) = msg.tool_calls {
                     for tool_call in tool_calls {
-                        // Parse the arguments from JSON string to Value
-                        let input = serde_json::from_str(&tool_call.function.arguments)
-                            .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+                        // Parse the arguments from JSON string to JsonSchema
+                        // Parse arguments to OwnedLazyValue for tool input
 
                         blocks.push(AnthropicContentBlock::ToolUse {
                             id: tool_call.id,
                             name: tool_call.function.name,
-                            input,
+                            input: serde_json::from_str(tool_call.function.arguments.as_str()).unwrap_or(Value::Null),
                         });
                     }
                 }
@@ -340,49 +336,9 @@ impl From<unified::UnifiedMessage> for AnthropicMessage {
             }
         };
 
-        // If we have tool calls, add them as blocks ONLY if not already present
-        let final_content = if let Some(tool_calls) = msg.tool_calls
-            && !tool_calls.is_empty()
-        {
-            let mut blocks = match content {
-                AnthropicMessageContent::Text(text) => {
-                    vec![AnthropicContentBlock::Text { text }]
-                }
-                AnthropicMessageContent::Blocks(b) => b,
-            };
-
-            // Collect existing tool_use IDs to avoid duplicates
-            let existing_tool_ids: std::collections::HashSet<String> = blocks
-                .iter()
-                .filter_map(|block| match block {
-                    AnthropicContentBlock::ToolUse { id, .. } => Some(id.clone()),
-                    _ => None,
-                })
-                .collect();
-
-            for call in tool_calls {
-                // Only add if not already present in content blocks
-                if !existing_tool_ids.contains(&call.id) {
-                    log::debug!("Adding tool_call {} as new block", call.id);
-                    blocks.push(AnthropicContentBlock::ToolUse {
-                        id: call.id,
-                        name: call.function.name,
-                        input: match call.function.arguments {
-                            unified::UnifiedArguments::String(s) => {
-                                serde_json::from_str(&s).unwrap_or(serde_json::Value::Null)
-                            }
-                            unified::UnifiedArguments::Value(v) => v,
-                        },
-                    });
-                } else {
-                    log::debug!("Skipping tool_call {} - already in content", call.id);
-                }
-            }
-
-            AnthropicMessageContent::Blocks(blocks)
-        } else {
-            content
-        };
+        // Single source of truth: tool calls are already in content blocks
+        // No need to add tool_calls as additional blocks - eliminates deduplication entirely
+        let final_content = content;
 
         Self {
             role,

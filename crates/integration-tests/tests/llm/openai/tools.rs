@@ -76,7 +76,7 @@ path = "/llm"
                 "type": "function",
                 "function": {
                   "name": "get_weather",
-                  "arguments": "{\"location\": \"San Francisco\", \"unit\": \"celsius\"}"
+                  "arguments": "{\"location\":\"San Francisco\",\"unit\":\"celsius\"}"
                 }
               }
             ]
@@ -150,7 +150,7 @@ path = "/llm"
         ".created" => "[timestamp]",
         ".choices[0].message.tool_calls[0].id" => "[call_id_1]",
         ".choices[0].message.tool_calls[1].id" => "[call_id_2]"
-    }, @r###"
+    }, @r#"
     {
       "id": "[id]",
       "object": "chat.completion",
@@ -167,7 +167,7 @@ path = "/llm"
                 "type": "function",
                 "function": {
                   "name": "get_weather",
-                  "arguments": "{\"location\": \"New York City\"}"
+                  "arguments": "{\"location\":\"New York City\"}"
                 }
               },
               {
@@ -175,7 +175,7 @@ path = "/llm"
                 "type": "function",
                 "function": {
                   "name": "get_weather",
-                  "arguments": "{\"location\": \"Los Angeles\"}"
+                  "arguments": "{\"location\":\"Los Angeles\"}"
                 }
               }
             ]
@@ -189,7 +189,7 @@ path = "/llm"
         "total_tokens": 25
       }
     }
-    "###);
+    "#);
 }
 
 #[tokio::test]

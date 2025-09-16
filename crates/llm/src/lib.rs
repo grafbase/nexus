@@ -7,6 +7,7 @@ use axum::{
     response::{IntoResponse, Sse, sse::Event},
     routing::{get, post},
 };
+use axum_serde::Sonic;
 use futures::StreamExt;
 use messages::{anthropic, openai};
 
@@ -66,7 +67,7 @@ async fn chat_completions(
     headers: HeaderMap,
     client_identity: Option<Extension<config::ClientIdentity>>,
     span_context: Option<Extension<fastrace::collector::SpanContext>>,
-    Json(request): Json<openai::ChatCompletionRequest>,
+    Sonic(request): Sonic<openai::ChatCompletionRequest>,
 ) -> Result<impl IntoResponse> {
     log::debug!("OpenAI chat completions handler called for model: {}", request.model);
     log::debug!("Request has {} messages", request.messages.len());
@@ -158,7 +159,7 @@ async fn anthropic_messages(
     headers: HeaderMap,
     client_identity: Option<Extension<config::ClientIdentity>>,
     span_context: Option<Extension<fastrace::collector::SpanContext>>,
-    Json(request): Json<anthropic::AnthropicChatRequest>,
+    Sonic(request): Sonic<anthropic::AnthropicChatRequest>,
 ) -> Result<impl IntoResponse> {
     log::debug!("Anthropic messages handler called for model: {}", request.model);
     log::debug!("Request has {} messages", request.messages.len());

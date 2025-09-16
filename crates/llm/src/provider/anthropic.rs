@@ -6,7 +6,7 @@ use axum::http::HeaderMap;
 use config::ApiProviderConfig;
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
-use reqwest::{Client, Method};
+use reqwest::{Client, Method, header::CONTENT_TYPE};
 use secrecy::ExposeSecret;
 
 use self::{
@@ -120,8 +120,14 @@ impl Provider for AnthropicProvider {
         // Add API key header (can be overridden by header rules)
         request_builder = request_builder.header("x-api-key", api_key.expose_secret());
 
+        let body = sonic_rs::to_vec(&anthropic_request).map_err(|e| {
+            log::error!("Failed to serialize Anthropic request: {e}");
+            LlmError::InternalError(None)
+        })?;
+
         let response = request_builder
-            .json(&anthropic_request)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body)
             .send()
             .await
             .map_err(|e| LlmError::ConnectionError(format!("Failed to send request to Anthropic: {e}")))?;
@@ -199,10 +205,17 @@ impl Provider for AnthropicProvider {
         // Add API key header (can be overridden by header rules)
         request_builder = request_builder.header("x-api-key", api_key.expose_secret());
 
-        let response =
-            request_builder.json(&anthropic_request).send().await.map_err(|e| {
-                LlmError::ConnectionError(format!("Failed to send streaming request to Anthropic: {e}"))
-            })?;
+        let body = sonic_rs::to_vec(&anthropic_request).map_err(|e| {
+            log::error!("Failed to serialize Anthropic streaming request: {e}");
+            LlmError::InternalError(None)
+        })?;
+
+        let response = request_builder
+            .header(CONTENT_TYPE, "application/json")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| LlmError::ConnectionError(format!("Failed to send streaming request to Anthropic: {e}")))?;
 
         let status = response.status();
 

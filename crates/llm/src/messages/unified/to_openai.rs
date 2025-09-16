@@ -54,7 +54,13 @@ impl From<unified::UnifiedRole> for openai::ChatRole {
 
 impl From<unified::UnifiedMessage> for openai::ChatMessage {
     fn from(msg: unified::UnifiedMessage) -> Self {
+        // Compute tool calls before moving any fields
+        let tool_calls = msg
+            .compute_tool_calls()
+            .map(|calls| calls.into_iter().map(openai::ToolCall::from).collect());
+
         let role = openai::ChatRole::from(msg.role);
+        let tool_call_id = msg.tool_call_id;
 
         let content = match msg.content {
             unified::UnifiedContentContainer::Text(text) => Some(text),
@@ -84,25 +90,8 @@ impl From<unified::UnifiedMessage> for openai::ChatMessage {
         Self {
             role,
             content,
-            tool_calls: msg.tool_calls.map(|calls| {
-                calls
-                    .into_iter()
-                    .map(|call| openai::ToolCall {
-                        id: call.id,
-                        tool_type: openai::ToolCallType::Function,
-                        function: openai::FunctionCall {
-                            name: call.function.name,
-                            arguments: match call.function.arguments {
-                                unified::UnifiedArguments::String(s) => s,
-                                unified::UnifiedArguments::Value(v) => {
-                                    serde_json::to_string(&v).unwrap_or_else(|_| "{}".to_string())
-                                }
-                            },
-                        },
-                    })
-                    .collect()
-            }),
-            tool_call_id: msg.tool_call_id,
+            tool_calls,
+            tool_call_id,
         }
     }
 }
@@ -114,7 +103,7 @@ impl From<unified::UnifiedTool> for openai::Tool {
             function: openai::FunctionDefinition {
                 name: tool.function.name,
                 description: tool.function.description,
-                parameters: tool.function.parameters,
+                parameters: *tool.function.parameters, // Unbox
             },
         }
     }
@@ -188,16 +177,11 @@ impl From<unified::UnifiedStreamingToolCall> for openai::StreamingToolCall {
                 index,
                 id,
                 r#type: openai::ToolCallType::Function,
-                function: openai::FunctionStart {
-                    name: function.name,
-                    arguments: function.arguments,
-                },
+                function: openai::FunctionStart::from(function),
             },
             unified::UnifiedStreamingToolCall::Delta { index, function } => openai::StreamingToolCall::Delta {
                 index,
-                function: openai::FunctionDelta {
-                    arguments: function.arguments,
-                },
+                function: openai::FunctionDelta::from(function),
             },
         }
     }
@@ -254,6 +238,41 @@ impl From<unified::UnifiedModelsResponse> for openai::ModelsResponse {
         Self {
             object: openai::ObjectType::List,
             data: response.models.into_iter().map(openai::Model::from).collect(),
+        }
+    }
+}
+
+impl From<unified::UnifiedToolCall> for openai::ToolCall {
+    fn from(call: unified::UnifiedToolCall) -> Self {
+        Self {
+            id: call.id,
+            tool_type: openai::ToolCallType::Function,
+            function: openai::FunctionCall {
+                name: call.function.name,
+                arguments: match call.function.arguments {
+                    unified::UnifiedArguments::String(s) => s,
+                    unified::UnifiedArguments::Value(v) => {
+                        serde_json::to_string(&v).unwrap_or_else(|_| "{}".to_string())
+                    }
+                },
+            },
+        }
+    }
+}
+
+impl From<unified::UnifiedFunctionStart> for openai::FunctionStart {
+    fn from(func: unified::UnifiedFunctionStart) -> Self {
+        Self {
+            name: func.name,
+            arguments: func.arguments,
+        }
+    }
+}
+
+impl From<unified::UnifiedFunctionDelta> for openai::FunctionDelta {
+    fn from(func: unified::UnifiedFunctionDelta) -> Self {
+        Self {
+            arguments: func.arguments,
         }
     }
 }

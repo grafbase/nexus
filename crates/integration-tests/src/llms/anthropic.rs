@@ -218,20 +218,20 @@ async fn create_message(
     for message in &request.messages {
         if let AnthropicMessageContent::Blocks(blocks) = &message.content {
             for block in blocks {
-                if let AnthropicContentBlock::ToolUse { id, .. } = block {
-                    if !tool_use_ids.insert(id.clone()) {
-                        // Duplicate ID found - return the same error Anthropic would
-                        return (
-                            StatusCode::UNPROCESSABLE_ENTITY,
-                            Json(serde_json::json!({
-                                "error": {
-                                    "type": "invalid_request_error",
-                                    "message": format!("messages: `tool_use` ids must be unique (duplicate id: {})", id)
-                                }
-                            })),
-                        )
-                            .into_response();
-                    }
+                if let AnthropicContentBlock::ToolUse { id, .. } = block
+                    && !tool_use_ids.insert(id.clone())
+                {
+                    // Duplicate ID found - return the same error Anthropic would
+                    return (
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        Json(serde_json::json!({
+                            "error": {
+                                "type": "invalid_request_error",
+                                "message": format!("messages: `tool_use` ids must be unique (duplicate id: {})", id)
+                            }
+                        })),
+                    )
+                        .into_response();
                 }
             }
         }

@@ -69,29 +69,36 @@ impl From<openai::ChatMessage> for unified::UnifiedMessage {
     fn from(msg: openai::ChatMessage) -> Self {
         let role = unified::UnifiedRole::from(msg.role);
 
-        let content = if let Some(text) = msg.content {
+        // Convert OpenAI tool_calls to content blocks for single-source-of-truth
+        let content = if let Some(tool_calls) = msg.tool_calls {
+            // Convert tool calls to ToolUse content blocks
+            let blocks: Vec<unified::UnifiedContent> = tool_calls
+                .into_iter()
+                .map(|call| unified::UnifiedContent::ToolUse {
+                    id: call.id,
+                    name: call.function.name,
+                    input: serde_json::from_str(call.function.arguments.as_str()).unwrap_or(serde_json::Value::Null),
+                })
+                .collect();
+
+            // If we also have text content, prepend it to the blocks
+            if let Some(text) = msg.content {
+                let mut all_blocks = vec![unified::UnifiedContent::Text { text }];
+                all_blocks.extend(blocks);
+                unified::UnifiedContentContainer::Blocks(all_blocks)
+            } else {
+                unified::UnifiedContentContainer::Blocks(blocks)
+            }
+        } else if let Some(text) = msg.content {
             unified::UnifiedContentContainer::Text(text)
         } else {
             unified::UnifiedContentContainer::Blocks(vec![])
         };
 
-        let tool_calls = msg.tool_calls.map(|calls| {
-            calls
-                .into_iter()
-                .map(|call| unified::UnifiedToolCall {
-                    id: call.id,
-                    function: unified::UnifiedFunctionCall {
-                        name: call.function.name,
-                        arguments: unified::UnifiedArguments::String(call.function.arguments),
-                    },
-                })
-                .collect()
-        });
-
         Self {
             role,
             content,
-            tool_calls,
+            tool_calls: None, // Will be computed on demand via compute_tool_calls()
             tool_call_id: msg.tool_call_id,
         }
     }
@@ -103,7 +110,7 @@ impl From<openai::Tool> for unified::UnifiedTool {
             function: unified::UnifiedFunction {
                 name: tool.function.name,
                 description: tool.function.description,
-                parameters: tool.function.parameters,
+                parameters: Box::new(tool.function.parameters),
                 strict: None,
             },
         }

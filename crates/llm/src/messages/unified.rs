@@ -4,7 +4,10 @@
 //! convert to/from both OpenAI and Anthropic protocol formats.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::borrow::Cow;
+
+use super::openai::JsonSchema;
 
 pub(crate) mod from_anthropic;
 pub(crate) mod from_openai;
@@ -126,11 +129,7 @@ pub enum UnifiedContent {
     },
 
     /// Tool use request (Anthropic format).
-    ToolUse {
-        id: String,
-        name: String,
-        input: serde_json::Value,
-    },
+    ToolUse { id: String, name: String, input: Value },
 
     /// Tool result (Anthropic format).
     ToolResult {
@@ -178,7 +177,7 @@ pub struct UnifiedFunction {
     pub description: String,
 
     /// Parameters as JSON Schema.
-    pub parameters: serde_json::Value,
+    pub parameters: Box<JsonSchema>,
 
     /// Whether the function accepts additional properties (OpenAI strict mode).
     pub strict: Option<bool>,
@@ -241,7 +240,7 @@ pub enum UnifiedArguments {
     /// JSON string (OpenAI format).
     String(String),
     /// JSON value (Anthropic format).
-    Value(serde_json::Value),
+    Value(Value),
 }
 
 /// Custom metadata (Anthropic-specific).
@@ -467,4 +466,32 @@ pub struct UnifiedModelsResponse {
 
     /// Whether there are more models to fetch (for pagination)
     pub has_more: bool,
+}
+
+impl UnifiedMessage {
+    /// Computed getter for OpenAI-style tool calls.
+    ///
+    /// This method extracts tool calls from content blocks on demand,
+    /// eliminating the need for dual storage and deduplication logic.
+    pub fn compute_tool_calls(&self) -> Option<Vec<UnifiedToolCall>> {
+        if let UnifiedContentContainer::Blocks(blocks) = &self.content {
+            let tool_calls: Vec<UnifiedToolCall> = blocks
+                .iter()
+                .filter_map(|block| match block {
+                    UnifiedContent::ToolUse { id, name, input } => Some(UnifiedToolCall {
+                        id: id.clone(),
+                        function: UnifiedFunctionCall {
+                            name: name.clone(),
+                            arguments: UnifiedArguments::Value(input.clone()),
+                        },
+                    }),
+                    _ => None,
+                })
+                .collect();
+
+            if tool_calls.is_empty() { None } else { Some(tool_calls) }
+        } else {
+            None
+        }
+    }
 }

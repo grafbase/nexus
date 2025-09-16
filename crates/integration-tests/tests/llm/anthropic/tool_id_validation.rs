@@ -79,7 +79,7 @@ async fn duplicate_tool_ids_fail_as_expected() {
     // Nexus will return 502 (Bad Gateway) when the upstream provider returns an error
     let client = reqwest::Client::new();
     let response = client
-        .post(&format!("http://{}/llm/anthropic/v1/messages", server.address))
+        .post(format!("http://{}/llm/anthropic/v1/messages", server.address))
         .header("x-api-key", "test-key")
         .header("anthropic-version", "2023-06-01")
         .header("Content-Type", "application/json")

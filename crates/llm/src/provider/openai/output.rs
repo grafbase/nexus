@@ -216,7 +216,7 @@ pub struct OpenAIStreamChoice<'a> {
     /// - top_logprobs: Alternative tokens and their probabilities
     /// - text_offset: Character offsets in the text
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) logprobs: Option<sonic_rs::Value>,
+    pub(super) logprobs: Option<sonic_rs::OwnedLazyValue>,
 }
 
 /// Delta content in a streaming response.
@@ -257,7 +257,7 @@ pub struct OpenAIDelta<'a> {
     /// - function.name: Name of the function (first chunk only)
     /// - function.arguments: JSON arguments as a string (accumulated over chunks)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) tool_calls: Option<Vec<sonic_rs::Value>>,
+    pub(super) tool_calls: Option<Vec<sonic_rs::OwnedLazyValue>>,
 
     /// Legacy function calling format (deprecated).
     ///
@@ -268,7 +268,7 @@ pub struct OpenAIDelta<'a> {
     ///
     /// New integrations should use tool_calls instead.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) function_call: Option<sonic_rs::Value>,
+    pub(super) function_call: Option<sonic_rs::OwnedLazyValue>,
 }
 
 impl<'a> From<OpenAIDelta<'a>> for openai::ChatMessageDelta {
@@ -281,15 +281,15 @@ impl<'a> From<OpenAIDelta<'a>> for openai::ChatMessageDelta {
                 .into_iter()
                 .filter_map(|call| {
                     // Try to deserialize the Value into our enum
-                    sonic_rs::from_value::<StreamingToolCall>(&call).ok()
+                    sonic_rs::from_str::<StreamingToolCall>(&sonic_rs::to_string(&call).unwrap_or_default()).ok()
                 })
                 .collect()
         });
 
         // Convert function_call from sonic_rs::Value to StreamingFunctionCall
-        let function_call = delta
-            .function_call
-            .and_then(|call| sonic_rs::from_value::<StreamingFunctionCall>(&call).ok());
+        let function_call = delta.function_call.and_then(|call| {
+            sonic_rs::from_str::<StreamingFunctionCall>(&sonic_rs::to_string(&call).unwrap_or_default()).ok()
+        });
 
         Self {
             role: delta.role.map(|s| match s.as_ref() {

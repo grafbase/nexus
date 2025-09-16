@@ -2,6 +2,8 @@
 
 use std::collections::HashSet;
 
+use serde_json::Value;
+
 use crate::messages::{anthropic, unified};
 
 impl From<unified::UnifiedRequest> for anthropic::AnthropicChatRequest {
@@ -63,20 +65,7 @@ impl From<unified::UnifiedMessage> for anthropic::AnthropicMessage {
                     .map(|block| match block {
                         unified::UnifiedContent::Text { text } => anthropic::AnthropicContent::Text { text },
                         unified::UnifiedContent::Image { source } => anthropic::AnthropicContent::Image {
-                            source: match source {
-                                unified::UnifiedImageSource::Base64 { media_type, data } => {
-                                    anthropic::AnthropicImageSource {
-                                        source_type: "base64".to_string(),
-                                        media_type,
-                                        data,
-                                    }
-                                }
-                                unified::UnifiedImageSource::Url { url } => anthropic::AnthropicImageSource {
-                                    source_type: "url".to_string(),
-                                    media_type: "image/jpeg".to_string(), // Default
-                                    data: url,
-                                },
-                            },
+                            source: anthropic::AnthropicImageSource::from(source),
                         },
                         unified::UnifiedContent::ToolUse { id, name, input } => {
                             log::debug!("Found ToolUse content block - id: {}, name: {}", id, name);
@@ -86,18 +75,10 @@ impl From<unified::UnifiedMessage> for anthropic::AnthropicMessage {
                             tool_use_id,
                             content,
                             is_error: _, // Anthropic doesn't have is_error field
-                        } => {
-                            let content = match content {
-                                unified::UnifiedToolResultContent::Text(text) => {
-                                    vec![anthropic::AnthropicToolResultContent::Text { text }]
-                                }
-                                unified::UnifiedToolResultContent::Multiple(texts) => texts
-                                    .into_iter()
-                                    .map(|text| anthropic::AnthropicToolResultContent::Text { text })
-                                    .collect(),
-                            };
-                            anthropic::AnthropicContent::ToolResult { tool_use_id, content }
-                        }
+                        } => anthropic::AnthropicContent::ToolResult {
+                            tool_use_id,
+                            content: Vec::<anthropic::AnthropicToolResultContent>::from(content),
+                        },
                     })
                     .collect()
             }
@@ -149,9 +130,7 @@ impl From<unified::UnifiedMessage> for anthropic::AnthropicMessage {
                         id: call.id,
                         name: call.function.name,
                         input: match call.function.arguments {
-                            unified::UnifiedArguments::String(s) => {
-                                serde_json::from_str(&s).unwrap_or(serde_json::Value::Object(Default::default()))
-                            }
+                            unified::UnifiedArguments::String(s) => serde_json::from_str(&s).unwrap_or(Value::Null),
                             unified::UnifiedArguments::Value(v) => v,
                         },
                     });
@@ -250,20 +229,7 @@ impl From<unified::UnifiedResponse> for anthropic::AnthropicChatResponse {
                             }
                             unified::UnifiedContent::Image { source } => {
                                 content_blocks.push(anthropic::AnthropicContent::Image {
-                                    source: match source {
-                                        unified::UnifiedImageSource::Base64 { media_type, data } => {
-                                            anthropic::AnthropicImageSource {
-                                                source_type: "base64".to_string(),
-                                                media_type: media_type.clone(),
-                                                data: data.clone(),
-                                            }
-                                        }
-                                        unified::UnifiedImageSource::Url { url } => anthropic::AnthropicImageSource {
-                                            source_type: "url".to_string(),
-                                            media_type: "image/jpeg".to_string(),
-                                            data: url.clone(),
-                                        },
-                                    },
+                                    source: anthropic::AnthropicImageSource::from(source.clone()),
                                 });
                             }
                             unified::UnifiedContent::ToolUse { id, name, input } => {
@@ -284,17 +250,13 @@ impl From<unified::UnifiedResponse> for anthropic::AnthropicChatResponse {
             // Now handle tool_calls from OpenAI format and convert to Anthropic ToolUse blocks
             if let Some(tool_calls) = &choice.message.tool_calls {
                 for tool_call in tool_calls {
-                    // Convert arguments to JSON Value
-                    let input = match &tool_call.function.arguments {
-                        unified::UnifiedArguments::String(s) => serde_json::from_str(s)
-                            .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new())),
-                        unified::UnifiedArguments::Value(v) => v.clone(),
-                    };
-
                     content_blocks.push(anthropic::AnthropicContent::ToolUse {
                         id: tool_call.id.clone(),
                         name: tool_call.function.name.clone(),
-                        input,
+                        input: match &tool_call.function.arguments {
+                            unified::UnifiedArguments::String(s) => serde_json::from_str(s).unwrap_or(Value::Null),
+                            unified::UnifiedArguments::Value(v) => v.clone(),
+                        },
                     });
                 }
             }
@@ -345,7 +307,7 @@ impl From<unified::UnifiedChunk> for anthropic::AnthropicStreamEvent {
                                 content_block: anthropic::AnthropicContent::ToolUse {
                                     id: id.clone(),
                                     name: function.name.clone(),
-                                    input: serde_json::from_str(&function.arguments).unwrap_or_default(),
+                                    input: serde_json::from_str(function.arguments.as_str()).unwrap_or(Value::Null),
                                 },
                             }
                         }
@@ -421,10 +383,51 @@ impl From<crate::messages::openai::ModelsResponse> for anthropic::AnthropicModel
     }
 }
 
+impl From<unified::UnifiedImageSource> for anthropic::AnthropicImageSource {
+    fn from(source: unified::UnifiedImageSource) -> Self {
+        match source {
+            unified::UnifiedImageSource::Base64 { media_type, data } => Self {
+                source_type: "base64".to_string(),
+                media_type,
+                data,
+            },
+            unified::UnifiedImageSource::Url { url } => Self {
+                source_type: "url".to_string(),
+                media_type: "image/jpeg".to_string(), // Default
+                data: url,
+            },
+        }
+    }
+}
+
+impl From<unified::UnifiedToolResultContent> for Vec<anthropic::AnthropicToolResultContent> {
+    fn from(content: unified::UnifiedToolResultContent) -> Self {
+        match content {
+            unified::UnifiedToolResultContent::Text(text) => {
+                vec![anthropic::AnthropicToolResultContent::Text { text }]
+            }
+            unified::UnifiedToolResultContent::Multiple(texts) => texts
+                .into_iter()
+                .map(|text| anthropic::AnthropicToolResultContent::Text { text })
+                .collect(),
+        }
+    }
+}
+
+impl From<unified::UnifiedArguments> for Value {
+    fn from(args: unified::UnifiedArguments) -> Self {
+        match args {
+            unified::UnifiedArguments::String(s) => serde_json::from_str(&s).unwrap_or(Value::Null),
+            unified::UnifiedArguments::Value(v) => v,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::messages::{anthropic, unified};
     use insta::assert_json_snapshot;
+    use serde_json::json;
 
     #[test]
     fn convert_tool_calls_from_unified_to_anthropic() {
@@ -452,7 +455,7 @@ mod tests {
                             id: "call_456".to_string(),
                             function: unified::UnifiedFunctionCall {
                                 name: "search".to_string(),
-                                arguments: unified::UnifiedArguments::Value(serde_json::json!({
+                                arguments: unified::UnifiedArguments::Value(json!({
                                     "query": "restaurants nearby"
                                 })),
                             },
@@ -474,7 +477,7 @@ mod tests {
         let anthropic_resp: anthropic::AnthropicChatResponse = unified_resp.into();
 
         // The response should have both the text and the tool use blocks
-        assert_json_snapshot!(anthropic_resp, @r###"
+        assert_json_snapshot!(anthropic_resp, @r#"
         {
           "id": "test-response",
           "type": "message",
@@ -509,7 +512,7 @@ mod tests {
             "output_tokens": 20
           }
         }
-        "###);
+        "#);
     }
 
     #[test]

@@ -99,41 +99,14 @@ impl From<anthropic::AnthropicMessage> for unified::UnifiedMessage {
     fn from(msg: anthropic::AnthropicMessage) -> Self {
         let role = unified::UnifiedRole::from(msg.role);
 
-        // For assistant messages, we may need tool calls
-        // Start with a small capacity - most messages don't have many tool uses
-        let mut tool_calls = if role == unified::UnifiedRole::Assistant {
-            Some(Vec::with_capacity(1))
-        } else {
-            None
-        };
-
-        let content: Vec<unified::UnifiedContent> = msg
-            .content
-            .into_iter()
-            .map(|block| {
-                // For assistant messages with ToolUse, also create tool calls
-                if let anthropic::AnthropicContent::ToolUse { ref id, ref name, ref input } = block {
-                    if let Some(ref mut calls) = tool_calls {
-                        calls.push(unified::UnifiedToolCall {
-                            id: id.clone(),
-                            function: unified::UnifiedFunctionCall {
-                                name: name.clone(),
-                                arguments: unified::UnifiedArguments::Value(input.clone()),
-                            },
-                        });
-                    }
-                }
-                unified::UnifiedContent::from(block)
-            })
-            .collect();
-
-        // Clean up tool_calls if empty
-        let tool_calls = tool_calls.filter(|calls| !calls.is_empty());
+        // Single source of truth: store tool calls only in content blocks
+        let content: Vec<unified::UnifiedContent> =
+            msg.content.into_iter().map(unified::UnifiedContent::from).collect();
 
         Self {
             role,
             content: unified::UnifiedContentContainer::Blocks(content),
-            tool_calls,
+            tool_calls: None, // Will be computed on demand via compute_tool_calls()
             tool_call_id: None,
         }
     }
@@ -176,24 +149,11 @@ impl From<anthropic::AnthropicMetadata> for unified::UnifiedMetadata {
 
 impl From<anthropic::AnthropicChatResponse> for unified::UnifiedResponse {
     fn from(resp: anthropic::AnthropicChatResponse) -> Self {
-        // Start with small capacity - most responses don't have many tool uses
-        let mut tool_calls = Vec::with_capacity(1);
-
+        // Single source of truth: store tool calls only in content blocks
         let content: Vec<unified::UnifiedContent> = resp
             .content
             .into_iter()
             .filter_map(|block| {
-                // For ToolUse blocks, also populate tool_calls
-                if let anthropic::AnthropicContent::ToolUse { ref id, ref name, ref input } = block {
-                    tool_calls.push(unified::UnifiedToolCall {
-                        id: id.clone(),
-                        function: unified::UnifiedFunctionCall {
-                            name: name.clone(),
-                            arguments: unified::UnifiedArguments::Value(input.clone()),
-                        },
-                    });
-                }
-
                 match block {
                     anthropic::AnthropicContent::ToolResult { .. } => {
                         // Tool results shouldn't appear in responses
@@ -207,7 +167,7 @@ impl From<anthropic::AnthropicChatResponse> for unified::UnifiedResponse {
         let message = unified::UnifiedMessage {
             role: unified::UnifiedRole::Assistant,
             content: unified::UnifiedContentContainer::Blocks(content),
-            tool_calls: if tool_calls.is_empty() { None } else { Some(tool_calls) },
+            tool_calls: None, // Will be computed on demand via compute_tool_calls()
             tool_call_id: None,
         };
 

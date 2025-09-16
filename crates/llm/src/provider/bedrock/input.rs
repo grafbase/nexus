@@ -130,8 +130,8 @@ impl From<ChatMessage> for BedrockMessage {
         {
             for tool_call in tool_calls {
                 // Parse arguments as JSON Value first, then convert to Document
-                let args_value: serde_json::Value = sonic_rs::from_str(&tool_call.function.arguments)
-                    .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()));
+                let args_value: sonic_rs::Value =
+                    sonic_rs::from_str(&tool_call.function.arguments).unwrap_or_else(|_| sonic_rs::json!({}));
                 let args_doc = json_value_to_document(args_value);
 
                 if let Ok(tool_use) = ToolUseBlock::builder()
@@ -274,7 +274,10 @@ fn convert_tools(
         .into_iter()
         .map(|tool| {
             // Convert parameters to AWS Document format (moves tool.function.parameters)
-            let params_doc = json_value_to_document(tool.function.parameters);
+            // Convert OwnedLazyValue to Value
+            let json = sonic_rs::to_string(&tool.function.parameters).unwrap_or_else(|_| "{}".to_string());
+            let value: sonic_rs::Value = sonic_rs::from_str(&json).unwrap_or_else(|_| sonic_rs::json!({}));
+            let params_doc = json_value_to_document(value);
             let input_schema = ToolInputSchema::Json(params_doc);
 
             let tool_spec = ToolSpecification::builder()
@@ -408,29 +411,36 @@ impl ModelFamily {
     }
 }
 
-/// Convert serde_json::Value to aws_smithy_types::Document
-pub fn json_value_to_document(value: serde_json::Value) -> aws_smithy_types::Document {
-    match value {
-        serde_json::Value::Null => aws_smithy_types::Document::Null,
-        serde_json::Value::Bool(b) => aws_smithy_types::Document::Bool(b),
-        serde_json::Value::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                aws_smithy_types::Document::Number(aws_smithy_types::Number::NegInt(i))
-            } else if let Some(u) = n.as_u64() {
-                aws_smithy_types::Document::Number(aws_smithy_types::Number::PosInt(u))
-            } else if let Some(f) = n.as_f64() {
-                aws_smithy_types::Document::Number(aws_smithy_types::Number::Float(f))
-            } else {
-                aws_smithy_types::Document::Null
-            }
+/// Convert sonic_rs::Value to aws_smithy_types::Document
+pub fn json_value_to_document(value: sonic_rs::Value) -> aws_smithy_types::Document {
+    use sonic_rs::{JsonContainerTrait, JsonNumberTrait, JsonValueTrait};
+
+    if value.is_null() {
+        aws_smithy_types::Document::Null
+    } else if let Some(b) = value.as_bool() {
+        aws_smithy_types::Document::Bool(b)
+    } else if let Some(n) = value.as_number() {
+        if let Some(i) = n.as_i64() {
+            aws_smithy_types::Document::Number(aws_smithy_types::Number::NegInt(i))
+        } else if let Some(u) = n.as_u64() {
+            aws_smithy_types::Document::Number(aws_smithy_types::Number::PosInt(u))
+        } else if let Some(f) = n.as_f64() {
+            aws_smithy_types::Document::Number(aws_smithy_types::Number::Float(f))
+        } else {
+            aws_smithy_types::Document::Null
         }
-        serde_json::Value::String(s) => aws_smithy_types::Document::String(s),
-        serde_json::Value::Array(arr) => {
-            aws_smithy_types::Document::Array(arr.into_iter().map(json_value_to_document).collect())
-        }
-        serde_json::Value::Object(obj) => {
-            aws_smithy_types::Document::Object(obj.into_iter().map(|(k, v)| (k, json_value_to_document(v))).collect())
-        }
+    } else if let Some(s) = value.as_str() {
+        aws_smithy_types::Document::String(s.to_string())
+    } else if let Some(arr) = value.as_array() {
+        aws_smithy_types::Document::Array(arr.iter().map(|v| json_value_to_document(v.clone())).collect())
+    } else if let Some(obj) = value.as_object() {
+        aws_smithy_types::Document::Object(
+            obj.iter()
+                .map(|(k, v)| (k.to_string(), json_value_to_document(v.clone())))
+                .collect(),
+        )
+    } else {
+        aws_smithy_types::Document::Null
     }
 }
 

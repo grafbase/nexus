@@ -1,4 +1,5 @@
 use serde::Serialize;
+use sonic_rs::JsonValueTrait;
 
 use crate::messages::{openai, unified};
 use crate::provider::google::output::{
@@ -63,7 +64,7 @@ pub struct GoogleGenerationConfig {
     /// Output schema of the generated candidate text when response_mime_type is `application/json`.
     ///
     /// This field allows you to constrain the model's JSON output to match a specific schema.
-    pub response_schema: Option<sonic_rs::Value>,
+    pub response_schema: Option<sonic_rs::OwnedLazyValue>,
 
     /// Number of generated responses to return.
     ///
@@ -140,14 +141,20 @@ pub struct GoogleFunctionDeclaration {
     description: Option<String>,
 
     /// The parameters of this function in JSON Schema format.
-    parameters: Option<serde_json::Value>,
+    parameters: Option<sonic_rs::OwnedLazyValue>,
 }
 
 impl From<openai::Tool> for GoogleFunctionDeclaration {
     fn from(tool: openai::Tool) -> Self {
         // Google's API doesn't support certain JSON Schema fields
         // We need to strip them from the parameters
-        let parameters = Some(strip_unsupported_schema_fields(tool.function.parameters));
+        let cleaned_schema = strip_unsupported_schema_fields(tool.function.parameters);
+
+        // Convert the cleaned schema back to sonic_rs::Value for Google's API
+        let json = sonic_rs::to_string(&cleaned_schema).unwrap_or_else(|_| "{}".to_string());
+        let parameters = Some(
+            sonic_rs::from_str::<sonic_rs::OwnedLazyValue>(&json).unwrap_or_else(|_| sonic_rs::from_str("{}").unwrap()),
+        );
 
         Self {
             name: tool.function.name,
@@ -159,39 +166,36 @@ impl From<openai::Tool> for GoogleFunctionDeclaration {
 
 /// Recursively removes unsupported JSON Schema fields from the schema
 /// Google's API doesn't support fields like 'additionalProperties' and '$schema'
-fn strip_unsupported_schema_fields(mut value: serde_json::Value) -> serde_json::Value {
-    if let Some(obj) = value.as_object_mut() {
-        // Remove unsupported fields at this level
-        obj.remove("additionalProperties");
-        obj.remove("$schema");
-        obj.remove("default"); // Gemini doesn't support default values
+fn strip_unsupported_schema_fields(mut schema: openai::JsonSchema) -> openai::JsonSchema {
+    // Remove unsupported fields at this level
+    schema.additional_properties = None;
+    schema.schema = None;
+    schema.default = None; // Gemini doesn't support default values
 
-        // Handle format field restrictions for string types
-        // Gemini only supports "enum" and "date-time" formats
-        if obj.get("type").and_then(|v| v.as_str()) == Some("string")
-            && let Some(format) = obj.get("format").and_then(|v| v.as_str())
-            && format != "enum"
-            && format != "date-time"
-        {
-            obj.remove("format");
-        }
-
-        // Recursively process nested properties
-        if let Some(properties) = obj.get_mut("properties")
-            && let Some(props_obj) = properties.as_object_mut()
-        {
-            for (_, prop_value) in props_obj.iter_mut() {
-                *prop_value = strip_unsupported_schema_fields(prop_value.take());
-            }
-        }
-
-        // Process items for array types
-        if let Some(items) = obj.get_mut("items") {
-            *items = strip_unsupported_schema_fields(items.take());
-        }
+    // Handle format field restrictions for string types
+    // Gemini only supports "enum" and "date-time" formats
+    if schema.r#type.as_deref() == Some("string")
+        && let Some(ref format) = schema.format
+        && format != "enum"
+        && format != "date-time"
+    {
+        schema.format = None;
     }
 
-    value
+    // Recursively process nested properties
+    if let Some(mut properties) = schema.properties {
+        for (_, prop_value) in properties.iter_mut() {
+            *prop_value = strip_unsupported_schema_fields(prop_value.clone());
+        }
+        schema.properties = Some(properties);
+    }
+
+    // Process items for array types
+    if let Some(items) = schema.items {
+        schema.items = Some(Box::new(strip_unsupported_schema_fields(*items)));
+    }
+
+    schema
 }
 
 /// Google's function calling mode.
@@ -261,7 +265,7 @@ impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
                     log::debug!(
                         "Converted tool '{}' with parameters: {}",
                         declaration.name,
-                        serde_json::to_string(&declaration.parameters)
+                        sonic_rs::to_string(&declaration.parameters)
                             .unwrap_or_else(|_| "<serialization failed>".to_string())
                     );
                     declaration
@@ -334,8 +338,8 @@ impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
                     if let Some(tool_calls) = msg.tool_calls {
                         for tool_call in tool_calls {
                             // Parse arguments as JSON
-                            let args = serde_json::from_str(&tool_call.function.arguments)
-                                .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+                            let args = sonic_rs::from_str::<sonic_rs::OwnedLazyValue>(&tool_call.function.arguments)
+                                .unwrap_or_else(|_| sonic_rs::from_str("{}").unwrap());
 
                             // Store the mapping from tool_call_id to function name
                             // We need to clone the name here since we're moving it into GoogleFunctionCall below
@@ -376,7 +380,7 @@ impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
 
                         // Google's API requires function_response.response to be a JSON object
                         // Parse response as JSON and ensure it's an object
-                        let response_value = match serde_json::from_str::<serde_json::Value>(&response_content) {
+                        let response_value = match sonic_rs::from_str::<sonic_rs::Value>(&response_content) {
                             Ok(value) if value.is_object() => {
                                 // Already a JSON object, use as-is
                                 log::debug!("Tool response is already a JSON object: {value}");
@@ -386,7 +390,7 @@ impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
                                 // Valid JSON but not an object (string, number, array, etc.)
                                 log::debug!(
                                     "Tool response is JSON but not an object (type: {}), wrapping it",
-                                    if value.is_string() {
+                                    if value.is_str() {
                                         "string"
                                     } else if value.is_number() {
                                         "number"
@@ -398,28 +402,32 @@ impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
                                         "null"
                                     }
                                 );
-                                serde_json::json!({
+                                sonic_rs::json!({
                                     "result": response_content
                                 })
                             }
                             Err(e) => {
                                 // Not valid JSON at all
                                 log::debug!("Tool response is not valid JSON ({e}), wrapping as string");
-                                serde_json::json!({
+                                sonic_rs::json!({
                                     "result": response_content
                                 })
                             }
                         };
 
+                        let response_json = sonic_rs::to_string(&response_value).unwrap_or_else(|_| "{}".to_string());
+                        let response_lazy = sonic_rs::from_str::<sonic_rs::OwnedLazyValue>(&response_json)
+                            .unwrap_or_else(|_| sonic_rs::from_str("{}").unwrap());
+
                         let function_response = GoogleFunctionResponse {
                             name: function_name.clone(),
-                            response: response_value,
+                            response: response_lazy,
                         };
 
                         log::debug!(
                             "Creating function response for '{}': {:?}",
                             function_name,
-                            serde_json::to_string(&function_response.response)
+                            sonic_rs::to_string(&function_response.response)
                                 .unwrap_or_else(|_| "serialization failed".to_string())
                         );
 
@@ -485,7 +493,7 @@ impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
             result.contents.len()
         );
 
-        if let Ok(json) = serde_json::to_string(&result) {
+        if let Ok(json) = sonic_rs::to_string(&result) {
             // Truncate for readability if too long
             let preview = if json.len() > 2000 {
                 format!("{}... (truncated, {} bytes total)", &json[..2000], json.len())
@@ -510,55 +518,87 @@ impl From<unified::UnifiedRequest> for GoogleGenerateRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn test_strip_unsupported_schema_fields() {
-        let schema = json!({
-            "$schema": "http://json-schema.org/draft-07/schema#",
-            "type": "object",
-            "properties": {
-                "field1": {
-                    "type": "string"
-                },
-                "nested": {
-                    "type": "object",
-                    "properties": {
-                        "subfield": {
-                            "type": "number"
-                        }
+        use std::collections::BTreeMap;
+
+        // Create a JsonSchema struct with unsupported fields
+        let schema = openai::JsonSchema {
+            r#type: Some("object".to_string()),
+            schema: Some("http://json-schema.org/draft-07/schema#".to_string()),
+            additional_properties: Some(false),
+            properties: Some({
+                let mut props = BTreeMap::new();
+
+                props.insert(
+                    "field1".to_string(),
+                    openai::JsonSchema {
+                        r#type: Some("string".to_string()),
+                        ..Default::default()
                     },
-                    "additionalProperties": false
-                },
-                "array_field": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": true
-                    }
-                }
-            },
-            "additionalProperties": false
-        });
+                );
+
+                props.insert(
+                    "nested".to_string(),
+                    openai::JsonSchema {
+                        r#type: Some("object".to_string()),
+                        additional_properties: Some(false),
+                        properties: Some({
+                            let mut nested_props = BTreeMap::new();
+                            nested_props.insert(
+                                "subfield".to_string(),
+                                openai::JsonSchema {
+                                    r#type: Some("number".to_string()),
+                                    ..Default::default()
+                                },
+                            );
+                            nested_props
+                        }),
+                        ..Default::default()
+                    },
+                );
+
+                props.insert(
+                    "array_field".to_string(),
+                    openai::JsonSchema {
+                        r#type: Some("array".to_string()),
+                        items: Some(Box::new(openai::JsonSchema {
+                            r#type: Some("object".to_string()),
+                            additional_properties: Some(true),
+                            ..Default::default()
+                        })),
+                        ..Default::default()
+                    },
+                );
+
+                props
+            }),
+            ..Default::default()
+        };
 
         let cleaned = strip_unsupported_schema_fields(schema);
 
         // Check that $schema is removed from root
-        assert!(cleaned.get("$schema").is_none());
+        assert!(cleaned.schema.is_none());
 
         // Check that additionalProperties is removed from root
-        assert!(cleaned.get("additionalProperties").is_none());
+        assert!(cleaned.additional_properties.is_none());
 
         // Check that nested additionalProperties is removed
-        let nested = &cleaned["properties"]["nested"];
-        assert!(nested.get("additionalProperties").is_none());
+        let nested = &cleaned.properties.as_ref().unwrap()["nested"];
+        assert!(nested.additional_properties.is_none());
 
         // Check that array item additionalProperties is removed
-        let items = &cleaned["properties"]["array_field"]["items"];
-        assert!(items.get("additionalProperties").is_none());
+        let array_field = &cleaned.properties.as_ref().unwrap()["array_field"];
+        let items = array_field.items.as_ref().unwrap();
+        assert!(items.additional_properties.is_none());
 
         // Check that valid fields are preserved
-        assert_eq!(cleaned["type"], "object");
-        assert_eq!(cleaned["properties"]["field1"]["type"], "string");
+        assert_eq!(cleaned.r#type, Some("object".to_string()));
+        assert_eq!(
+            cleaned.properties.as_ref().unwrap()["field1"].r#type,
+            Some("string".to_string())
+        );
     }
 }

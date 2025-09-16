@@ -471,7 +471,15 @@ impl<'a> AnthropicCompletionsRequest<'a> {
         let anthropic_path = &self.test_server.config.llm.protocols.anthropic.path;
         let url = format!("http://{}{}/v1/messages", self.test_server.address, anthropic_path);
 
-        let mut request_builder = self.test_server.client.client.post(&url).json(&self.request);
+        // Convert serde_json::Value to JSON string using sonic_rs for compatibility
+        let json_string = sonic_rs::to_string(&self.request).unwrap();
+        let mut request_builder = self
+            .test_server
+            .client
+            .client
+            .post(&url)
+            .header("content-type", "application/json")
+            .body(json_string);
 
         // Add all headers to the request
         for (key, value) in &self.headers {
@@ -524,7 +532,15 @@ impl<'a> AnthropicCompletionsStreamRequest<'a> {
         let mut request = self.request;
         request["stream"] = json!(true);
 
-        let mut request_builder = self.test_server.client.client.post(&url).json(&request);
+        // Convert serde_json::Value to JSON string using sonic_rs for compatibility
+        let json_string = sonic_rs::to_string(&request).unwrap();
+        let mut request_builder = self
+            .test_server
+            .client
+            .client
+            .post(&url)
+            .header("content-type", "application/json")
+            .body(json_string);
 
         // Add all headers to the request
         for (key, value) in &self.headers {

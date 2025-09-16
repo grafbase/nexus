@@ -104,7 +104,7 @@ impl Provider for GoogleProvider {
 
         // Log the Google request for debugging
         log::debug!("Sending request to Google API at URL: {}", url);
-        if let Ok(json) = serde_json::to_string_pretty(&google_request) {
+        if let Ok(json) = sonic_rs::to_string_pretty(&google_request) {
             // Truncate for readability if too long
             let preview = if json.len() > 3000 {
                 format!("{}... (truncated, {} bytes total)", &json[..3000], json.len())
@@ -117,8 +117,14 @@ impl Provider for GoogleProvider {
         // Use create_post_request to ensure headers are applied
         let request_builder = self.request_builder(Method::POST, &url, context, model_config);
 
+        let body = sonic_rs::to_vec(&google_request).map_err(|e| {
+            log::error!("Failed to serialize Google request: {e}");
+            LlmError::InternalError(None)
+        })?;
+
         let response = request_builder
-            .json(&google_request)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(body)
             .send()
             .await
             .map_err(|e| LlmError::ConnectionError(format!("Failed to send request to Google: {e}")))?;
@@ -212,8 +218,14 @@ impl Provider for GoogleProvider {
         // Use create_post_request to ensure headers are applied
         let request_builder = self.request_builder(Method::POST, &url, context, model_config);
 
+        let body = sonic_rs::to_vec(&google_request).map_err(|e| {
+            log::error!("Failed to serialize Google streaming request: {e}");
+            LlmError::InternalError(None)
+        })?;
+
         let response = request_builder
-            .json(&google_request)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(body)
             .send()
             .await
             .map_err(|e| LlmError::ConnectionError(format!("Failed to send streaming request to Google: {e}")))?;
