@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::messages::{ChatCompletionRequest, ChatRole, Tool, ToolChoice, ToolChoiceMode};
+use crate::messages::openai;
 use crate::provider::google::output::openai::{
     GoogleContent, GoogleFunctionCall, GoogleFunctionResponse, GooglePart, GoogleRole,
 };
@@ -143,8 +143,8 @@ pub struct GoogleFunctionDeclaration {
     parameters: Option<serde_json::Value>,
 }
 
-impl From<Tool> for GoogleFunctionDeclaration {
-    fn from(tool: Tool) -> Self {
+impl From<openai::Tool> for GoogleFunctionDeclaration {
+    fn from(tool: openai::Tool) -> Self {
         // Google's API doesn't support additionalProperties in JSON schemas
         // We need to strip it from the parameters
         let parameters = Some(strip_additional_properties(tool.function.parameters));
@@ -196,13 +196,13 @@ pub enum GoogleFunctionCallingMode {
     Any,
 }
 
-impl From<ToolChoiceMode> for GoogleFunctionCallingMode {
-    fn from(mode: ToolChoiceMode) -> Self {
+impl From<openai::ToolChoiceMode> for GoogleFunctionCallingMode {
+    fn from(mode: openai::ToolChoiceMode) -> Self {
         match mode {
-            ToolChoiceMode::None => GoogleFunctionCallingMode::None,
-            ToolChoiceMode::Auto => GoogleFunctionCallingMode::Auto,
-            ToolChoiceMode::Required | ToolChoiceMode::Any => GoogleFunctionCallingMode::Any,
-            ToolChoiceMode::Other(_) => GoogleFunctionCallingMode::Auto, // Default to auto for unknown
+            openai::ToolChoiceMode::None => GoogleFunctionCallingMode::None,
+            openai::ToolChoiceMode::Auto => GoogleFunctionCallingMode::Auto,
+            openai::ToolChoiceMode::Required | openai::ToolChoiceMode::Any => GoogleFunctionCallingMode::Any,
+            openai::ToolChoiceMode::Other(_) => GoogleFunctionCallingMode::Auto, // Default to auto for unknown
         }
     }
 }
@@ -229,8 +229,8 @@ pub struct GoogleFunctionCallingConfig {
     allowed_function_names: Option<Vec<String>>,
 }
 
-impl From<ChatCompletionRequest> for GoogleGenerateRequest {
-    fn from(request: ChatCompletionRequest) -> Self {
+impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
+    fn from(request: openai::ChatCompletionRequest) -> Self {
         let mut google_contents = Vec::new();
         let mut system_instruction = None;
 
@@ -246,8 +246,10 @@ impl From<ChatCompletionRequest> for GoogleGenerateRequest {
 
         let tool_config = request.tool_choice.map(|choice| {
             let (mode, allowed_names) = match choice {
-                ToolChoice::Mode(mode) => (GoogleFunctionCallingMode::from(mode), None),
-                ToolChoice::Specific { function, .. } => (GoogleFunctionCallingMode::Any, Some(vec![function.name])),
+                openai::ToolChoice::Mode(mode) => (GoogleFunctionCallingMode::from(mode), None),
+                openai::ToolChoice::Specific { function, .. } => {
+                    (GoogleFunctionCallingMode::Any, Some(vec![function.name]))
+                }
             };
 
             GoogleToolConfig {
@@ -260,7 +262,7 @@ impl From<ChatCompletionRequest> for GoogleGenerateRequest {
 
         for msg in request.messages {
             match msg.role {
-                ChatRole::System => {
+                openai::ChatRole::System => {
                     // Google uses systemInstruction for system messages
                     system_instruction = Some(GoogleContent {
                         parts: vec![GooglePart {
@@ -271,7 +273,7 @@ impl From<ChatCompletionRequest> for GoogleGenerateRequest {
                         role: GoogleRole::User, // System instruction role is typically "user"
                     });
                 }
-                ChatRole::User => {
+                openai::ChatRole::User => {
                     google_contents.push(GoogleContent {
                         parts: vec![GooglePart {
                             text: Some(msg.content.unwrap_or_default()),
@@ -281,7 +283,7 @@ impl From<ChatCompletionRequest> for GoogleGenerateRequest {
                         role: GoogleRole::User,
                     });
                 }
-                ChatRole::Assistant => {
+                openai::ChatRole::Assistant => {
                     let mut parts = Vec::new();
 
                     // Add text content if present
@@ -325,7 +327,7 @@ impl From<ChatCompletionRequest> for GoogleGenerateRequest {
                         });
                     }
                 }
-                ChatRole::Tool => {
+                openai::ChatRole::Tool => {
                     // Convert tool response to Google's function response format
                     if let Some(tool_call_id) = msg.tool_call_id {
                         // Look up the function name from our mapping
@@ -407,7 +409,7 @@ impl From<ChatCompletionRequest> for GoogleGenerateRequest {
                         });
                     }
                 }
-                ChatRole::Other(role) => {
+                openai::ChatRole::Other(role) => {
                     log::warn!("Unknown chat role from request: {role}, treating as user");
                     google_contents.push(GoogleContent {
                         parts: vec![GooglePart {

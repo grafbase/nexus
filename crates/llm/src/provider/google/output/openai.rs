@@ -2,10 +2,7 @@ use std::borrow::Cow;
 
 use serde::{Deserialize, Serialize};
 
-use crate::messages::{
-    ChatChoice, ChatChoiceDelta, ChatCompletionChunk, ChatCompletionResponse, ChatMessage, ChatMessageDelta, ChatRole,
-    FunctionCall, FunctionStart, ObjectType, StreamingToolCall, ToolCall, Usage,
-};
+use crate::messages::openai;
 
 /// Role in Google's conversation model.
 ///
@@ -24,12 +21,12 @@ pub enum GoogleRole {
     Other(String),
 }
 
-impl From<ChatRole> for GoogleRole {
-    fn from(role: ChatRole) -> Self {
+impl From<openai::ChatRole> for GoogleRole {
+    fn from(role: openai::ChatRole) -> Self {
         match role {
-            ChatRole::User | ChatRole::System | ChatRole::Tool => GoogleRole::User,
-            ChatRole::Assistant => GoogleRole::Model,
-            ChatRole::Other(s) => GoogleRole::Other(s),
+            openai::ChatRole::User | openai::ChatRole::System | openai::ChatRole::Tool => GoogleRole::User,
+            openai::ChatRole::Assistant => GoogleRole::Model,
+            openai::ChatRole::Other(s) => GoogleRole::Other(s),
         }
     }
 }
@@ -221,23 +218,23 @@ pub struct GoogleFunctionResponse {
     pub response: serde_json::Value,
 }
 
-impl From<FinishReason> for crate::messages::FinishReason {
+impl From<FinishReason> for openai::FinishReason {
     fn from(reason: FinishReason) -> Self {
         match reason {
-            FinishReason::Stop => crate::messages::FinishReason::Stop,
-            FinishReason::MaxTokens => crate::messages::FinishReason::Length,
-            FinishReason::Safety => crate::messages::FinishReason::ContentFilter,
-            FinishReason::Recitation => crate::messages::FinishReason::ContentFilter,
-            FinishReason::Other => crate::messages::FinishReason::Stop,
+            FinishReason::Stop => openai::FinishReason::Stop,
+            FinishReason::MaxTokens => openai::FinishReason::Length,
+            FinishReason::Safety => openai::FinishReason::ContentFilter,
+            FinishReason::Recitation => openai::FinishReason::ContentFilter,
+            FinishReason::Other => openai::FinishReason::Stop,
             FinishReason::Unknown(s) => {
                 log::warn!("Unknown finish reason from Google: {s}");
-                crate::messages::FinishReason::Other(s)
+                openai::FinishReason::Other(s)
             }
         }
     }
 }
 
-impl From<GoogleGenerateResponse> for ChatCompletionResponse {
+impl From<GoogleGenerateResponse> for openai::ChatCompletionResponse {
     fn from(response: GoogleGenerateResponse) -> Self {
         let candidate = response
             .candidates
@@ -259,10 +256,10 @@ impl From<GoogleGenerateResponse> for ChatCompletionResponse {
             // Handle function calls
             if let Some(function_call) = &part.function_call {
                 has_function_call = true;
-                let tool_call = ToolCall {
+                let tool_call = openai::ToolCall {
                     id: format!("call_{}", uuid::Uuid::new_v4()),
-                    tool_type: crate::messages::ToolCallType::Function,
-                    function: FunctionCall {
+                    tool_type: openai::ToolCallType::Function,
+                    function: openai::FunctionCall {
                         name: function_call.name.clone(),
                         arguments: function_call.args.to_string(),
                     },
@@ -273,12 +270,12 @@ impl From<GoogleGenerateResponse> for ChatCompletionResponse {
 
         // Determine finish reason based on content
         let finish_reason = if has_function_call {
-            crate::messages::FinishReason::ToolCalls
+            openai::FinishReason::ToolCalls
         } else {
             candidate.finish_reason.map_or_else(
                 || {
                     log::warn!("Google API response missing finish_reason, defaulting to 'stop'");
-                    crate::messages::FinishReason::Stop
+                    openai::FinishReason::Stop
                 },
                 Into::into,
             )
@@ -286,16 +283,16 @@ impl From<GoogleGenerateResponse> for ChatCompletionResponse {
 
         Self {
             id: format!("gen-{}", uuid::Uuid::new_v4()),
-            object: ObjectType::ChatCompletion,
+            object: openai::ObjectType::ChatCompletion,
             created: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs(),
             model: String::new(), // Will be set by the provider
-            choices: vec![ChatChoice {
+            choices: vec![openai::ChatChoice {
                 index: candidate.index as u32,
-                message: ChatMessage {
-                    role: ChatRole::Assistant,
+                message: openai::ChatMessage {
+                    role: openai::ChatRole::Assistant,
                     content: if message_content.is_empty() && has_function_call {
                         None
                     } else {
@@ -310,13 +307,13 @@ impl From<GoogleGenerateResponse> for ChatCompletionResponse {
                 || {
                     // If usage metadata is missing, provide default values
                     log::warn!("Google API response missing usage_metadata, using default values");
-                    Usage {
+                    openai::Usage {
                         prompt_tokens: 0,
                         completion_tokens: 0,
                         total_tokens: 0,
                     }
                 },
-                |metadata| Usage {
+                |metadata| openai::Usage {
                     prompt_tokens: metadata.prompt_token_count as u32,
                     completion_tokens: metadata.candidates_token_count as u32,
                     total_tokens: metadata.total_token_count as u32,
@@ -483,7 +480,7 @@ impl<'a> GoogleStreamChunk<'a> {
     ///
     /// Maps Google's candidates/parts structure to OpenAI's simpler delta format.
     /// Handles finish reasons, usage statistics, and function calls when present.
-    pub fn into_chunk(self, provider_name: &str, model_name: &str) -> ChatCompletionChunk {
+    pub fn into_chunk(self, provider_name: &str, model_name: &str) -> openai::ChatCompletionChunk {
         // Google sends one candidate at a time in streaming
         let candidate = self.candidates.first();
 
@@ -502,11 +499,11 @@ impl<'a> GoogleStreamChunk<'a> {
                 if let Some(function_call) = &part.function_call {
                     // Convert to OpenAI-compatible tool call format
                     // Include even if args is empty (for final chunks with finish_reason)
-                    let tool_call = StreamingToolCall::Start {
+                    let tool_call = openai::StreamingToolCall::Start {
                         index: 0,
                         id: format!("call_{}", uuid::Uuid::new_v4()),
-                        r#type: crate::messages::ToolCallType::Function,
-                        function: FunctionStart {
+                        r#type: openai::ToolCallType::Function,
+                        function: openai::FunctionStart {
                             name: function_call.name.to_string(),
                             arguments: function_call.args.to_string(),
                         },
@@ -519,15 +516,15 @@ impl<'a> GoogleStreamChunk<'a> {
             let finish = candidate.finish_reason.as_ref().map(|reason| match reason.as_ref() {
                 "STOP" => {
                     if streaming_tool_calls.is_some() {
-                        crate::messages::FinishReason::ToolCalls
+                        openai::FinishReason::ToolCalls
                     } else {
-                        crate::messages::FinishReason::Stop
+                        openai::FinishReason::Stop
                     }
                 }
-                "MAX_TOKENS" => crate::messages::FinishReason::Length,
-                "SAFETY" | "RECITATION" => crate::messages::FinishReason::ContentFilter,
-                "OTHER" => crate::messages::FinishReason::Stop,
-                other => crate::messages::FinishReason::Other(other.to_string()),
+                "MAX_TOKENS" => openai::FinishReason::Length,
+                "SAFETY" | "RECITATION" => openai::FinishReason::ContentFilter,
+                "OTHER" => openai::FinishReason::Stop,
+                other => openai::FinishReason::Other(other.to_string()),
             });
 
             (text_content, streaming_tool_calls, finish)
@@ -535,19 +532,19 @@ impl<'a> GoogleStreamChunk<'a> {
             (None, None, None)
         };
 
-        ChatCompletionChunk {
+        openai::ChatCompletionChunk {
             id: format!("gen-{}", uuid::Uuid::new_v4()),
-            object: ObjectType::ChatCompletionChunk,
+            object: openai::ObjectType::ChatCompletionChunk,
             created: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs(),
             model: format!("{provider_name}/{model_name}"),
-            choices: vec![ChatChoiceDelta {
+            choices: vec![openai::ChatChoiceDelta {
                 index: 0,
-                delta: ChatMessageDelta {
+                delta: openai::ChatMessageDelta {
                     role: if content.is_some() || tool_calls.is_some() {
-                        Some(ChatRole::Assistant)
+                        Some(openai::ChatRole::Assistant)
                     } else {
                         None
                     },
@@ -568,7 +565,7 @@ impl<'a> GoogleStreamChunk<'a> {
                     metadata.total_token_count - metadata.prompt_token_count
                 };
 
-                Usage {
+                openai::Usage {
                     prompt_tokens: metadata.prompt_token_count as u32,
                     completion_tokens: completion_tokens as u32,
                     total_tokens: metadata.total_token_count as u32,

@@ -8,7 +8,7 @@ use futures::Stream;
 use opentelemetry::metrics::Counter;
 use telemetry::metrics::Recorder;
 
-use crate::{messages::ChatCompletionChunk, provider::ChatCompletionStream};
+use crate::{messages::openai::ChatCompletionChunk, provider::ChatCompletionStream};
 
 /// Configuration for token metrics in streaming responses
 pub(super) struct TokenMetricsConfig {

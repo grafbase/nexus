@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use config::ModelConfig;
 
-use crate::messages::{Model, ObjectType};
+use crate::messages::openai::{Model, ObjectType};
 
 /// Manages model configuration and resolution for LLM providers.
 ///

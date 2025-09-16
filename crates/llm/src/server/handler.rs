@@ -1,7 +1,7 @@
 //! LLM handler that conditionally applies metrics and tracing
 
 use crate::{
-    messages::{ChatCompletionRequest, ChatCompletionResponse, ModelsResponse},
+    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, ModelsResponse},
     provider::ChatCompletionStream,
     request::RequestContext,
     server::{LlmServer, LlmService, metrics::LlmServerWithMetrics, tracing::LlmServerWithTracing},

@@ -17,7 +17,7 @@ use rate_limit::{TokenRateLimitManager, TokenRateLimitRequest};
 
 use crate::{
     error::LlmError,
-    messages::{ChatCompletionRequest, ChatCompletionResponse, Model, ModelsResponse, ObjectType},
+    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, Model, ModelsResponse, ObjectType},
     provider::{ChatCompletionStream, Provider},
     request::RequestContext,
 };

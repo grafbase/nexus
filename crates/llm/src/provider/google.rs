@@ -16,7 +16,7 @@ use futures::StreamExt;
 
 use crate::{
     error::LlmError,
-    messages::{ChatCompletionRequest, ChatCompletionResponse, Model},
+    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, Model},
     provider::{HttpProvider, ModelManager, Provider, openai::extract_model_from_full_name, token},
     request::RequestContext,
 };

@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 
 use tiktoken_rs::{CoreBPE, cl100k_base};
 
-use crate::messages::{ChatCompletionRequest, ChatMessage};
+use crate::messages::openai::{ChatCompletionRequest, ChatMessage};
 
 /// Global tokenizer instance using cl100k_base encoding.
 static TOKENIZER: OnceLock<CoreBPE> = OnceLock::new();
@@ -74,7 +74,7 @@ fn count_message_tokens(tokenizer: &CoreBPE, message: &ChatMessage) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messages::ChatRole;
+    use crate::messages::openai::ChatRole;
 
     #[test]
     fn count_simple_message() {
