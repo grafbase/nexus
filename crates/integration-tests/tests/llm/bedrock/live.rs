@@ -55,58 +55,7 @@ path = "/llm"
 // Anthropic Claude Tests
 // ============================================================================
 
-#[live_provider_test(bedrock)]
-async fn anthropic_claude_instant_minimal() {
-    let config = create_bedrock_config(&[("claude-instant", "anthropic.claude-instant-v1")]);
-
-    let server = TestServer::builder().build(&config).await;
-
-    // Minimal prompt to reduce costs
-    let response = server
-        .openai_completions(json!({
-            "model": "bedrock/claude-instant",
-            "messages": [{
-                "role": "user",
-                "content": "Say yes"
-            }],
-            "max_tokens": 10,
-            "temperature": 0
-        }))
-        .send()
-        .await;
-
-    // Verify response structure with snapshot
-    insta::assert_json_snapshot!(response, {
-        ".id" => "[id]",
-        ".created" => "[timestamp]",
-        ".choices[0].message.content" => "[response]",
-        ".usage.prompt_tokens" => "[tokens]",
-        ".usage.completion_tokens" => "[tokens]",
-        ".usage.total_tokens" => "[tokens]"
-    }, @r#"
-    {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[timestamp]",
-      "model": "bedrock/claude-instant",
-      "choices": [
-        {
-          "index": 0,
-          "message": {
-            "role": "assistant",
-            "content": "[response]"
-          },
-          "finish_reason": "stop"
-        }
-      ],
-      "usage": {
-        "prompt_tokens": "[tokens]",
-        "completion_tokens": "[tokens]",
-        "total_tokens": "[tokens]"
-      }
-    }
-    "#);
-}
+// Note: Claude Instant v1 has been deprecated by AWS and tests have been removed
 
 // ===== AI21 Jamba Tests =====
 
@@ -1446,66 +1395,13 @@ async fn error_invalid_model() {
     "#);
 }
 
-#[live_provider_test(bedrock)]
-async fn error_missing_required_field() {
-    let config = create_bedrock_config(&[("claude", "anthropic.claude-instant-v1")]);
-
-    let server = TestServer::builder().build(&config).await;
-
-    // Missing messages field
-    let (status, body) = server
-        .openai_completions(json!({
-            "model": "bedrock/claude",
-            "max_tokens": 10
-        }))
-        .send_raw()
-        .await;
-
-    assert_eq!(status, 422);
-    // Body is already a Value from send_raw
-
-    // Axum returns a text error for 422 (unprocessable entity) on deserialization failures
-    let error_text = body.as_str().unwrap_or("");
-    assert!(error_text.contains("missing field") || error_text.contains("Failed to deserialize"));
-}
+// Note: error_missing_required_field test removed due to Claude Instant v1 deprecation
 
 // ============================================================================
 // Streaming Tests
 // ============================================================================
 
-#[live_provider_test(bedrock)]
-async fn streaming_claude_instant() {
-    let config = create_bedrock_config(&[("claude-instant", "anthropic.claude-instant-v1")]);
-
-    let server = TestServer::builder().build(&config).await;
-
-    let request = json!({
-        "model": "bedrock/claude-instant",
-        "messages": [{
-            "role": "user",
-            "content": "Say hello"
-        }],
-        "max_tokens": 10,
-        "stream": true,
-        "temperature": 0
-    });
-
-    // Test that we can stream content successfully
-    let content = server.openai_completions_stream(request.clone()).send().await;
-    assert!(!content.is_empty(), "Expected streaming content");
-
-    // Also verify chunks are valid
-    let chunks = server.openai_completions_stream(request).send().await;
-    assert!(!chunks.is_empty(), "Expected stream chunks, got none");
-
-    // Verify first chunk structure
-    let first_chunk = &chunks[0];
-    assert_eq!(first_chunk["object"], "chat.completion.chunk");
-    assert_eq!(first_chunk["model"], "bedrock/claude-instant");
-
-    // Don't check for finish_reason as it may not always be present
-    // The important thing is that streaming works and produces content
-}
+// Note: streaming_claude_instant test removed due to Claude Instant v1 deprecation
 
 #[live_provider_test(bedrock)]
 async fn streaming_cohere_command_r_with_helpers() {
