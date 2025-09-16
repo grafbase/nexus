@@ -8,10 +8,7 @@ async fn google_strips_schema_field_from_tools() {
 
     // Set up mock Google server
     builder
-        .spawn_llm(
-            GoogleMock::new("google")
-                .with_models(vec!["gemini-2.0-flash".to_string()])
-        )
+        .spawn_llm(GoogleMock::new("google").with_models(vec!["gemini-2.0-flash".to_string()]))
         .await;
 
     let server = builder.build("").await;
@@ -57,7 +54,25 @@ async fn google_strips_schema_field_from_tools() {
         ".id" => "[id]",
         ".created" => "[created]",
         ".usage" => "[usage]"
-    });
+    }, @r###"
+    {
+      "id": "[id]",
+      "object": "chat.completion",
+      "created": "[created]",
+      "model": "google/gemini-2.0-flash",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "Hello! I'm Gemini, a test assistant. How can I help you today?"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": "[usage]"
+    }
+    "###);
 }
 
 /// Test that nested $schema fields are also stripped
@@ -66,10 +81,7 @@ async fn google_strips_nested_schema_fields() {
     let mut builder = TestServer::builder();
 
     builder
-        .spawn_llm(
-            GoogleMock::new("google")
-                .with_models(vec!["gemini-2.0-flash".to_string()])
-        )
+        .spawn_llm(GoogleMock::new("google").with_models(vec!["gemini-2.0-flash".to_string()]))
         .await;
 
     let server = builder.build("").await;
@@ -129,5 +141,23 @@ async fn google_strips_nested_schema_fields() {
         ".id" => "[id]",
         ".created" => "[created]",
         ".usage" => "[usage]"
-    });
+    }, @r###"
+    {
+      "id": "[id]",
+      "object": "chat.completion",
+      "created": "[created]",
+      "model": "google/gemini-2.0-flash",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "Test response to: Test nested schemas"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": "[usage]"
+    }
+    "###);
 }

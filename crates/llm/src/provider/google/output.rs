@@ -597,8 +597,8 @@ impl<'a> GoogleStreamChunk<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
     use insta::assert_json_snapshot;
+    use serde_json::json;
 
     #[test]
     fn deserialize_function_call_with_thought_signature() {

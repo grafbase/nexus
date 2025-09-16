@@ -164,13 +164,14 @@ fn strip_unsupported_schema_fields(mut value: serde_json::Value) -> serde_json::
         // Remove unsupported fields at this level
         obj.remove("additionalProperties");
         obj.remove("$schema");
-        obj.remove("default");  // Gemini doesn't support default values
+        obj.remove("default"); // Gemini doesn't support default values
 
         // Handle format field restrictions for string types
         // Gemini only supports "enum" and "date-time" formats
         if obj.get("type").and_then(|v| v.as_str()) == Some("string")
             && let Some(format) = obj.get("format").and_then(|v| v.as_str())
-            && format != "enum" && format != "date-time"
+            && format != "enum"
+            && format != "date-time"
         {
             obj.remove("format");
         }
@@ -260,7 +261,8 @@ impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
                     log::debug!(
                         "Converted tool '{}' with parameters: {}",
                         declaration.name,
-                        serde_json::to_string(&declaration.parameters).unwrap_or_else(|_| "<serialization failed>".to_string())
+                        serde_json::to_string(&declaration.parameters)
+                            .unwrap_or_else(|_| "<serialization failed>".to_string())
                     );
                     declaration
                 })
@@ -276,7 +278,7 @@ impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
                     let google_mode = GoogleFunctionCallingMode::from(mode.clone());
                     log::debug!("Tool choice mode: {:?} -> {:?}", mode, google_mode);
                     (google_mode, None)
-                },
+                }
                 openai::ToolChoice::Specific { function, .. } => {
                     log::debug!("Tool choice specific function: {}", function.name);
                     (GoogleFunctionCallingMode::Any, Some(vec![function.name]))

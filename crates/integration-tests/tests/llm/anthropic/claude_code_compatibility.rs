@@ -1,6 +1,6 @@
+use indoc::indoc;
 use integration_tests::{TestServer, llms::AnthropicMock};
 use serde_json::json;
-use indoc::indoc;
 
 /// Test that we can handle Claude Code's message format where content can be either
 /// a string or an array of content blocks
@@ -10,10 +10,7 @@ async fn claude_code_mixed_content_formats() {
 
     // Set up mock Anthropic server with the specific model we're testing
     builder
-        .spawn_llm(
-            AnthropicMock::new("anthropic")
-                .with_models(vec!["claude-3-5-haiku-latest".to_string()])
-        )
+        .spawn_llm(AnthropicMock::new("anthropic").with_models(vec!["claude-3-5-haiku-latest".to_string()]))
         .await;
 
     // Configure with Anthropic protocol enabled
@@ -67,7 +64,23 @@ async fn claude_code_mixed_content_formats() {
         ".id" => "[id]",
         ".model" => "[model]",
         ".usage" => "[usage]"
-    });
+    }, @r###"
+    {
+      "id": "[id]",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Test response to: hey, what's up"
+        }
+      ],
+      "model": "[model]",
+      "stop_reason": null,
+      "stop_sequence": null,
+      "usage": "[usage]"
+    }
+    "###);
 }
 
 /// Test that we handle conversations with alternating message content formats
@@ -77,10 +90,7 @@ async fn claude_code_conversation_flow() {
 
     // Set up mock Anthropic server with the specific model we're testing
     builder
-        .spawn_llm(
-            AnthropicMock::new("anthropic")
-                .with_models(vec!["claude-3-5-haiku-latest".to_string()])
-        )
+        .spawn_llm(AnthropicMock::new("anthropic").with_models(vec!["claude-3-5-haiku-latest".to_string()]))
         .await;
 
     // Configure with Anthropic protocol enabled
@@ -135,5 +145,21 @@ async fn claude_code_conversation_flow() {
         ".id" => "[id]",
         ".model" => "[model]",
         ".usage" => "[usage]"
-    });
+    }, @r###"
+    {
+      "id": "[id]",
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Test response to: what's the story, morning glory?"
+        }
+      ],
+      "model": "[model]",
+      "stop_reason": null,
+      "stop_sequence": null,
+      "usage": "[usage]"
+    }
+    "###);
 }

@@ -1,6 +1,6 @@
 //! Conversions from unified types to Anthropic protocol types.
-//!
-//! ZERO ALLOCATIONS - All data is moved, not cloned.
+
+use std::collections::HashSet;
 
 use crate::messages::{anthropic, unified};
 
@@ -48,9 +48,16 @@ impl From<unified::UnifiedMessage> for anthropic::AnthropicMessage {
     fn from(msg: unified::UnifiedMessage) -> Self {
         let role = anthropic::AnthropicRole::from(msg.role);
 
+        log::debug!(
+            "Converting UnifiedMessage to AnthropicMessage - role: {:?}, has_tool_calls: {}",
+            role,
+            msg.tool_calls.is_some()
+        );
+
         let content = match msg.content {
             unified::UnifiedContentContainer::Text(text) => vec![anthropic::AnthropicContent::Text { text }],
             unified::UnifiedContentContainer::Blocks(blocks) => {
+                log::debug!("Processing {} content blocks", blocks.len());
                 blocks
                     .into_iter()
                     .map(|block| match block {
@@ -72,6 +79,7 @@ impl From<unified::UnifiedMessage> for anthropic::AnthropicMessage {
                             },
                         },
                         unified::UnifiedContent::ToolUse { id, name, input } => {
+                            log::debug!("Found ToolUse content block - id: {}, name: {}", id, name);
                             anthropic::AnthropicContent::ToolUse { id, name, input }
                         }
                         unified::UnifiedContent::ToolResult {
@@ -95,21 +103,86 @@ impl From<unified::UnifiedMessage> for anthropic::AnthropicMessage {
             }
         };
 
-        // If we have tool calls in the unified message, add them as content blocks
-        let mut final_content = content;
-        if let Some(tool_calls) = msg.tool_calls {
-            for call in tool_calls {
-                final_content.push(anthropic::AnthropicContent::ToolUse {
-                    id: call.id,
-                    name: call.function.name,
-                    input: match call.function.arguments {
-                        unified::UnifiedArguments::String(s) => {
-                            serde_json::from_str(&s).unwrap_or(serde_json::Value::Object(Default::default()))
-                        }
-                        unified::UnifiedArguments::Value(v) => v,
-                    },
-                });
+        // First, deduplicate any tool_use blocks already in content
+        // Claude Code might send duplicate tool_use blocks
+        let mut seen_tool_ids = HashSet::new();
+        let mut deduplicated_content = Vec::new();
+        let original_count = content.len();
+
+        for block in content {
+            match &block {
+                anthropic::AnthropicContent::ToolUse { id, name, .. } => {
+                    if seen_tool_ids.insert(id.clone()) {
+                        // First time seeing this ID, keep it
+                        log::debug!("Keeping tool_use with id={id}, name={name}");
+                        deduplicated_content.push(block);
+                    } else {
+                        // Duplicate ID found, skip it
+                        log::debug!("Removing duplicate tool_use with id={id}, name={name}");
+                    }
+                }
+                _ => deduplicated_content.push(block),
             }
+        }
+
+        if original_count != deduplicated_content.len() {
+            log::info!(
+                "Deduplicated content blocks: {} -> {} (removed {} duplicates)",
+                original_count,
+                deduplicated_content.len(),
+                original_count - deduplicated_content.len()
+            );
+        }
+
+        // Now add tool calls from the unified message if not already present
+        let mut final_content = deduplicated_content;
+        if let Some(tool_calls) = msg.tool_calls {
+            log::debug!("Processing {} tool_calls from unified message", tool_calls.len());
+            for call in tool_calls {
+                if !seen_tool_ids.contains(&call.id) {
+                    log::debug!(
+                        "Adding tool_call as tool_use: id={}, name={}",
+                        call.id,
+                        call.function.name
+                    );
+                    final_content.push(anthropic::AnthropicContent::ToolUse {
+                        id: call.id,
+                        name: call.function.name,
+                        input: match call.function.arguments {
+                            unified::UnifiedArguments::String(s) => {
+                                serde_json::from_str(&s).unwrap_or(serde_json::Value::Object(Default::default()))
+                            }
+                            unified::UnifiedArguments::Value(v) => v,
+                        },
+                    });
+                } else {
+                    log::debug!(
+                        "Skipping tool_call (already in content): id={}, name={}",
+                        call.id,
+                        call.function.name
+                    );
+                }
+            }
+        }
+
+        // Log final tool_use blocks for debugging
+        let tool_use_count = final_content
+            .iter()
+            .filter(|c| matches!(c, anthropic::AnthropicContent::ToolUse { .. }))
+            .count();
+        if tool_use_count > 0 {
+            let tool_use_ids: Vec<String> = final_content
+                .iter()
+                .filter_map(|c| match c {
+                    anthropic::AnthropicContent::ToolUse { id, .. } => Some(id.clone()),
+                    _ => None,
+                })
+                .collect();
+            log::debug!(
+                "Final message has {} tool_use blocks with IDs: {:?}",
+                tool_use_count,
+                tool_use_ids
+            );
         }
 
         Self {
@@ -213,9 +286,8 @@ impl From<unified::UnifiedResponse> for anthropic::AnthropicChatResponse {
                 for tool_call in tool_calls {
                     // Convert arguments to JSON Value
                     let input = match &tool_call.function.arguments {
-                        unified::UnifiedArguments::String(s) => {
-                            serde_json::from_str(s).unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new()))
-                        }
+                        unified::UnifiedArguments::String(s) => serde_json::from_str(s)
+                            .unwrap_or_else(|_| serde_json::Value::Object(serde_json::Map::new())),
                         unified::UnifiedArguments::Value(v) => v.clone(),
                     };
 
@@ -371,7 +443,9 @@ mod tests {
                             id: "call_123".to_string(),
                             function: unified::UnifiedFunctionCall {
                                 name: "get_weather".to_string(),
-                                arguments: unified::UnifiedArguments::String(r#"{"location": "San Francisco"}"#.to_string()),
+                                arguments: unified::UnifiedArguments::String(
+                                    r#"{"location": "San Francisco"}"#.to_string(),
+                                ),
                             },
                         },
                         unified::UnifiedToolCall {
@@ -500,15 +574,13 @@ mod tests {
                 message: unified::UnifiedMessage {
                     role: unified::UnifiedRole::Assistant,
                     content: unified::UnifiedContentContainer::Text("".to_string()), // Empty text
-                    tool_calls: Some(vec![
-                        unified::UnifiedToolCall {
-                            id: "call_789".to_string(),
-                            function: unified::UnifiedFunctionCall {
-                                name: "calculate".to_string(),
-                                arguments: unified::UnifiedArguments::String(r#"{"expression": "2+2"}"#.to_string()),
-                            },
+                    tool_calls: Some(vec![unified::UnifiedToolCall {
+                        id: "call_789".to_string(),
+                        function: unified::UnifiedFunctionCall {
+                            name: "calculate".to_string(),
+                            arguments: unified::UnifiedArguments::String(r#"{"expression": "2+2"}"#.to_string()),
                         },
-                    ]),
+                    }]),
                     tool_call_id: None,
                 },
                 finish_reason: Some(unified::UnifiedFinishReason::ToolCalls),

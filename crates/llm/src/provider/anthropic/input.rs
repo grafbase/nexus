@@ -340,7 +340,7 @@ impl From<unified::UnifiedMessage> for AnthropicMessage {
             }
         };
 
-        // If we have tool calls, add them as blocks
+        // If we have tool calls, add them as blocks ONLY if not already present
         let final_content = if let Some(tool_calls) = msg.tool_calls
             && !tool_calls.is_empty()
         {
@@ -351,17 +351,32 @@ impl From<unified::UnifiedMessage> for AnthropicMessage {
                 AnthropicMessageContent::Blocks(b) => b,
             };
 
+            // Collect existing tool_use IDs to avoid duplicates
+            let existing_tool_ids: std::collections::HashSet<String> = blocks
+                .iter()
+                .filter_map(|block| match block {
+                    AnthropicContentBlock::ToolUse { id, .. } => Some(id.clone()),
+                    _ => None,
+                })
+                .collect();
+
             for call in tool_calls {
-                blocks.push(AnthropicContentBlock::ToolUse {
-                    id: call.id,
-                    name: call.function.name,
-                    input: match call.function.arguments {
-                        unified::UnifiedArguments::String(s) => {
-                            serde_json::from_str(&s).unwrap_or(serde_json::Value::Null)
-                        }
-                        unified::UnifiedArguments::Value(v) => v,
-                    },
-                });
+                // Only add if not already present in content blocks
+                if !existing_tool_ids.contains(&call.id) {
+                    log::debug!("Adding tool_call {} as new block", call.id);
+                    blocks.push(AnthropicContentBlock::ToolUse {
+                        id: call.id,
+                        name: call.function.name,
+                        input: match call.function.arguments {
+                            unified::UnifiedArguments::String(s) => {
+                                serde_json::from_str(&s).unwrap_or(serde_json::Value::Null)
+                            }
+                            unified::UnifiedArguments::Value(v) => v,
+                        },
+                    });
+                } else {
+                    log::debug!("Skipping tool_call {} - already in content", call.id);
+                }
             }
 
             AnthropicMessageContent::Blocks(blocks)

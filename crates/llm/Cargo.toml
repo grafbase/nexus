@@ -34,7 +34,7 @@ sonic-rs.workspace = true
 telemetry.workspace = true
 thiserror.workspace = true
 tiktoken-rs.workspace = true
-uuid.workspace = true
+uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 insta.workspace = true

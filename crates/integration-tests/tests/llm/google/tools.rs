@@ -578,7 +578,10 @@ async fn google_tool_calling_with_thought_signature_anthropic_protocol() {
     // This simulates Claude Code calling through Nexus to Google
     let mock = GoogleMock::new("google")
         .with_models(vec!["gemini-2.5-flash".to_string()])
-        .with_tool_call("Bash", r#"{"command": "ls nexus/", "description": "List files in the nexus/ directory"}"#);
+        .with_tool_call(
+            "Bash",
+            r#"{"command": "ls nexus/", "description": "List files in the nexus/ directory"}"#,
+        );
 
     let mut builder = TestServer::builder();
     builder.spawn_llm(mock).await;
