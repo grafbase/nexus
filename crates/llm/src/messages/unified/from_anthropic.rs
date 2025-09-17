@@ -97,17 +97,31 @@ impl From<anthropic::AnthropicStopReason> for unified::UnifiedFinishReason {
 
 impl From<anthropic::AnthropicMessage> for unified::UnifiedMessage {
     fn from(msg: anthropic::AnthropicMessage) -> Self {
-        let role = unified::UnifiedRole::from(msg.role);
+        // Track whether this message represents a tool result response
+        let mut tool_call_id: Option<String> = None;
+        let mut content_blocks = Vec::with_capacity(msg.content.len());
 
-        // Single source of truth: store tool calls only in content blocks
-        let content: Vec<unified::UnifiedContent> =
-            msg.content.into_iter().map(unified::UnifiedContent::from).collect();
+        for block in msg.content {
+            if let anthropic::AnthropicContent::ToolResult { tool_use_id, .. } = &block {
+                // Anthropic encodes tool results as user messages. Promote them to tool role.
+                if tool_call_id.is_none() {
+                    tool_call_id = Some(tool_use_id.clone());
+                }
+            }
+            content_blocks.push(unified::UnifiedContent::from(block));
+        }
+
+        let role = if tool_call_id.is_some() {
+            unified::UnifiedRole::Tool
+        } else {
+            unified::UnifiedRole::from(msg.role)
+        };
 
         Self {
             role,
-            content: unified::UnifiedContentContainer::Blocks(content),
+            content: unified::UnifiedContentContainer::Blocks(content_blocks),
             tool_calls: None, // Will be computed on demand via compute_tool_calls()
-            tool_call_id: None,
+            tool_call_id,
         }
     }
 }

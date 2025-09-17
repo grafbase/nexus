@@ -341,10 +341,26 @@ impl TryFrom<ConverseStreamOutput> for openai::ChatCompletionChunk {
 /// Convert aws_smithy_types::Document to string for display.
 pub fn document_to_string(doc: &aws_smithy_types::Document) -> String {
     match doc {
-        aws_smithy_types::Document::Null => "null".to_string(),
+        aws_smithy_types::Document::Null => "{}".to_string(),
         aws_smithy_types::Document::Bool(b) => b.to_string(),
-        aws_smithy_types::Document::Number(n) => format!("{:?}", n),
-        aws_smithy_types::Document::String(s) => format!("\"{}\"", s),
+        aws_smithy_types::Document::Number(n) => match n {
+            aws_smithy_types::Number::PosInt(u) => u.to_string(),
+            aws_smithy_types::Number::NegInt(i) => i.to_string(),
+            aws_smithy_types::Number::Float(f) => {
+                if f.is_finite() {
+                    // Use JSON-compatible representation for floats
+                    // Avoid trailing ".0" for whole numbers by using serde_json number
+                    if let Some(num) = serde_json::Number::from_f64(*f) {
+                        num.to_string()
+                    } else {
+                        "0".to_string()
+                    }
+                } else {
+                    "0".to_string()
+                }
+            }
+        },
+        aws_smithy_types::Document::String(s) => serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string()),
         aws_smithy_types::Document::Array(arr) => {
             let items: Vec<String> = arr.iter().map(document_to_string).collect();
             format!("[{}]", items.join(","))

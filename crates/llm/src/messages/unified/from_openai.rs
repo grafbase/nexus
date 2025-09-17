@@ -74,10 +74,29 @@ impl From<openai::ChatMessage> for unified::UnifiedMessage {
             // Convert tool calls to ToolUse content blocks
             let blocks: Vec<unified::UnifiedContent> = tool_calls
                 .into_iter()
-                .map(|call| unified::UnifiedContent::ToolUse {
-                    id: call.id,
-                    name: call.function.name,
-                    input: serde_json::from_str(call.function.arguments.as_str()).unwrap_or(serde_json::Value::Null),
+                .map(|call| {
+                    let openai::ToolCall { id, tool_type: _, function } = call;
+                    let openai::FunctionCall { name, arguments } = function;
+
+                    let raw_args = arguments;
+                    let parsed_args = match serde_json::from_str(raw_args.as_str()) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            log::debug!(
+                                "Failed to parse tool arguments as JSON, defaulting to null: id={} name={} error={err} raw={raw}",
+                                id,
+                                name,
+                                raw = raw_args
+                            );
+                            serde_json::Value::Null
+                        }
+                    };
+
+                    unified::UnifiedContent::ToolUse {
+                        id,
+                        name,
+                        input: parsed_args,
+                    }
                 })
                 .collect();
 

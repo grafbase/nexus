@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use serde_json::Value;
 
 use crate::messages::{anthropic, unified};
+use log::debug;
 
 impl From<unified::UnifiedRequest> for anthropic::AnthropicChatRequest {
     fn from(req: unified::UnifiedRequest) -> Self {
@@ -250,13 +251,25 @@ impl From<unified::UnifiedResponse> for anthropic::AnthropicChatResponse {
             // Now handle tool_calls from OpenAI format and convert to Anthropic ToolUse blocks
             if let Some(tool_calls) = &choice.message.tool_calls {
                 for tool_call in tool_calls {
+                    let input_value = match &tool_call.function.arguments {
+                        unified::UnifiedArguments::String(s) => parse_argument_string(s),
+                        unified::UnifiedArguments::Value(v) => v.clone(),
+                    };
+                    let normalized_input = if input_value.is_null() {
+                        Value::Object(serde_json::Map::new())
+                    } else {
+                        input_value
+                    };
+
+                    debug!(
+                        "Anthropic conversion tool_use (non-streaming): id={} name={} input={:?}",
+                        tool_call.id, tool_call.function.name, normalized_input
+                    );
+
                     content_blocks.push(anthropic::AnthropicContent::ToolUse {
                         id: tool_call.id.clone(),
                         name: tool_call.function.name.clone(),
-                        input: match &tool_call.function.arguments {
-                            unified::UnifiedArguments::String(s) => serde_json::from_str(s).unwrap_or(Value::Null),
-                            unified::UnifiedArguments::Value(v) => v.clone(),
-                        },
+                        input: normalized_input,
                     });
                 }
             }
@@ -302,12 +315,22 @@ impl From<unified::UnifiedChunk> for anthropic::AnthropicStreamEvent {
                 if let Some(tool_call) = tool_calls.first() {
                     match tool_call {
                         unified::UnifiedStreamingToolCall::Start { index, id, function } => {
+                            let parsed = parse_argument_string(function.arguments.as_str());
+                            let normalized = if parsed.is_null() {
+                                Value::Object(serde_json::Map::new())
+                            } else {
+                                parsed
+                            };
+                            debug!(
+                                "Anthropic conversion tool_use (streaming start): id={} name={} input={:?}",
+                                id, function.name, normalized
+                            );
                             anthropic::AnthropicStreamEvent::ContentBlockStart {
                                 index: *index as u32,
                                 content_block: anthropic::AnthropicContent::ToolUse {
                                     id: id.clone(),
                                     name: function.name.clone(),
-                                    input: serde_json::from_str(function.arguments.as_str()).unwrap_or(Value::Null),
+                                    input: normalized,
                                 },
                             }
                         }
@@ -331,6 +354,16 @@ impl From<unified::UnifiedChunk> for anthropic::AnthropicStreamEvent {
         } else {
             // No choices, send ping
             anthropic::AnthropicStreamEvent::Ping
+        }
+    }
+}
+
+fn parse_argument_string(raw: &str) -> Value {
+    match serde_json::from_str(raw) {
+        Ok(value) => value,
+        Err(err) => {
+            debug!("Anthropic tool_use argument fallback to string: error={err} raw={raw}");
+            Value::String(raw.to_string())
         }
     }
 }
@@ -427,7 +460,14 @@ impl From<unified::UnifiedArguments> for Value {
 mod tests {
     use crate::messages::{anthropic, unified};
     use insta::assert_json_snapshot;
-    use serde_json::json;
+    use serde_json::{Value, json};
+
+    #[test]
+    fn parse_argument_string_handles_invalid_json() {
+        let raw = r#"{"command": "echo "hello""}"#;
+        let value = super::parse_argument_string(raw);
+        assert!(matches!(value, Value::String(s) if s == raw));
+    }
 
     #[test]
     fn convert_tool_calls_from_unified_to_anthropic() {
