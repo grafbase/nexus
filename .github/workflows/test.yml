@@ -123,7 +123,7 @@ jobs:
           fi
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@e5f8d33e7166e0491b2ab4ff0567cc6cd6772737 # v2.61.7
+        uses: taiki-e/install-action@2fdc5fd6ac805b0f8256893bd4c807bcb666af00 # v2.61.8
         with:
           tool: nextest
 
@@ -188,7 +188,7 @@ jobs:
           sudo apt-get install -y musl-tools
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@e5f8d33e7166e0491b2ab4ff0567cc6cd6772737 # v2.61.7
+        uses: taiki-e/install-action@2fdc5fd6ac805b0f8256893bd4c807bcb666af00 # v2.61.8
         with:
           tool: nextest
 
