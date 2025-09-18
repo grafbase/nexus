@@ -158,10 +158,10 @@ Nexus requires at least one downstream service (MCP servers or LLM providers) to
   - Each LLM provider MUST have at least one model explicitly configured
   - Models are configured under `[llm.providers.<name>.models.<model-id>]`
   - Model IDs containing dots must be quoted: `[llm.providers.google.models."gemini-1.5-flash"]`
-  - **Endpoints**: LLM endpoints are configured using `[[llm.endpoints]]` array syntax
-    - Each endpoint has a `path` (e.g., `/llm`) and `protocol` (`openai` or `anthropic`)
-    - Multiple endpoints can be configured with different protocols
-    - Example: `[[llm.endpoints]]` with `path = "/llm"` and `protocol = "openai"`
+  - **Endpoints**: LLM endpoints are configured using the `[llm.protocols]` section
+    - OpenAI protocol: `[llm.protocols.openai]` with `enabled` and `path` fields
+    - Anthropic protocol: `[llm.protocols.anthropic]` with `enabled` and `path` fields
+    - Example: `[llm.protocols.openai]` with `enabled = true` and `path = "/llm"`
 
 #### Client Identification for Rate Limiting
 
@@ -189,9 +189,9 @@ For LLM providers in tests:
 [llm]
 enabled = true
 
-[[llm.endpoints]]
+[llm.protocols.openai]
+enabled = true
 path = "/llm"
-protocol = "openai"  # or "anthropic" (default: "openai")
 
 # Provider configuration
 [llm.providers.test]
