@@ -134,9 +134,10 @@ cwd = "/workspace"
 #### LLM Configuration
 
 - `llm.enabled`: Enable LLM functionality (default: `true`)
-- `llm.endpoints`: Array of LLM endpoint configurations, each with:
-  - `path`: Endpoint path (e.g., `/llm`)
-  - `protocol`: Protocol to use (`openai` or `anthropic`, default: `openai`)
+- `llm.protocols.openai.enabled`: Enable OpenAI protocol endpoint (default: `true`)
+- `llm.protocols.openai.path`: OpenAI endpoint path (default: `/llm/openai`)
+- `llm.protocols.anthropic.enabled`: Enable Anthropic protocol endpoint (default: `false`)
+- `llm.protocols.anthropic.path`: Anthropic endpoint path (default: `/llm/anthropic`)
 
 For detailed LLM provider configuration, see the LLM Provider Configuration section below.
 
@@ -522,15 +523,15 @@ Nexus provides a unified interface for multiple LLM providers, allowing you to r
 [llm]
 enabled = true  # Enable LLM functionality (default: true)
 
-# Define one or more endpoints with their protocols
-[[llm.endpoints]]
-path = "/llm"      # OpenAI-compatible endpoint
-protocol = "openai"  # Protocol type (default: "openai")
+# OpenAI protocol endpoint configuration
+[llm.protocols.openai]
+enabled = true      # Enable OpenAI protocol (default: true)
+path = "/llm"       # Custom path (default: "/llm/openai")
 
-# You can add multiple endpoints with different protocols
-[[llm.endpoints]]
-path = "/claude"    # Anthropic-compatible endpoint
-protocol = "anthropic"
+# Anthropic protocol endpoint configuration
+[llm.protocols.anthropic]
+enabled = true      # Enable Anthropic protocol (default: false)
+path = "/claude"    # Custom path (default: "/llm/anthropic")
 ```
 
 #### Supported Providers
