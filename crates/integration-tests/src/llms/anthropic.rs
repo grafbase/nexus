@@ -213,6 +213,30 @@ async fn create_message(
             .into_response();
     }
 
+    // Validate for duplicate tool_use IDs (simulates actual Anthropic API behavior)
+    let mut tool_use_ids = std::collections::HashSet::new();
+    for message in &request.messages {
+        if let AnthropicMessageContent::Blocks(blocks) = &message.content {
+            for block in blocks {
+                if let AnthropicContentBlock::ToolUse { id, .. } = block
+                    && !tool_use_ids.insert(id.clone())
+                {
+                    // Duplicate ID found - return the same error Anthropic would
+                    return (
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        Json(serde_json::json!({
+                            "error": {
+                                "type": "invalid_request_error",
+                                "message": format!("messages: `tool_use` ids must be unique (duplicate id: {})", id)
+                            }
+                        })),
+                    )
+                        .into_response();
+                }
+            }
+        }
+    }
+
     // Check if we should return a tool call
     if request.tools.is_some() && state.tool_response.is_some() {
         let tool_response = state.tool_response.as_ref().unwrap();

@@ -16,6 +16,7 @@ aws-sdk-bedrockruntime.workspace = true
 aws-smithy-runtime-api.workspace = true
 aws-smithy-types.workspace = true
 axum.workspace = true
+axum-serde.workspace = true
 config.workspace = true
 eventsource-stream.workspace = true
 fastrace = { workspace = true, features = ["enable"] }
@@ -34,11 +35,10 @@ sonic-rs.workspace = true
 telemetry.workspace = true
 thiserror.workspace = true
 tiktoken-rs.workspace = true
-uuid.workspace = true
+uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 insta.workspace = true
-serde_json = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]

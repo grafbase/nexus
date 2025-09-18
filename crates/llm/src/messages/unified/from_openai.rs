@@ -53,39 +53,71 @@ impl From<openai::ChatCompletionRequest> for unified::UnifiedRequest {
     }
 }
 
-impl From<openai::ChatMessage> for unified::UnifiedMessage {
-    fn from(msg: openai::ChatMessage) -> Self {
-        let role = match msg.role {
+impl From<openai::ChatRole> for unified::UnifiedRole {
+    fn from(role: openai::ChatRole) -> Self {
+        match role {
             openai::ChatRole::System => unified::UnifiedRole::System,
             openai::ChatRole::User => unified::UnifiedRole::User,
             openai::ChatRole::Assistant => unified::UnifiedRole::Assistant,
             openai::ChatRole::Tool => unified::UnifiedRole::Tool,
             openai::ChatRole::Other(_) => unified::UnifiedRole::Assistant, // Default to assistant
-        };
+        }
+    }
+}
 
-        let content = if let Some(text) = msg.content {
+impl From<openai::ChatMessage> for unified::UnifiedMessage {
+    fn from(msg: openai::ChatMessage) -> Self {
+        let role = unified::UnifiedRole::from(msg.role);
+
+        // Convert OpenAI tool_calls to content blocks for single-source-of-truth
+        let content = if let Some(tool_calls) = msg.tool_calls {
+            // Convert tool calls to ToolUse content blocks
+            let blocks: Vec<unified::UnifiedContent> = tool_calls
+                .into_iter()
+                .map(|call| {
+                    let openai::ToolCall { id, tool_type: _, function } = call;
+                    let openai::FunctionCall { name, arguments } = function;
+
+                    let raw_args = arguments;
+                    let parsed_args = match serde_json::from_str(raw_args.as_str()) {
+                        Ok(value) => value,
+                        Err(err) => {
+                            log::debug!(
+                                "Failed to parse tool arguments as JSON, defaulting to null: id={} name={} error={err} raw={raw}",
+                                id,
+                                name,
+                                raw = raw_args
+                            );
+                            serde_json::Value::Null
+                        }
+                    };
+
+                    unified::UnifiedContent::ToolUse {
+                        id,
+                        name,
+                        input: parsed_args,
+                    }
+                })
+                .collect();
+
+            // If we also have text content, prepend it to the blocks
+            if let Some(text) = msg.content {
+                let mut all_blocks = vec![unified::UnifiedContent::Text { text }];
+                all_blocks.extend(blocks);
+                unified::UnifiedContentContainer::Blocks(all_blocks)
+            } else {
+                unified::UnifiedContentContainer::Blocks(blocks)
+            }
+        } else if let Some(text) = msg.content {
             unified::UnifiedContentContainer::Text(text)
         } else {
             unified::UnifiedContentContainer::Blocks(vec![])
         };
 
-        let tool_calls = msg.tool_calls.map(|calls| {
-            calls
-                .into_iter()
-                .map(|call| unified::UnifiedToolCall {
-                    id: call.id,
-                    function: unified::UnifiedFunctionCall {
-                        name: call.function.name,
-                        arguments: unified::UnifiedArguments::String(call.function.arguments),
-                    },
-                })
-                .collect()
-        });
-
         Self {
             role,
             content,
-            tool_calls,
+            tool_calls: None, // Will be computed on demand via compute_tool_calls()
             tool_call_id: msg.tool_call_id,
         }
     }
@@ -97,9 +129,20 @@ impl From<openai::Tool> for unified::UnifiedTool {
             function: unified::UnifiedFunction {
                 name: tool.function.name,
                 description: tool.function.description,
-                parameters: tool.function.parameters,
+                parameters: Box::new(tool.function.parameters),
                 strict: None,
             },
+        }
+    }
+}
+
+impl From<openai::ToolChoiceMode> for unified::UnifiedToolChoiceMode {
+    fn from(mode: openai::ToolChoiceMode) -> Self {
+        match mode {
+            openai::ToolChoiceMode::None => unified::UnifiedToolChoiceMode::None,
+            openai::ToolChoiceMode::Auto => unified::UnifiedToolChoiceMode::Auto,
+            openai::ToolChoiceMode::Required | openai::ToolChoiceMode::Any => unified::UnifiedToolChoiceMode::Required,
+            openai::ToolChoiceMode::Other(_) => unified::UnifiedToolChoiceMode::Auto, // Default
         }
     }
 }
@@ -107,14 +150,9 @@ impl From<openai::Tool> for unified::UnifiedTool {
 impl From<openai::ToolChoice> for unified::UnifiedToolChoice {
     fn from(choice: openai::ToolChoice) -> Self {
         match choice {
-            openai::ToolChoice::Mode(mode) => unified::UnifiedToolChoice::Mode(match mode {
-                openai::ToolChoiceMode::None => unified::UnifiedToolChoiceMode::None,
-                openai::ToolChoiceMode::Auto => unified::UnifiedToolChoiceMode::Auto,
-                openai::ToolChoiceMode::Required | openai::ToolChoiceMode::Any => {
-                    unified::UnifiedToolChoiceMode::Required
-                }
-                openai::ToolChoiceMode::Other(_) => unified::UnifiedToolChoiceMode::Auto, // Default
-            }),
+            openai::ToolChoice::Mode(mode) => {
+                unified::UnifiedToolChoice::Mode(unified::UnifiedToolChoiceMode::from(mode))
+            }
             openai::ToolChoice::Specific { function, .. } => unified::UnifiedToolChoice::Specific {
                 function: unified::UnifiedFunctionChoice { name: function.name },
             },
@@ -160,6 +198,54 @@ impl From<openai::FinishReason> for unified::UnifiedFinishReason {
     }
 }
 
+impl From<openai::StreamingToolCall> for unified::UnifiedStreamingToolCall {
+    fn from(call: openai::StreamingToolCall) -> Self {
+        match call {
+            openai::StreamingToolCall::Start {
+                index,
+                id,
+                r#type: _,
+                function,
+            } => unified::UnifiedStreamingToolCall::Start {
+                index,
+                id,
+                function: unified::UnifiedFunctionStart {
+                    name: function.name,
+                    arguments: function.arguments,
+                },
+            },
+            openai::StreamingToolCall::Delta { index, function } => unified::UnifiedStreamingToolCall::Delta {
+                index,
+                function: unified::UnifiedFunctionDelta {
+                    arguments: function.arguments,
+                },
+            },
+        }
+    }
+}
+
+impl From<openai::Model> for unified::UnifiedModel {
+    fn from(model: openai::Model) -> Self {
+        Self {
+            id: model.id.clone(),
+            object_type: unified::UnifiedObjectType::Model,
+            display_name: model.id, // OpenAI uses id as display name
+            created: model.created,
+            owned_by: model.owned_by,
+        }
+    }
+}
+
+impl From<openai::ModelsResponse> for unified::UnifiedModelsResponse {
+    fn from(response: openai::ModelsResponse) -> Self {
+        Self {
+            object_type: unified::UnifiedObjectType::List,
+            models: response.data.into_iter().map(unified::UnifiedModel::from).collect(),
+            has_more: false, // OpenAI doesn't paginate models
+        }
+    }
+}
+
 impl From<openai::ChatCompletionChunk> for unified::UnifiedChunk {
     fn from(chunk: openai::ChatCompletionChunk) -> Self {
         Self {
@@ -171,42 +257,12 @@ impl From<openai::ChatCompletionChunk> for unified::UnifiedChunk {
                 .map(|choice| unified::UnifiedChoiceDelta {
                     index: choice.index,
                     delta: unified::UnifiedMessageDelta {
-                        role: choice.delta.role.map(|r| match r {
-                            openai::ChatRole::System => unified::UnifiedRole::System,
-                            openai::ChatRole::User => unified::UnifiedRole::User,
-                            openai::ChatRole::Assistant => unified::UnifiedRole::Assistant,
-                            openai::ChatRole::Tool => unified::UnifiedRole::Tool,
-                            openai::ChatRole::Other(_) => unified::UnifiedRole::Assistant,
-                        }),
+                        role: choice.delta.role.map(unified::UnifiedRole::from),
                         content: choice.delta.content,
-                        tool_calls: choice.delta.tool_calls.map(|calls| {
-                            calls
-                                .into_iter()
-                                .map(|call| match call {
-                                    openai::StreamingToolCall::Start {
-                                        index,
-                                        id,
-                                        r#type: _,
-                                        function,
-                                    } => unified::UnifiedStreamingToolCall::Start {
-                                        index,
-                                        id,
-                                        function: unified::UnifiedFunctionStart {
-                                            name: function.name,
-                                            arguments: function.arguments,
-                                        },
-                                    },
-                                    openai::StreamingToolCall::Delta { index, function } => {
-                                        unified::UnifiedStreamingToolCall::Delta {
-                                            index,
-                                            function: unified::UnifiedFunctionDelta {
-                                                arguments: function.arguments,
-                                            },
-                                        }
-                                    }
-                                })
-                                .collect()
-                        }),
+                        tool_calls: choice
+                            .delta
+                            .tool_calls
+                            .map(|calls| calls.into_iter().map(unified::UnifiedStreamingToolCall::from).collect()),
                     },
                     finish_reason: choice.finish_reason.map(unified::UnifiedFinishReason::from),
                 })

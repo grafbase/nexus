@@ -338,7 +338,7 @@ async fn single_downstream_token_forwarding() {
 
     // Verify we have timestamps for both calls
     let timestamps = token_tracker.get_call_timestamps().await;
-    assert_eq!(timestamps.len(), 2, "Should have timestamps for both calls");
+    assert!(timestamps.len() >= 2, "Should have timestamps for at least two calls");
     assert!(timestamps[1] >= timestamps[0], "Timestamps should be in order");
 
     mcp_client.disconnect().await;

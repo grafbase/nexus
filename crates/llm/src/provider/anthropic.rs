@@ -6,7 +6,7 @@ use axum::http::HeaderMap;
 use config::ApiProviderConfig;
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
-use reqwest::{Client, Method};
+use reqwest::{Client, Method, header::CONTENT_TYPE};
 use secrecy::ExposeSecret;
 
 use self::{
@@ -16,7 +16,10 @@ use self::{
 
 use crate::{
     error::LlmError,
-    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, Model},
+    messages::{
+        openai::Model,
+        unified::{UnifiedRequest, UnifiedResponse},
+    },
     provider::{ChatCompletionStream, HttpProvider, ModelManager, Provider, token},
     request::RequestContext,
 };
@@ -90,12 +93,11 @@ impl AnthropicProvider {
 impl Provider for AnthropicProvider {
     async fn chat_completion(
         &self,
-        mut request: ChatCompletionRequest,
+        mut request: UnifiedRequest,
         context: &RequestContext,
-    ) -> crate::Result<ChatCompletionResponse> {
+    ) -> crate::Result<UnifiedResponse> {
         let url = format!("{}/messages", self.base_url);
-        let temp_api_key = self.config.api_key.clone();
-        let api_key = token::get(self.config.forward_token, &temp_api_key, context)?;
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         let original_model = request.model.clone();
 
@@ -117,8 +119,14 @@ impl Provider for AnthropicProvider {
         // Add API key header (can be overridden by header rules)
         request_builder = request_builder.header("x-api-key", api_key.expose_secret());
 
+        let body = sonic_rs::to_vec(&anthropic_request).map_err(|e| {
+            log::error!("Failed to serialize Anthropic request: {e}");
+            LlmError::InternalError(None)
+        })?;
+
         let response = request_builder
-            .json(&anthropic_request)
+            .header(CONTENT_TYPE, "application/json")
+            .body(body)
             .send()
             .await
             .map_err(|e| LlmError::ConnectionError(format!("Failed to send request to Anthropic: {e}")))?;
@@ -156,7 +164,7 @@ impl Provider for AnthropicProvider {
             LlmError::InternalError(None)
         })?;
 
-        let mut response = ChatCompletionResponse::from(anthropic_response);
+        let mut response = UnifiedResponse::from(anthropic_response);
         response.model = original_model;
 
         Ok(response)
@@ -169,7 +177,7 @@ impl Provider for AnthropicProvider {
 
     async fn chat_completion_stream(
         &self,
-        mut request: ChatCompletionRequest,
+        mut request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
         let url = format!("{}/messages", self.base_url);
@@ -184,8 +192,7 @@ impl Provider for AnthropicProvider {
         let model_config = self.model_manager.get_model_config(&request.model);
 
         request.model = actual_model;
-        let temp_api_key = self.config.api_key.clone();
-        let api_key = token::get(self.config.forward_token, &temp_api_key, context)?;
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         let mut anthropic_request = AnthropicRequest::from(request);
         anthropic_request.stream = Some(true);
@@ -196,10 +203,17 @@ impl Provider for AnthropicProvider {
         // Add API key header (can be overridden by header rules)
         request_builder = request_builder.header("x-api-key", api_key.expose_secret());
 
-        let response =
-            request_builder.json(&anthropic_request).send().await.map_err(|e| {
-                LlmError::ConnectionError(format!("Failed to send streaming request to Anthropic: {e}"))
-            })?;
+        let body = sonic_rs::to_vec(&anthropic_request).map_err(|e| {
+            log::error!("Failed to serialize Anthropic streaming request: {e}");
+            LlmError::InternalError(None)
+        })?;
+
+        let response = request_builder
+            .header(CONTENT_TYPE, "application/json")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| LlmError::ConnectionError(format!("Failed to send streaming request to Anthropic: {e}")))?;
 
         let status = response.status();
 

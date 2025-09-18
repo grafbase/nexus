@@ -19,6 +19,7 @@ aws-sdk-bedrockruntime = { version = "1.72", features = ["behavior-version-lates
 aws-smithy-runtime-api = "1.7"
 aws-smithy-types = "1.2"
 axum = { version = "0.8.4", features = ["macros"] }
+axum-serde = { version = "0.9.0", features = ["sonic"] }
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 base64 = "0.22.1"
 clap = "4.5.41"

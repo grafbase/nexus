@@ -7,8 +7,9 @@ use axum::{
     response::{IntoResponse, Sse, sse::Event},
     routing::{get, post},
 };
+use axum_serde::Sonic;
 use futures::StreamExt;
-use messages::openai;
+use messages::{anthropic, openai};
 
 mod error;
 mod messages;
@@ -19,6 +20,8 @@ pub mod token_counter;
 
 pub use error::LlmError;
 use server::{LlmHandler, LlmServerBuilder};
+
+use crate::messages::unified;
 
 pub type Result<T> = std::result::Result<T, LlmError>;
 
@@ -44,9 +47,8 @@ pub async fn router(config: &config::Config) -> anyhow::Result<Router> {
 
     if config.llm.protocols.anthropic.enabled {
         let anthropic_routes = Router::new()
-            // TODO: Implement anthropic_messages handler in Phase 2
-            // .route("/v1/messages", post(anthropic_messages))
-            // .route("/v1/models", get(anthropic_list_models))
+            .route("/v1/messages", post(anthropic_messages))
+            .route("/v1/models", get(anthropic_list_models))
             .with_state(server.clone());
 
         router = router.nest(&config.llm.protocols.anthropic.path, anthropic_routes);
@@ -65,9 +67,9 @@ async fn chat_completions(
     headers: HeaderMap,
     client_identity: Option<Extension<config::ClientIdentity>>,
     span_context: Option<Extension<fastrace::collector::SpanContext>>,
-    Json(request): Json<openai::ChatCompletionRequest>,
+    Sonic(request): Sonic<openai::ChatCompletionRequest>,
 ) -> Result<impl IntoResponse> {
-    log::info!("LLM chat completions handler called for model: {}", request.model);
+    log::debug!("OpenAI chat completions handler called for model: {}", request.model);
     log::debug!("Request has {} messages", request.messages.len());
     log::debug!("Streaming: {}", request.stream.unwrap_or(false));
 
@@ -78,24 +80,18 @@ async fn chat_completions(
         span_context.as_ref().map(|ext| ext.0),
     );
 
-    if let Some(ref client_identity) = context.client_identity {
-        log::debug!(
-            "Client identity extracted: client_id={}, group={:?}",
-            client_identity.client_id,
-            client_identity.group
-        );
-    } else {
-        log::debug!("No client identity found in request extensions");
-    }
-
     // Check if streaming is requested
     if request.stream.unwrap_or(false) {
-        let stream = server.completions_stream(request, &context).await?;
+        // Convert OpenAI request to unified format
+        let unified_request = unified::UnifiedRequest::from(request);
+        let stream = server.completions_stream(unified_request, &context).await?;
 
         let event_stream = stream.map(move |result| {
             let event = match result {
-                Ok(chunk) => {
-                    let json = sonic_rs::to_string(&chunk).unwrap_or_else(|e| {
+                Ok(unified_chunk) => {
+                    // Convert UnifiedChunk to OpenAI format for OpenAI protocol
+                    let openai_chunk = openai::ChatCompletionChunk::from(unified_chunk);
+                    let json = sonic_rs::to_string(&openai_chunk).unwrap_or_else(|e| {
                         log::error!("Failed to serialize chunk: {e}");
                         r#"{"error":"serialization failed"}"#.to_string()
                     });
@@ -119,7 +115,12 @@ async fn chat_completions(
         Ok(Sse::new(with_done).into_response())
     } else {
         // Non-streaming response
-        let response = server.completions(request, &context).await?;
+        // Convert OpenAI request to unified format
+        let unified_request = unified::UnifiedRequest::from(request);
+        let unified_response = server.completions(unified_request, &context).await?;
+
+        // Convert back to OpenAI format
+        let response = openai::ChatCompletionResponse::from(unified_response);
 
         log::debug!(
             "Chat completion successful, returning response with {} choices",
@@ -136,4 +137,81 @@ async fn list_models(State(server): State<Arc<LlmHandler>>) -> Result<impl IntoR
 
     log::debug!("Returning {} models", response.data.len());
     Ok(Json(response))
+}
+
+/// Handle Anthropic messages requests.
+///
+/// This endpoint supports both streaming and non-streaming responses.
+/// When `stream: true` is set in the request, the response is sent as
+/// Server-Sent Events (SSE). Otherwise, a standard JSON response is returned.
+async fn anthropic_messages(
+    State(server): State<Arc<LlmHandler>>,
+    headers: HeaderMap,
+    client_identity: Option<Extension<config::ClientIdentity>>,
+    span_context: Option<Extension<fastrace::collector::SpanContext>>,
+    Sonic(request): Sonic<anthropic::AnthropicChatRequest>,
+) -> Result<impl IntoResponse> {
+    log::debug!("Anthropic messages handler called for model: {}", request.model);
+    log::debug!("Request has {} messages", request.messages.len());
+    log::debug!("Streaming: {}", request.stream.unwrap_or(false));
+
+    // Extract request context including client identity and span context
+    let context = request::extract_context(
+        &headers,
+        client_identity.map(|ext| ext.0),
+        span_context.as_ref().map(|ext| ext.0),
+    );
+
+    // Convert Anthropic request to unified format
+    let unified_request = unified::UnifiedRequest::from(request);
+
+    // Check if streaming is requested
+    if unified_request.stream.unwrap_or(false) {
+        let stream = server.completions_stream(unified_request, &context).await?;
+
+        let event_stream = stream.map(move |result| {
+            let event = match result {
+                Ok(chunk) => {
+                    // Convert unified chunk to Anthropic streaming event format
+                    let anthropic_event = anthropic::AnthropicStreamEvent::from(chunk);
+                    let json = sonic_rs::to_string(&anthropic_event).unwrap_or_else(|e| {
+                        log::error!("Failed to serialize Anthropic streaming event: {e}");
+                        r#"{"error":"serialization failed"}"#.to_string()
+                    });
+
+                    Event::default().data(json)
+                }
+                Err(e) => {
+                    log::error!("Stream error: {e}");
+                    Event::default().data(format!(r#"{{"error":"{}"}}"#, e))
+                }
+            };
+
+            Ok::<_, Infallible>(event)
+        });
+
+        // Anthropic doesn't use [DONE] marker, just end the stream
+        log::debug!("Returning Anthropic streaming response");
+
+        Ok(Sse::new(event_stream).into_response())
+    } else {
+        // Non-streaming response - use unified types directly!
+        let unified_response = server.completions(unified_request, &context).await?;
+        let anthropic_response = anthropic::AnthropicChatResponse::from(unified_response);
+
+        log::debug!("Anthropic messages completion successful");
+
+        Ok(Json(anthropic_response).into_response())
+    }
+}
+
+/// Handle Anthropic list models requests.
+async fn anthropic_list_models(State(server): State<Arc<LlmHandler>>) -> Result<impl IntoResponse> {
+    let openai_response = server.models();
+
+    // Convert OpenAI models response to Anthropic format
+    let anthropic_response = anthropic::AnthropicModelsResponse::from(openai_response);
+
+    log::debug!("Returning {} models for Anthropic", anthropic_response.data.len());
+    Ok(Json(anthropic_response))
 }

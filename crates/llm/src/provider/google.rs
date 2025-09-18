@@ -16,7 +16,10 @@ use futures::StreamExt;
 
 use crate::{
     error::LlmError,
-    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, Model},
+    messages::{
+        openai::Model,
+        unified::{UnifiedChunk, UnifiedRequest, UnifiedResponse},
+    },
     provider::{HttpProvider, ModelManager, Provider, openai::extract_model_from_full_name, token},
     request::RequestContext,
 };
@@ -70,9 +73,9 @@ impl GoogleProvider {
 impl Provider for GoogleProvider {
     async fn chat_completion(
         &self,
-        request: ChatCompletionRequest,
+        request: UnifiedRequest,
         context: &RequestContext,
-    ) -> crate::Result<ChatCompletionResponse> {
+    ) -> crate::Result<UnifiedResponse> {
         let model_name = extract_model_from_full_name(&request.model);
 
         // Check if the model is configured and get the actual model name to use
@@ -84,8 +87,7 @@ impl Provider for GoogleProvider {
         // Get the model config to access headers
         let model_config = self.model_manager.get_model_config(&model_name);
 
-        let temp_api_key = self.config.api_key.clone();
-        let api_key = token::get(self.config.forward_token, &temp_api_key, context)?;
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         let url = format!(
             "{}/models/{actual_model}:generateContent?key={}",
@@ -99,11 +101,29 @@ impl Provider for GoogleProvider {
         // Convert to Google format
         let google_request = GoogleGenerateRequest::from(request);
 
+        // Log the request for debugging Google 500 errors
+        log::debug!("Sending request to Google API at URL: {}", url);
+        if let Ok(json) = sonic_rs::to_string(&google_request) {
+            // Only log first part to avoid noise
+            let preview = if json.len() > 1000 {
+                format!("{}... (truncated, {} bytes total)", &json[..1000], json.len())
+            } else {
+                json
+            };
+            log::debug!("Google API request: {}", preview);
+        }
+
         // Use create_post_request to ensure headers are applied
         let request_builder = self.request_builder(Method::POST, &url, context, model_config);
 
+        let body = sonic_rs::to_vec(&google_request).map_err(|e| {
+            log::error!("Failed to serialize Google request: {e}");
+            LlmError::InternalError(None)
+        })?;
+
         let response = request_builder
-            .json(&google_request)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(body)
             .send()
             .await
             .map_err(|e| LlmError::ConnectionError(format!("Failed to send request to Google: {e}")))?;
@@ -138,7 +158,7 @@ impl Provider for GoogleProvider {
         // Try to parse the response
         let google_response: GoogleGenerateResponse = sonic_rs::from_str(&response_text).map_err(|e| {
             log::error!("Failed to parse Google chat completion response: {e}");
-            log::debug!("Response parsing failed, length: {} bytes", response_text.len());
+            log::error!("Full response text that failed to parse: {}", response_text);
 
             LlmError::InternalError(None)
         })?;
@@ -149,7 +169,7 @@ impl Provider for GoogleProvider {
             return Err(LlmError::InternalError(None));
         }
 
-        let mut response = ChatCompletionResponse::from(google_response);
+        let mut response = UnifiedResponse::from(google_response);
         response.model = original_model;
 
         Ok(response)
@@ -162,7 +182,7 @@ impl Provider for GoogleProvider {
 
     async fn chat_completion_stream(
         &self,
-        request: ChatCompletionRequest,
+        request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<crate::provider::ChatCompletionStream> {
         let model_name = extract_model_from_full_name(&request.model);
@@ -176,8 +196,7 @@ impl Provider for GoogleProvider {
         // Get the model config to access headers
         let model_config = self.model_manager.get_model_config(&model_name);
 
-        let temp_api_key = self.config.api_key.clone();
-        let api_key = token::get(self.config.forward_token, &temp_api_key, context)?;
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         let url = format!(
             "{}/models/{actual_model}:streamGenerateContent?alt=sse&key={}",
@@ -190,8 +209,14 @@ impl Provider for GoogleProvider {
         // Use create_post_request to ensure headers are applied
         let request_builder = self.request_builder(Method::POST, &url, context, model_config);
 
+        let body = sonic_rs::to_vec(&google_request).map_err(|e| {
+            log::error!("Failed to serialize Google streaming request: {e}");
+            LlmError::InternalError(None)
+        })?;
+
         let response = request_builder
-            .json(&google_request)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(body)
             .send()
             .await
             .map_err(|e| LlmError::ConnectionError(format!("Failed to send streaming request to Google: {e}")))?;
@@ -237,7 +262,7 @@ impl Provider for GoogleProvider {
                     return None;
                 };
 
-                Some(Ok(chunk.into_chunk(&provider, &model)))
+                Some(Ok(UnifiedChunk::from(chunk.into_chunk(&provider, &model))))
             }
         });
 

@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 
 use tiktoken_rs::{CoreBPE, cl100k_base};
 
-use crate::messages::openai::{ChatCompletionRequest, ChatMessage};
+use crate::messages::unified::{UnifiedContentContainer, UnifiedMessage, UnifiedRequest, UnifiedRole};
 
 /// Global tokenizer instance using cl100k_base encoding.
 static TOKENIZER: OnceLock<CoreBPE> = OnceLock::new();
@@ -14,7 +14,7 @@ fn get_tokenizer() -> &'static CoreBPE {
     TOKENIZER.get_or_init(|| cl100k_base().expect("Failed to initialize cl100k_base tokenizer"))
 }
 
-/// Count tokens in a chat completion request.
+/// Count tokens in a unified chat completion request.
 ///
 /// This uses the cl100k_base encoding which is used by GPT-4 and GPT-3.5-turbo models.
 /// While not all providers use the same tokenization, this provides a reasonable
@@ -34,10 +34,17 @@ fn get_tokenizer() -> &'static CoreBPE {
 ///
 /// This methodology follows OpenAI's official token counting guidelines to ensure
 /// accurate rate limiting based on actual API consumption.
-pub(crate) fn count_input_tokens(request: &ChatCompletionRequest) -> usize {
+pub(crate) fn count_input_tokens(request: &UnifiedRequest) -> usize {
     // Get the cl100k_base tokenizer used by GPT-4 and GPT-3.5-turbo
     let tokenizer = get_tokenizer();
     let mut total = 0;
+
+    // Count system message if present
+    if let Some(ref system) = request.system {
+        total += tokenizer.encode_ordinary(system).len();
+        total += tokenizer.encode_ordinary("system").len();
+        total += 3; // Formatting overhead for system message
+    }
 
     // Count the actual content tokens in each message (role + content)
     for message in &request.messages {
@@ -55,17 +62,35 @@ pub(crate) fn count_input_tokens(request: &ChatCompletionRequest) -> usize {
     total
 }
 
-/// Count tokens in a single message.
-fn count_message_tokens(tokenizer: &CoreBPE, message: &ChatMessage) -> usize {
+/// Count tokens in a single unified message.
+fn count_message_tokens(tokenizer: &CoreBPE, message: &UnifiedMessage) -> usize {
     let mut tokens = 0;
 
     // Count role tokens
-    let role_str = message.role.as_ref();
+    let role_str = match message.role {
+        UnifiedRole::System => "system",
+        UnifiedRole::User => "user",
+        UnifiedRole::Assistant => "assistant",
+        UnifiedRole::Tool => "tool",
+    };
     tokens += tokenizer.encode_ordinary(role_str).len();
 
     // Count content tokens
-    if let Some(content) = &message.content {
-        tokens += tokenizer.encode_ordinary(content).len();
+    match &message.content {
+        UnifiedContentContainer::Text(text) => {
+            tokens += tokenizer.encode_ordinary(text).len();
+        }
+        UnifiedContentContainer::Blocks(blocks) => {
+            // Count tokens in all content blocks
+            for block in blocks {
+                if let Some(text) = block.as_text() {
+                    tokens += tokenizer.encode_ordinary(text).len();
+                }
+                // Tool calls and tool results also contribute to token count
+                // but their JSON representation would need special handling
+                // For now, we approximate based on text content only
+            }
+        }
     }
 
     tokens
@@ -74,28 +99,30 @@ fn count_message_tokens(tokenizer: &CoreBPE, message: &ChatMessage) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::messages::openai::ChatRole;
 
     #[test]
     fn count_simple_message() {
-        let request = ChatCompletionRequest {
+        let request = UnifiedRequest {
             model: "gpt-4".to_string(),
-            messages: vec![ChatMessage {
-                role: ChatRole::User,
-                content: Some("Hello, how are you?".to_string()),
-                tool_calls: None,
+            messages: vec![UnifiedMessage {
+                role: UnifiedRole::User,
+                content: UnifiedContentContainer::Text("Hello, how are you?".to_string()),
                 tool_call_id: None,
+                tool_calls: None,
             }],
+            system: None,
             temperature: None,
             top_p: None,
+            top_k: None,
             max_tokens: None,
             stream: None,
-            stop: None,
+            stop_sequences: None,
             frequency_penalty: None,
             presence_penalty: None,
             tools: None,
             tool_choice: None,
             parallel_tool_calls: None,
+            metadata: None,
         };
 
         let tokens = count_input_tokens(&request);
@@ -109,32 +136,27 @@ mod tests {
 
     #[test]
     fn count_multiple_messages() {
-        let request = ChatCompletionRequest {
+        let request = UnifiedRequest {
             model: "gpt-4".to_string(),
-            messages: vec![
-                ChatMessage {
-                    role: ChatRole::System,
-                    content: Some("You are a helpful assistant.".to_string()),
-                    tool_calls: None,
-                    tool_call_id: None,
-                },
-                ChatMessage {
-                    role: ChatRole::User,
-                    content: Some("What is the weather?".to_string()),
-                    tool_calls: None,
-                    tool_call_id: None,
-                },
-            ],
+            system: Some("You are a helpful assistant.".to_string()),
+            messages: vec![UnifiedMessage {
+                role: UnifiedRole::User,
+                content: UnifiedContentContainer::Text("What is the weather?".to_string()),
+                tool_call_id: None,
+                tool_calls: None,
+            }],
             temperature: None,
             top_p: None,
+            top_k: None,
             max_tokens: None,
             stream: None,
-            stop: None,
+            stop_sequences: None,
             frequency_penalty: None,
             presence_penalty: None,
             tools: None,
             tool_choice: None,
             parallel_tool_calls: None,
+            metadata: None,
         };
 
         let tokens = count_input_tokens(&request);
@@ -145,24 +167,27 @@ mod tests {
 
     #[test]
     fn empty_content_counts_role() {
-        let request = ChatCompletionRequest {
+        let request = UnifiedRequest {
             model: "gpt-4".to_string(),
-            messages: vec![ChatMessage {
-                role: ChatRole::Assistant,
-                content: Some("".to_string()),
-                tool_calls: None,
+            messages: vec![UnifiedMessage {
+                role: UnifiedRole::Assistant,
+                content: UnifiedContentContainer::Text("".to_string()),
                 tool_call_id: None,
+                tool_calls: None,
             }],
+            system: None,
             temperature: None,
             top_p: None,
+            top_k: None,
             max_tokens: None,
             stream: None,
-            stop: None,
+            stop_sequences: None,
             frequency_penalty: None,
             presence_penalty: None,
             tools: None,
             tool_choice: None,
             parallel_tool_calls: None,
+            metadata: None,
         };
 
         let tokens = count_input_tokens(&request);

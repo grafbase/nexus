@@ -10,13 +10,16 @@ use reqwest::{Client, Method, header::AUTHORIZATION};
 use secrecy::ExposeSecret;
 
 use self::{
-    input::openai::OpenAIRequest,
-    output::openai::{OpenAIResponse, OpenAIStreamChunk},
+    input::OpenAIRequest,
+    output::{OpenAIResponse, OpenAIStreamChunk},
 };
 
 use crate::{
     error::LlmError,
-    messages::openai::{ChatCompletionRequest, ChatCompletionResponse, Model},
+    messages::{
+        openai::Model,
+        unified::{UnifiedRequest, UnifiedResponse},
+    },
     provider::{ChatCompletionStream, HttpProvider, ModelManager, Provider, token},
     request::RequestContext,
 };
@@ -74,9 +77,9 @@ impl OpenAIProvider {
 impl Provider for OpenAIProvider {
     async fn chat_completion(
         &self,
-        request: ChatCompletionRequest,
+        request: UnifiedRequest,
         context: &RequestContext,
-    ) -> crate::Result<ChatCompletionResponse> {
+    ) -> crate::Result<UnifiedResponse> {
         let url = format!("{}/chat/completions", self.base_url);
 
         let model_name = extract_model_from_full_name(&request.model);
@@ -99,12 +102,16 @@ impl Provider for OpenAIProvider {
         let mut request_builder = self.request_builder(Method::POST, &url, context, model_config);
 
         // Add authorization header (can be overridden by header rules)
-        let temp_api_key = self.config.api_key.clone();
-        let key = token::get(self.config.forward_token, &temp_api_key, context)?;
+        let key = token::get(self.config.forward_token, &self.config.api_key, context)?;
         request_builder = request_builder.header(AUTHORIZATION, format!("Bearer {}", key.expose_secret()));
 
+        // Serialize with sonic_rs to handle sonic_rs::Value fields properly
+        let body = sonic_rs::to_vec(&openai_request)
+            .map_err(|e| LlmError::InvalidRequest(format!("Failed to serialize request: {e}")))?;
+
         let response = request_builder
-            .json(&openai_request)
+            .header("Content-Type", "application/json")
+            .body(body)
             .send()
             .await
             .map_err(|e| LlmError::ConnectionError(format!("Failed to send request to OpenAI: {e}")))?;
@@ -139,11 +146,13 @@ impl Provider for OpenAIProvider {
         let openai_response: OpenAIResponse = sonic_rs::from_str(&response_text).map_err(|e| {
             log::error!("Failed to parse OpenAI chat completion response: {e}");
             log::debug!("Response parsing failed, length: {} bytes", response_text.len());
+
             LlmError::InternalError(None)
         })?;
 
-        let mut response = ChatCompletionResponse::from(openai_response);
+        let mut response = UnifiedResponse::from(openai_response);
         response.model = original_model;
+
         Ok(response)
     }
 
@@ -154,7 +163,7 @@ impl Provider for OpenAIProvider {
 
     async fn chat_completion_stream(
         &self,
-        request: ChatCompletionRequest,
+        request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
         let url = format!("{}/chat/completions", self.base_url);
@@ -173,8 +182,7 @@ impl Provider for OpenAIProvider {
         openai_request.model = actual_model;
         openai_request.stream = true;
 
-        let temp_api_key = self.config.api_key.clone();
-        let key = token::get(self.config.forward_token, &temp_api_key, context)?;
+        let key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         // Use create_post_request to ensure headers are applied
         let mut request_builder = self.request_builder(Method::POST, &url, context, model_config);
@@ -182,8 +190,13 @@ impl Provider for OpenAIProvider {
         // Add authorization header (can be overridden by header rules)
         request_builder = request_builder.header(AUTHORIZATION, format!("Bearer {}", key.expose_secret()));
 
+        // Serialize with sonic_rs to handle sonic_rs::Value fields properly
+        let body = sonic_rs::to_vec(&openai_request)
+            .map_err(|e| LlmError::InvalidRequest(format!("Failed to serialize request: {e}")))?;
+
         let response = request_builder
-            .json(&openai_request)
+            .header("Content-Type", "application/json")
+            .body(body)
             .send()
             .await
             .map_err(|e| LlmError::ConnectionError(format!("Failed to send streaming request to OpenAI: {e}")))?;
@@ -267,5 +280,3 @@ impl HttpProvider for OpenAIProvider {
 pub(super) fn extract_model_from_full_name(full_name: &str) -> String {
     full_name.split('/').next_back().unwrap_or(full_name).to_string()
 }
-
-// OpenAI API request/response types

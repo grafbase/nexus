@@ -486,6 +486,29 @@ async fn handle_tool_search(query: String) -> Result<Vec<Tool>, anyhow::Error> {
 
 ## LLM Provider Configuration Patterns
 
+### Unified Types Architecture
+
+The LLM crate uses a **unified type system** that serves as a protocol-agnostic internal representation for all LLM protocols (OpenAI, Anthropic, Google, Bedrock). This architecture:
+
+- **Eliminates complex protocol-specific conversions** between providers
+- **Ensures no information loss** across different protocols
+- **Simplifies provider implementations** with consistent internal types
+- **Enables zero-allocation conversions** through data movement instead of cloning
+
+#### Conversion Flow
+```
+Protocol Request → UnifiedRequest → Provider → UnifiedResponse → Protocol Response
+```
+
+#### Key Unified Types
+- `UnifiedRequest`: Protocol-agnostic request format
+- `UnifiedResponse`: Protocol-agnostic response format
+- `UnifiedChunk`: Streaming chunk format
+- `UnifiedMessage`, `UnifiedRole`, `UnifiedContent`: Message components
+- `UnifiedTool`, `UnifiedToolChoice`: Tool calling structures
+
+Providers convert between protocol-specific formats and unified types in their `input.rs` and `output.rs` modules. See `/crates/llm/CLAUDE.md` for detailed implementation guidelines.
+
 ### Token Rate Limiting Configuration
 
 Nexus supports hierarchical token-based rate limiting for LLM providers. The configuration uses a `per_user` namespace to make it explicit that these are individual user limits (not shared pools).

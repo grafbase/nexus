@@ -1,6 +1,7 @@
-use std::fmt;
-
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::BTreeMap;
+use std::fmt;
 
 /// OpenAI-compatible chat completion request.
 ///
@@ -553,7 +554,7 @@ pub(crate) struct ChatChoiceDelta {
     /// - Alternative response exploration
     /// - Token-level debugging
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) logprobs: Option<sonic_rs::Value>,
+    pub(crate) logprobs: Option<sonic_rs::OwnedLazyValue>,
 }
 
 /// Incremental message content in a streaming chunk.
@@ -700,6 +701,69 @@ pub(crate) struct Tool {
     pub(crate) function: FunctionDefinition,
 }
 
+/// JSON Schema representation for function parameters.
+///
+/// This is a proper struct representation of JSON Schema that serializes transparently
+/// and allows for type-safe manipulation of schema fields.
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+pub struct JsonSchema {
+    /// The type of the schema (e.g., "object", "string", "number", etc.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) r#type: Option<String>,
+
+    /// Properties for object types
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) properties: Option<BTreeMap<String, JsonSchema>>,
+
+    /// Required properties for object types
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) required: Option<Vec<String>>,
+
+    /// Description of the schema
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) description: Option<String>,
+
+    /// Enum values for string types
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) r#enum: Option<Vec<String>>,
+
+    /// Format for string types (e.g., "date-time", "email")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) format: Option<String>,
+
+    /// Default value for the schema (any valid JSON type)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) default: Option<Value>,
+
+    /// Whether additional properties are allowed (not supported by Google)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) additional_properties: Option<bool>,
+
+    /// JSON Schema $schema field (not supported by Google)
+    #[serde(rename = "$schema", skip_serializing_if = "Option::is_none")]
+    pub(crate) schema: Option<String>,
+
+    /// Array items schema
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) items: Option<Box<JsonSchema>>,
+
+    /// Minimum value for numbers
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) minimum: Option<f64>,
+
+    /// Maximum value for numbers
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) maximum: Option<f64>,
+
+    /// Minimum length for strings
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) min_length: Option<usize>,
+
+    /// Maximum length for strings
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) max_length: Option<usize>,
+}
+
 /// Function definition for tool calling.
 ///
 /// Describes a function that the model can call, including its name,
@@ -713,7 +777,7 @@ pub(crate) struct FunctionDefinition {
     pub(crate) description: String,
 
     /// The parameters the function accepts, described as a JSON Schema object.
-    pub(crate) parameters: serde_json::Value,
+    pub(crate) parameters: JsonSchema,
 }
 
 /// Mode for tool choice behavior.
@@ -866,5 +930,54 @@ mod streaming_tool_call_tests {
         assert_eq!(parsed["arguments"], r#"{"location": "San Francisco"}"#);
         // The "name" field should NOT be present in delta chunks
         assert!(parsed.get("name").is_none());
+    }
+
+    #[test]
+    fn test_json_schema_serialization() {
+        // Create JsonSchema from JSON
+        let json_str = r#"{"type": "object", "properties": {}}"#;
+        let schema: JsonSchema = sonic_rs::from_str(json_str).unwrap();
+
+        let func_def = FunctionDefinition {
+            name: "test".to_string(),
+            description: "test function".to_string(),
+            parameters: schema,
+        };
+
+        // Test sonic_rs serialization
+        let json = sonic_rs::to_string(&func_def).unwrap();
+        println!("Sonic serialized FunctionDefinition: {}", json);
+
+        // Check if it contains "newtype"
+        assert!(!json.contains("newtype"), "JSON should not contain 'newtype': {}", json);
+
+        // Also check for "$serde_json"
+        assert!(
+            !json.contains("$serde_json"),
+            "JSON should not contain '$serde_json': {}",
+            json
+        );
+
+        // Check that parameters are properly serialized
+        let parsed: sonic_rs::Value = sonic_rs::from_str(&json).unwrap();
+        assert_eq!(parsed["parameters"]["type"], "object");
+
+        // Test roundtrip - can we deserialize it back?
+        let deserialized: FunctionDefinition = sonic_rs::from_str(&json).unwrap();
+        assert_eq!(deserialized.name, "test");
+        assert_eq!(deserialized.description, "test function");
+
+        // And can we serialize a Tool with this?
+        let tool = Tool {
+            tool_type: ToolCallType::Function,
+            function: func_def,
+        };
+        let tool_json = sonic_rs::to_string(&tool).unwrap();
+        println!("Sonic serialized Tool: {}", tool_json);
+        assert!(
+            !tool_json.contains("newtype"),
+            "Tool JSON should not contain 'newtype': {}",
+            tool_json
+        );
     }
 }
