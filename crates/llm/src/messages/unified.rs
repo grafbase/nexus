@@ -394,6 +394,16 @@ pub enum UnifiedContent {
     },
 }
 
+impl UnifiedContent {
+    /// Get the text content if this is a text block.
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            UnifiedContent::Text { text } => Some(text),
+            _ => None,
+        }
+    }
+}
+
 /// Tool execution result content.
 ///
 /// Efficiently represents tool output that can be either simple (single string)

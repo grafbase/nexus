@@ -70,30 +70,15 @@ pub struct OpenAIChoice {
     pub(super) finish_reason: Option<OpenAIFinishReason>,
 }
 
-impl From<OpenAIFinishReason> for openai::FinishReason {
+impl From<OpenAIFinishReason> for unified::UnifiedFinishReason {
     fn from(reason: OpenAIFinishReason) -> Self {
         match reason {
-            OpenAIFinishReason::Stop => openai::FinishReason::Stop,
-            OpenAIFinishReason::Length => openai::FinishReason::Length,
-            OpenAIFinishReason::ContentFilter => openai::FinishReason::ContentFilter,
-            OpenAIFinishReason::ToolCalls | OpenAIFinishReason::FunctionCall => openai::FinishReason::ToolCalls,
-            OpenAIFinishReason::Other(s) => {
-                log::debug!("Unknown finish reason from OpenAI: {s}");
-                openai::FinishReason::Other(s)
-            }
-        }
-    }
-}
-
-impl From<OpenAIChoice> for openai::ChatChoice {
-    fn from(choice: OpenAIChoice) -> Self {
-        Self {
-            index: choice.index,
-            message: choice.message,
-            finish_reason: choice
-                .finish_reason
-                .map(Into::into)
-                .unwrap_or(openai::FinishReason::Stop),
+            OpenAIFinishReason::Stop => unified::UnifiedFinishReason::Stop,
+            OpenAIFinishReason::Length => unified::UnifiedFinishReason::Length,
+            OpenAIFinishReason::ToolCalls | OpenAIFinishReason::FunctionCall => unified::UnifiedFinishReason::ToolCalls,
+            OpenAIFinishReason::ContentFilter => unified::UnifiedFinishReason::ContentFilter,
+            // Map any other finish reason to Stop as a safe default
+            OpenAIFinishReason::Other(_) => unified::UnifiedFinishReason::Stop,
         }
     }
 }
@@ -106,10 +91,7 @@ impl From<OpenAIResponse> for unified::UnifiedResponse {
             .choices
             .into_iter()
             .map(|choice| {
-                let finish_reason = choice.finish_reason.map(|reason| {
-                    let openai_reason: openai::FinishReason = reason.into();
-                    unified::UnifiedFinishReason::from(openai_reason)
-                });
+                let finish_reason = choice.finish_reason.map(unified::UnifiedFinishReason::from);
 
                 unified::UnifiedChoice {
                     index: choice.index,
@@ -186,6 +168,7 @@ pub struct OpenAIStreamChunk<'a> {
     /// This helps OpenAI track the exact model configuration used.
     /// Only present in some models and API versions.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[allow(dead_code)]
     pub(super) system_fingerprint: Option<Cow<'a, str>>,
 
     /// Token usage statistics.
@@ -236,6 +219,7 @@ pub struct OpenAIStreamChoice<'a> {
     /// - top_logprobs: Alternative tokens and their probabilities
     /// - text_offset: Character offsets in the text
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[allow(dead_code)]
     pub(super) logprobs: Option<sonic_rs::OwnedLazyValue>,
 }
 
@@ -288,59 +272,58 @@ pub struct OpenAIDelta<'a> {
     ///
     /// New integrations should use tool_calls instead.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[allow(dead_code)]
     pub(super) function_call: Option<sonic_rs::OwnedLazyValue>,
 }
 
-impl<'a> From<OpenAIDelta<'a>> for openai::ChatMessageDelta {
-    fn from(delta: OpenAIDelta<'a>) -> Self {
-        use crate::messages::openai::{StreamingFunctionCall, StreamingToolCall};
+impl<'a> From<OpenAIStreamChoice<'a>> for unified::UnifiedChoiceDelta {
+    fn from(choice: OpenAIStreamChoice<'a>) -> Self {
+        use crate::messages::openai::StreamingToolCall;
 
-        // Convert tool_calls from sonic_rs::Value to StreamingToolCall
-        let tool_calls = delta.tool_calls.map(|calls| {
+        // Convert tool_calls from OwnedLazyValue to StreamingToolCall
+        let tool_calls = choice.delta.tool_calls.map(|calls| {
             calls
                 .into_iter()
                 .filter_map(|call| {
-                    // Try to deserialize the Value into our enum
-                    sonic_rs::from_str::<StreamingToolCall>(&sonic_rs::to_string(&call).unwrap_or_default()).ok()
+                    // Deserialize from OwnedLazyValue - requires serialization
+                    sonic_rs::to_string(&call)
+                        .ok()
+                        .and_then(|s| sonic_rs::from_str::<StreamingToolCall>(&s).ok())
                 })
+                .map(unified::UnifiedStreamingToolCall::from)
                 .collect()
         });
 
-        // Convert function_call from sonic_rs::Value to StreamingFunctionCall
-        let function_call = delta.function_call.and_then(|call| {
-            sonic_rs::from_str::<StreamingFunctionCall>(&sonic_rs::to_string(&call).unwrap_or_default()).ok()
+        // Handle finish reason
+        let finish_reason = choice.finish_reason.and_then(|reason| {
+            match reason.as_ref() {
+                "stop" => Some(unified::UnifiedFinishReason::Stop),
+                "length" => Some(unified::UnifiedFinishReason::Length),
+                "tool_calls" | "function_call" => Some(unified::UnifiedFinishReason::ToolCalls),
+                "content_filter" => Some(unified::UnifiedFinishReason::ContentFilter),
+                // Map unknown finish reasons to Stop as a safe default
+                other if !other.is_empty() => {
+                    log::debug!("Unknown OpenAI finish reason: {}", other);
+                    Some(unified::UnifiedFinishReason::Stop)
+                }
+                _ => None,
+            }
         });
 
-        Self {
-            role: delta.role.map(|s| match s.as_ref() {
-                "assistant" => openai::ChatRole::Assistant,
-                "user" => openai::ChatRole::User,
-                "system" => openai::ChatRole::System,
-                other => openai::ChatRole::Other(other.to_string()),
-            }),
-            content: delta.content.map(|s| s.into_owned()),
-            tool_calls,
-            function_call,
-        }
-    }
-}
-
-impl<'a> From<OpenAIStreamChoice<'a>> for openai::ChatChoiceDelta {
-    fn from(choice: OpenAIStreamChoice<'a>) -> Self {
-        Self {
+        unified::UnifiedChoiceDelta {
             index: choice.index,
-            delta: choice.delta.into(),
-            finish_reason: choice.finish_reason.map(|s| {
-                // Parse finish reason string to enum
-                match s.as_ref() {
-                    "stop" => openai::FinishReason::Stop,
-                    "length" => openai::FinishReason::Length,
-                    "content_filter" => openai::FinishReason::ContentFilter,
-                    "tool_calls" | "function_call" => openai::FinishReason::ToolCalls,
-                    other => openai::FinishReason::Other(other.to_string()),
-                }
-            }),
-            logprobs: choice.logprobs,
+            delta: unified::UnifiedMessageDelta {
+                role: choice.delta.role.map(|r| match r.as_ref() {
+                    "assistant" => unified::UnifiedRole::Assistant,
+                    "user" => unified::UnifiedRole::User,
+                    "system" => unified::UnifiedRole::System,
+                    "tool" => unified::UnifiedRole::Tool,
+                    _ => unified::UnifiedRole::Assistant,
+                }),
+                content: choice.delta.content.map(|c| c.into_owned()),
+                tool_calls,
+            },
+            finish_reason,
         }
     }
 }
@@ -348,18 +331,20 @@ impl<'a> From<OpenAIStreamChoice<'a>> for openai::ChatChoiceDelta {
 impl<'a> OpenAIStreamChunk<'a> {
     /// Convert to UnifiedChunk with provider name prefix.
     pub fn into_chunk(self, provider_name: &str) -> unified::UnifiedChunk {
-        // First convert to OpenAI format
-        let openai_chunk = openai::ChatCompletionChunk {
-            id: self.id.into_owned(),
-            object: openai::ObjectType::ChatCompletionChunk,
+        unified::UnifiedChunk {
+            id: self.id.into_owned().into(),
+            model: format!("{provider_name}/{}", self.model).into(),
+            choices: self
+                .choices
+                .into_iter()
+                .map(unified::UnifiedChoiceDelta::from)
+                .collect(),
+            usage: self.usage.map(|u| unified::UnifiedUsage {
+                prompt_tokens: u.prompt_tokens,
+                completion_tokens: u.completion_tokens,
+                total_tokens: u.total_tokens,
+            }),
             created: self.created,
-            model: format!("{provider_name}/{}", self.model),
-            choices: self.choices.into_iter().map(Into::into).collect(),
-            system_fingerprint: self.system_fingerprint.map(|s| s.into_owned()),
-            usage: self.usage,
-        };
-
-        // Then convert to unified format
-        unified::UnifiedChunk::from(openai_chunk)
+        }
     }
 }

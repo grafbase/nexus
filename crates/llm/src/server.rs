@@ -18,7 +18,7 @@ use rate_limit::{TokenRateLimitManager, TokenRateLimitRequest};
 use crate::{
     error::LlmError,
     messages::{
-        openai::{ChatCompletionRequest, Model, ModelsResponse, ObjectType},
+        openai::{Model, ModelsResponse, ObjectType},
         unified::{UnifiedRequest, UnifiedResponse},
     },
     provider::{ChatCompletionStream, Provider},
@@ -140,9 +140,7 @@ impl LlmServer {
         );
 
         // Count request tokens (input only, no output buffering)
-        // Convert to OpenAI format for token counting since the counter uses OpenAI-specific logic
-        let openai_request = ChatCompletionRequest::from(request.clone());
-        let input_tokens = crate::token_counter::count_input_tokens(&openai_request);
+        let input_tokens = crate::token_counter::count_input_tokens(request);
 
         log::debug!("Token accounting: input={input_tokens} (output tokens not counted for rate limiting)",);
 
@@ -176,10 +174,12 @@ impl LlmServer {
         // Check token rate limits first
         self.check_and_enforce_rate_limit(&request, context).await?;
 
+        // Store the original model name before modification
+        let original_model = request.model.clone();
+
         // Extract provider name from the model string (format: "provider/model")
-        let model_string = request.model.clone();
-        let Some((provider_name, model_name)) = model_string.split_once('/') else {
-            return Err(LlmError::InvalidModelFormat(model_string));
+        let Some((provider_name, model_name)) = original_model.split_once('/') else {
+            return Err(LlmError::InvalidModelFormat(original_model));
         };
 
         let Some(provider) = self.get_provider(provider_name) else {
@@ -190,9 +190,6 @@ impl LlmServer {
 
             return Err(LlmError::ProviderNotFound(provider_name.to_string()));
         };
-
-        // Store the original model name before stripping the prefix
-        let original_model = request.model.clone();
 
         // Create a modified request with the stripped model name
         let mut modified_request = request;
@@ -217,10 +214,12 @@ impl LlmServer {
         // Check token rate limits first
         self.check_and_enforce_rate_limit(&request, context).await?;
 
+        // Store the original model name before modification
+        let original_model = request.model.clone();
+
         // Extract provider name from the model string (format: "provider/model")
-        let model_string = request.model.clone();
-        let Some((provider_name, model_name)) = model_string.split_once('/') else {
-            return Err(LlmError::InvalidModelFormat(model_string));
+        let Some((provider_name, model_name)) = original_model.split_once('/') else {
+            return Err(LlmError::InvalidModelFormat(original_model.clone()));
         };
 
         let Some(provider) = self.get_provider(provider_name) else {
@@ -237,9 +236,6 @@ impl LlmServer {
             log::debug!("Provider '{provider_name}' does not support streaming");
             return Err(LlmError::StreamingNotSupported);
         }
-
-        // Store the original model name for later
-        let original_model = request.model.clone();
 
         // Create a modified request with the stripped model name
         let mut modified_request = request;

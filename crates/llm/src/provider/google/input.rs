@@ -151,11 +151,12 @@ impl From<openai::Tool> for GoogleFunctionDeclaration {
         // We need to strip them from the parameters
         let cleaned_schema = strip_unsupported_schema_fields(tool.function.parameters);
 
-        // Convert the cleaned schema back to sonic_rs::Value for Google's API
-        let json = sonic_rs::to_string(&cleaned_schema).unwrap_or_else(|_| "{}".to_string());
-        let parameters = Some(
-            sonic_rs::from_str::<sonic_rs::OwnedLazyValue>(&json).unwrap_or_else(|_| sonic_rs::from_str("{}").unwrap()),
-        );
+        // Convert the cleaned schema to OwnedLazyValue
+        // We must serialize to string but at least use sonic_rs throughout
+        let parameters = sonic_rs::to_string(&cleaned_schema)
+            .ok()
+            .and_then(|s| sonic_rs::from_str::<sonic_rs::OwnedLazyValue>(&s).ok())
+            .or_else(|| Some(empty_owned_object()));
 
         Self {
             name: tool.function.name,
@@ -175,8 +176,10 @@ impl From<unified::UnifiedTool> for GoogleFunctionDeclaration {
         } = tool.function;
 
         let cleaned_schema = strip_unsupported_schema_fields(*parameters);
-        let json = sonic_rs::to_string(&cleaned_schema).unwrap_or_else(|_| "{}".to_string());
-        let parameters = Some(parse_owned_lazy(&json));
+        let parameters = sonic_rs::to_string(&cleaned_schema)
+            .ok()
+            .and_then(|s| sonic_rs::from_str::<sonic_rs::OwnedLazyValue>(&s).ok())
+            .or_else(|| Some(empty_owned_object()));
 
         Self {
             name,
@@ -263,18 +266,17 @@ fn empty_owned_object() -> sonic_rs::OwnedLazyValue {
     sonic_rs::from_str("{}").expect("static JSON object should parse")
 }
 
-fn parse_owned_lazy(json: &str) -> sonic_rs::OwnedLazyValue {
-    sonic_rs::from_str(json).unwrap_or_else(|_| empty_owned_object())
-}
-
 fn owned_lazy_from_serde(value: SerdeValue) -> sonic_rs::OwnedLazyValue {
-    let json_string = serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string());
-    parse_owned_lazy(json_string.as_str())
+    // Convert serde value to OwnedLazyValue - requires JSON serialization
+    sonic_rs::to_string(&value)
+        .ok()
+        .and_then(|s| sonic_rs::from_str(&s).ok())
+        .unwrap_or_else(empty_owned_object)
 }
 
 fn arguments_to_owned_lazy(arguments: unified::UnifiedArguments) -> sonic_rs::OwnedLazyValue {
     match arguments {
-        unified::UnifiedArguments::String(raw) => parse_owned_lazy(raw.as_str()),
+        unified::UnifiedArguments::String(raw) => sonic_rs::from_str(&raw).unwrap_or_else(|_| empty_owned_object()),
         unified::UnifiedArguments::Value(value) => owned_lazy_from_serde(value),
     }
 }
@@ -634,11 +636,8 @@ impl From<unified::UnifiedRequest> for GoogleGenerateRequest {
 
         // Convert tools
         let tools = tools.map(|tool_list| {
-
-            let function_declarations: Vec<GoogleFunctionDeclaration> = tool_list
-                .into_iter()
-                .map(GoogleFunctionDeclaration::from)
-                .collect();
+            let function_declarations: Vec<GoogleFunctionDeclaration> =
+                tool_list.into_iter().map(GoogleFunctionDeclaration::from).collect();
 
             vec![GoogleTool {
                 function_declarations: Some(function_declarations),

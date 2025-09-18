@@ -87,8 +87,7 @@ impl Provider for GoogleProvider {
         // Get the model config to access headers
         let model_config = self.model_manager.get_model_config(&model_name);
 
-        let temp_api_key = self.config.api_key.clone();
-        let api_key = token::get(self.config.forward_token, &temp_api_key, context)?;
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         let url = format!(
             "{}/models/{actual_model}:generateContent?key={}",
@@ -156,7 +155,6 @@ impl Provider for GoogleProvider {
             LlmError::InternalError(None)
         })?;
 
-
         // Try to parse the response
         let google_response: GoogleGenerateResponse = sonic_rs::from_str(&response_text).map_err(|e| {
             log::error!("Failed to parse Google chat completion response: {e}");
@@ -198,8 +196,7 @@ impl Provider for GoogleProvider {
         // Get the model config to access headers
         let model_config = self.model_manager.get_model_config(&model_name);
 
-        let temp_api_key = self.config.api_key.clone();
-        let api_key = token::get(self.config.forward_token, &temp_api_key, context)?;
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         let url = format!(
             "{}/models/{actual_model}:streamGenerateContent?alt=sse&key={}",

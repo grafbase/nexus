@@ -13,8 +13,29 @@ use std::borrow::Cow;
 use crate::messages::unified;
 
 fn document_to_serde(doc: &aws_smithy_types::Document) -> SerdeValue {
-    let rendered = document_to_string(doc);
-    serde_json::from_str(&rendered).unwrap_or_else(|_| SerdeValue::String(rendered))
+    use aws_smithy_types::{Document, Number};
+    use serde_json::Number as JsonNumber;
+
+    match doc {
+        Document::Null => SerdeValue::Null,
+        Document::Bool(b) => SerdeValue::Bool(*b),
+        Document::Number(n) => match n {
+            Number::PosInt(u) => SerdeValue::Number(JsonNumber::from(*u)),
+            Number::NegInt(i) => SerdeValue::Number(JsonNumber::from(*i)),
+            Number::Float(f) => {
+                if let Some(num) = JsonNumber::from_f64(*f) {
+                    SerdeValue::Number(num)
+                } else {
+                    SerdeValue::Null
+                }
+            }
+        },
+        Document::String(s) => SerdeValue::String(s.clone()),
+        Document::Array(arr) => SerdeValue::Array(arr.iter().map(document_to_serde).collect()),
+        Document::Object(obj) => {
+            SerdeValue::Object(obj.iter().map(|(k, v)| (k.clone(), document_to_serde(v))).collect())
+        }
+    }
 }
 
 fn convert_tool_result_block(block: &types::ToolResultBlock) -> unified::UnifiedContent {

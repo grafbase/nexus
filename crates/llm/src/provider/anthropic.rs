@@ -97,8 +97,7 @@ impl Provider for AnthropicProvider {
         context: &RequestContext,
     ) -> crate::Result<UnifiedResponse> {
         let url = format!("{}/messages", self.base_url);
-        let temp_api_key = self.config.api_key.clone();
-        let api_key = token::get(self.config.forward_token, &temp_api_key, context)?;
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         let original_model = request.model.clone();
 
@@ -193,8 +192,7 @@ impl Provider for AnthropicProvider {
         let model_config = self.model_manager.get_model_config(&request.model);
 
         request.model = actual_model;
-        let temp_api_key = self.config.api_key.clone();
-        let api_key = token::get(self.config.forward_token, &temp_api_key, context)?;
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         let mut anthropic_request = AnthropicRequest::from(request);
         anthropic_request.stream = Some(true);

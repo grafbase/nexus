@@ -80,16 +80,6 @@ async fn chat_completions(
         span_context.as_ref().map(|ext| ext.0),
     );
 
-    if let Some(ref client_identity) = context.client_identity {
-        log::debug!(
-            "Client identity extracted: client_id={}, group={:?}",
-            client_identity.client_id,
-            client_identity.group
-        );
-    } else {
-        log::debug!("No client identity found in request extensions");
-    }
-
     // Check if streaming is requested
     if request.stream.unwrap_or(false) {
         // Convert OpenAI request to unified format
@@ -172,16 +162,6 @@ async fn anthropic_messages(
         span_context.as_ref().map(|ext| ext.0),
     );
 
-    if let Some(ref client_identity) = context.client_identity {
-        log::debug!(
-            "Client identity extracted: client_id={}, group={:?}",
-            client_identity.client_id,
-            client_identity.group
-        );
-    } else {
-        log::debug!("No client identity found in request extensions");
-    }
-
     // Convert Anthropic request to unified format
     let unified_request = unified::UnifiedRequest::from(request);
 
@@ -212,6 +192,7 @@ async fn anthropic_messages(
 
         // Anthropic doesn't use [DONE] marker, just end the stream
         log::debug!("Returning Anthropic streaming response");
+
         Ok(Sse::new(event_stream).into_response())
     } else {
         // Non-streaming response - use unified types directly!

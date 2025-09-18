@@ -102,8 +102,7 @@ impl Provider for OpenAIProvider {
         let mut request_builder = self.request_builder(Method::POST, &url, context, model_config);
 
         // Add authorization header (can be overridden by header rules)
-        let temp_api_key = self.config.api_key.clone();
-        let key = token::get(self.config.forward_token, &temp_api_key, context)?;
+        let key = token::get(self.config.forward_token, &self.config.api_key, context)?;
         request_builder = request_builder.header(AUTHORIZATION, format!("Bearer {}", key.expose_secret()));
 
         // Serialize with sonic_rs to handle sonic_rs::Value fields properly
@@ -183,8 +182,7 @@ impl Provider for OpenAIProvider {
         openai_request.model = actual_model;
         openai_request.stream = true;
 
-        let temp_api_key = self.config.api_key.clone();
-        let key = token::get(self.config.forward_token, &temp_api_key, context)?;
+        let key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         // Use create_post_request to ensure headers are applied
         let mut request_builder = self.request_builder(Method::POST, &url, context, model_config);

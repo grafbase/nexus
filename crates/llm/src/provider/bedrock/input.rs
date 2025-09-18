@@ -207,6 +207,10 @@ impl ModelFamily {
 
 /// Convert sonic_rs::Value to aws_smithy_types::Document
 pub fn json_value_to_document(value: sonic_rs::Value) -> aws_smithy_types::Document {
+    json_value_to_document_ref(&value)
+}
+
+fn json_value_to_document_ref(value: &sonic_rs::Value) -> aws_smithy_types::Document {
     use sonic_rs::{JsonContainerTrait, JsonNumberTrait, JsonValueTrait};
 
     if value.is_null() {
@@ -226,11 +230,11 @@ pub fn json_value_to_document(value: sonic_rs::Value) -> aws_smithy_types::Docum
     } else if let Some(s) = value.as_str() {
         aws_smithy_types::Document::String(s.to_string())
     } else if let Some(arr) = value.as_array() {
-        aws_smithy_types::Document::Array(arr.iter().map(|v| json_value_to_document(v.clone())).collect())
+        aws_smithy_types::Document::Array(arr.iter().map(json_value_to_document_ref).collect())
     } else if let Some(obj) = value.as_object() {
         aws_smithy_types::Document::Object(
             obj.iter()
-                .map(|(k, v)| (k.to_string(), json_value_to_document(v.clone())))
+                .map(|(k, v)| (k.to_string(), json_value_to_document_ref(v)))
                 .collect(),
         )
     } else {
