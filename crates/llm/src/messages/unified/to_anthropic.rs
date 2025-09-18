@@ -1,11 +1,8 @@
 //! Conversions from unified types to Anthropic protocol types.
 
-use std::collections::HashSet;
-
 use serde_json::Value;
 
-use crate::messages::{anthropic, unified};
-use log::debug;
+use crate::messages::{anthropic, openai, unified};
 
 impl From<unified::UnifiedRequest> for anthropic::AnthropicChatRequest {
     fn from(req: unified::UnifiedRequest) -> Self {
@@ -15,6 +12,10 @@ impl From<unified::UnifiedRequest> for anthropic::AnthropicChatRequest {
             .into_iter()
             .map(anthropic::AnthropicMessage::from)
             .collect();
+
+        let tools = req
+            .tools
+            .map(|t| t.into_iter().map(anthropic::AnthropicTool::from).collect());
 
         Self {
             model: req.model,
@@ -26,9 +27,7 @@ impl From<unified::UnifiedRequest> for anthropic::AnthropicChatRequest {
             top_k: req.top_k,
             stop_sequences: req.stop_sequences,
             stream: req.stream,
-            tools: req
-                .tools
-                .map(|t| t.into_iter().map(anthropic::AnthropicTool::from).collect()),
+            tools,
             tool_choice: req.tool_choice.map(anthropic::AnthropicToolChoice::from),
             metadata: req.metadata.map(anthropic::AnthropicMetadata::from),
         }
@@ -47,128 +46,52 @@ impl From<unified::UnifiedRole> for anthropic::AnthropicRole {
     }
 }
 
+impl From<unified::UnifiedContent> for anthropic::AnthropicContent {
+    fn from(content: unified::UnifiedContent) -> Self {
+        match content {
+            unified::UnifiedContent::Text { text } => anthropic::AnthropicContent::Text { text },
+            unified::UnifiedContent::Image { source } => anthropic::AnthropicContent::Image {
+                source: anthropic::AnthropicImageSource::from(source),
+            },
+            unified::UnifiedContent::ToolUse { id, name, input } => {
+                anthropic::AnthropicContent::ToolUse { id, name, input }
+            }
+            unified::UnifiedContent::ToolResult {
+                tool_use_id,
+                content,
+                is_error: _, // Anthropic doesn't have is_error field
+            } => anthropic::AnthropicContent::ToolResult {
+                tool_use_id,
+                content: Vec::<anthropic::AnthropicToolResultContent>::from(content),
+            },
+        }
+    }
+}
+
 impl From<unified::UnifiedMessage> for anthropic::AnthropicMessage {
     fn from(msg: unified::UnifiedMessage) -> Self {
         let role = anthropic::AnthropicRole::from(msg.role);
 
-        log::debug!(
-            "Converting UnifiedMessage to AnthropicMessage - role: {:?}, has_tool_calls: {}",
-            role,
-            msg.tool_calls.is_some()
-        );
-
-        let content = match msg.content {
+        let mut content = match msg.content {
             unified::UnifiedContentContainer::Text(text) => vec![anthropic::AnthropicContent::Text { text }],
             unified::UnifiedContentContainer::Blocks(blocks) => {
-                log::debug!("Processing {} content blocks", blocks.len());
-                blocks
-                    .into_iter()
-                    .map(|block| match block {
-                        unified::UnifiedContent::Text { text } => anthropic::AnthropicContent::Text { text },
-                        unified::UnifiedContent::Image { source } => anthropic::AnthropicContent::Image {
-                            source: anthropic::AnthropicImageSource::from(source),
-                        },
-                        unified::UnifiedContent::ToolUse { id, name, input } => {
-                            log::debug!("Found ToolUse content block - id: {}, name: {}", id, name);
-                            anthropic::AnthropicContent::ToolUse { id, name, input }
-                        }
-                        unified::UnifiedContent::ToolResult {
-                            tool_use_id,
-                            content,
-                            is_error: _, // Anthropic doesn't have is_error field
-                        } => anthropic::AnthropicContent::ToolResult {
-                            tool_use_id,
-                            content: Vec::<anthropic::AnthropicToolResultContent>::from(content),
-                        },
-                    })
-                    .collect()
+                blocks.into_iter().map(anthropic::AnthropicContent::from).collect()
             }
         };
 
-        // First, deduplicate any tool_use blocks already in content
-        // Claude Code might send duplicate tool_use blocks
-        let mut seen_tool_ids = HashSet::new();
-        let mut deduplicated_content = Vec::new();
-        let original_count = content.len();
-
-        for block in content {
-            match &block {
-                anthropic::AnthropicContent::ToolUse { id, name, .. } => {
-                    if seen_tool_ids.insert(id.clone()) {
-                        // First time seeing this ID, keep it
-                        log::debug!("Keeping tool_use with id={id}, name={name}");
-                        deduplicated_content.push(block);
-                    } else {
-                        // Duplicate ID found, skip it
-                        log::debug!("Removing duplicate tool_use with id={id}, name={name}");
-                    }
-                }
-                _ => deduplicated_content.push(block),
-            }
-        }
-
-        if original_count != deduplicated_content.len() {
-            log::info!(
-                "Deduplicated content blocks: {} -> {} (removed {} duplicates)",
-                original_count,
-                deduplicated_content.len(),
-                original_count - deduplicated_content.len()
-            );
-        }
-
-        // Now add tool calls from the unified message if not already present
-        let mut final_content = deduplicated_content;
+        // Add tool calls from the unified message
         if let Some(tool_calls) = msg.tool_calls {
-            log::debug!("Processing {} tool_calls from unified message", tool_calls.len());
             for call in tool_calls {
-                if !seen_tool_ids.contains(&call.id) {
-                    log::debug!(
-                        "Adding tool_call as tool_use: id={}, name={}",
-                        call.id,
-                        call.function.name
-                    );
-                    final_content.push(anthropic::AnthropicContent::ToolUse {
-                        id: call.id,
-                        name: call.function.name,
-                        input: match call.function.arguments {
-                            unified::UnifiedArguments::String(s) => serde_json::from_str(&s).unwrap_or(Value::Null),
-                            unified::UnifiedArguments::Value(v) => v,
-                        },
-                    });
-                } else {
-                    log::debug!(
-                        "Skipping tool_call (already in content): id={}, name={}",
-                        call.id,
-                        call.function.name
-                    );
-                }
+                let input = Value::from(call.function.arguments);
+                content.push(anthropic::AnthropicContent::ToolUse {
+                    id: call.id,
+                    name: call.function.name,
+                    input,
+                });
             }
         }
 
-        // Log final tool_use blocks for debugging
-        let tool_use_count = final_content
-            .iter()
-            .filter(|c| matches!(c, anthropic::AnthropicContent::ToolUse { .. }))
-            .count();
-        if tool_use_count > 0 {
-            let tool_use_ids: Vec<String> = final_content
-                .iter()
-                .filter_map(|c| match c {
-                    anthropic::AnthropicContent::ToolUse { id, .. } => Some(id.clone()),
-                    _ => None,
-                })
-                .collect();
-            log::debug!(
-                "Final message has {} tool_use blocks with IDs: {:?}",
-                tool_use_count,
-                tool_use_ids
-            );
-        }
-
-        Self {
-            role,
-            content: final_content,
-        }
+        Self { role, content }
     }
 }
 
@@ -212,72 +135,12 @@ impl From<unified::UnifiedMetadata> for anthropic::AnthropicMetadata {
 impl From<unified::UnifiedResponse> for anthropic::AnthropicChatResponse {
     fn from(resp: unified::UnifiedResponse) -> Self {
         // Extract content from the first choice's message
-        let content = if let Some(choice) = resp.choices.first() {
-            let mut content_blocks = Vec::new();
-
-            // First handle regular content
-            match &choice.message.content {
-                unified::UnifiedContentContainer::Text(text) => {
-                    if !text.is_empty() {
-                        content_blocks.push(anthropic::AnthropicContent::Text { text: text.clone() });
-                    }
-                }
-                unified::UnifiedContentContainer::Blocks(blocks) => {
-                    for block in blocks {
-                        match block {
-                            unified::UnifiedContent::Text { text } => {
-                                content_blocks.push(anthropic::AnthropicContent::Text { text: text.clone() });
-                            }
-                            unified::UnifiedContent::Image { source } => {
-                                content_blocks.push(anthropic::AnthropicContent::Image {
-                                    source: anthropic::AnthropicImageSource::from(source.clone()),
-                                });
-                            }
-                            unified::UnifiedContent::ToolUse { id, name, input } => {
-                                content_blocks.push(anthropic::AnthropicContent::ToolUse {
-                                    id: id.clone(),
-                                    name: name.clone(),
-                                    input: input.clone(),
-                                });
-                            }
-                            unified::UnifiedContent::ToolResult { .. } => {
-                                // Tool results shouldn't appear in responses
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Now handle tool_calls from OpenAI format and convert to Anthropic ToolUse blocks
-            if let Some(tool_calls) = &choice.message.tool_calls {
-                for tool_call in tool_calls {
-                    let input_value = match &tool_call.function.arguments {
-                        unified::UnifiedArguments::String(s) => parse_argument_string(s),
-                        unified::UnifiedArguments::Value(v) => v.clone(),
-                    };
-                    let normalized_input = if input_value.is_null() {
-                        Value::Object(serde_json::Map::new())
-                    } else {
-                        input_value
-                    };
-
-                    debug!(
-                        "Anthropic conversion tool_use (non-streaming): id={} name={} input={:?}",
-                        tool_call.id, tool_call.function.name, normalized_input
-                    );
-
-                    content_blocks.push(anthropic::AnthropicContent::ToolUse {
-                        id: tool_call.id.clone(),
-                        name: tool_call.function.name.clone(),
-                        input: normalized_input,
-                    });
-                }
-            }
-
-            content_blocks
-        } else {
-            vec![]
-        };
+        let content = resp
+            .choices
+            .into_iter()
+            .next()
+            .map(|choice| build_content_blocks(choice.message))
+            .unwrap_or_default();
 
         Self {
             id: resp.id,
@@ -300,69 +163,114 @@ impl From<unified::UnifiedResponse> for anthropic::AnthropicChatResponse {
     }
 }
 
-impl From<unified::UnifiedChunk> for anthropic::AnthropicStreamEvent {
-    fn from(chunk: unified::UnifiedChunk) -> Self {
-        // For simplicity, we'll convert unified chunks to content block deltas
-        // A more complete implementation would track message state and send proper events
-        if let Some(choice) = chunk.choices.first() {
-            if let Some(ref content) = choice.delta.content {
-                anthropic::AnthropicStreamEvent::ContentBlockDelta {
-                    index: choice.index,
-                    delta: anthropic::AnthropicContentDelta::TextDelta { text: content.clone() },
+fn build_content_blocks(message: unified::UnifiedMessage) -> Vec<anthropic::AnthropicContent> {
+    let mut content_blocks = Vec::new();
+
+    // Handle regular content
+    match message.content {
+        unified::UnifiedContentContainer::Text(text) if !text.is_empty() => {
+            content_blocks.push(anthropic::AnthropicContent::Text { text });
+        }
+        unified::UnifiedContentContainer::Blocks(blocks) => {
+            content_blocks.extend(blocks.into_iter().filter_map(|block| match block {
+                unified::UnifiedContent::Text { text } => Some(anthropic::AnthropicContent::Text { text }),
+                unified::UnifiedContent::Image { source } => Some(anthropic::AnthropicContent::Image {
+                    source: anthropic::AnthropicImageSource::from(source),
+                }),
+                unified::UnifiedContent::ToolUse { id, name, input } => {
+                    Some(anthropic::AnthropicContent::ToolUse { id, name, input })
                 }
-            } else if let Some(tool_calls) = &choice.delta.tool_calls {
-                // Convert tool calls to tool use events
-                if let Some(tool_call) = tool_calls.first() {
-                    match tool_call {
-                        unified::UnifiedStreamingToolCall::Start { index, id, function } => {
-                            let parsed = parse_argument_string(function.arguments.as_str());
-                            let normalized = if parsed.is_null() {
-                                Value::Object(serde_json::Map::new())
-                            } else {
-                                parsed
-                            };
-                            debug!(
-                                "Anthropic conversion tool_use (streaming start): id={} name={} input={:?}",
-                                id, function.name, normalized
-                            );
-                            anthropic::AnthropicStreamEvent::ContentBlockStart {
-                                index: *index as u32,
-                                content_block: anthropic::AnthropicContent::ToolUse {
-                                    id: id.clone(),
-                                    name: function.name.clone(),
-                                    input: normalized,
-                                },
-                            }
-                        }
-                        unified::UnifiedStreamingToolCall::Delta { index, function } => {
-                            anthropic::AnthropicStreamEvent::ContentBlockDelta {
-                                index: *index as u32,
-                                delta: anthropic::AnthropicContentDelta::InputJsonDelta {
-                                    partial_json: function.arguments.clone(),
-                                },
-                            }
-                        }
-                    }
-                } else {
-                    // Fallback for empty tool calls
-                    anthropic::AnthropicStreamEvent::Ping
+                unified::UnifiedContent::ToolResult { .. } => None, // Tool results shouldn't appear in responses
+            }));
+        }
+        _ => {}
+    }
+
+    // Handle tool_calls from OpenAI format and convert to Anthropic ToolUse blocks
+    if let Some(tool_calls) = message.tool_calls {
+        for tool_call in tool_calls {
+            let input = normalize_tool_input(Value::from(tool_call.function.arguments));
+            content_blocks.push(anthropic::AnthropicContent::ToolUse {
+                id: tool_call.id,
+                name: tool_call.function.name,
+                input,
+            });
+        }
+    }
+
+    content_blocks
+}
+
+fn normalize_tool_input(input: Value) -> Value {
+    if input.is_null() {
+        Value::Object(serde_json::Map::new())
+    } else {
+        input
+    }
+}
+
+impl From<unified::UnifiedStreamingToolCall> for anthropic::AnthropicStreamEvent {
+    fn from(value: unified::UnifiedStreamingToolCall) -> Self {
+        match value {
+            unified::UnifiedStreamingToolCall::Start { index, id, function } => {
+                let input = normalize_tool_input(parse_argument_string(&function.arguments));
+                anthropic::AnthropicStreamEvent::ContentBlockStart {
+                    index: index as u32,
+                    content_block: anthropic::AnthropicContent::ToolUse {
+                        id,
+                        name: function.name,
+                        input,
+                    },
                 }
-            } else {
-                // No content or tool calls, send ping to keep connection alive
-                anthropic::AnthropicStreamEvent::Ping
             }
-        } else {
-            // No choices, send ping
-            anthropic::AnthropicStreamEvent::Ping
+            unified::UnifiedStreamingToolCall::Delta { index, function } => {
+                anthropic::AnthropicStreamEvent::ContentBlockDelta {
+                    index: index as u32,
+                    delta: anthropic::AnthropicContentDelta::InputJsonDelta {
+                        partial_json: function.arguments,
+                    },
+                }
+            }
         }
     }
 }
 
+impl From<unified::UnifiedChunk> for anthropic::AnthropicStreamEvent {
+    fn from(chunk: unified::UnifiedChunk) -> Self {
+        let Some(choice) = chunk.choices.into_iter().next() else {
+            return anthropic::AnthropicStreamEvent::Ping;
+        };
+
+        // Handle text content
+        if let Some(content) = choice.delta.content {
+            return anthropic::AnthropicStreamEvent::ContentBlockDelta {
+                index: choice.index,
+                delta: anthropic::AnthropicContentDelta::TextDelta { text: content },
+            };
+        }
+
+        // Handle tool calls
+        if let Some(tool_calls) = choice.delta.tool_calls
+            && let Some(tool_call) = tool_calls.into_iter().next()
+        {
+            return anthropic::AnthropicStreamEvent::from(tool_call);
+        }
+
+        // No content or tool calls, send ping
+        anthropic::AnthropicStreamEvent::Ping
+    }
+}
+
 fn parse_argument_string(raw: &str) -> Value {
+    // Handle empty string case - return empty object instead of trying to parse
+    if raw.is_empty() {
+        return Value::Object(serde_json::Map::new());
+    }
+
     match serde_json::from_str(raw) {
         Ok(value) => value,
-        Err(err) => {
-            debug!("Anthropic tool_use argument fallback to string: error={err} raw={raw}");
+        Err(_) => {
+            // For non-empty invalid JSON, keep as string
             Value::String(raw.to_string())
         }
     }
@@ -392,19 +300,21 @@ impl From<unified::UnifiedModelsResponse> for anthropic::AnthropicModelsResponse
     }
 }
 
-impl From<crate::messages::openai::Model> for anthropic::AnthropicModel {
-    fn from(openai_model: crate::messages::openai::Model) -> Self {
+impl From<openai::Model> for anthropic::AnthropicModel {
+    fn from(openai_model: openai::Model) -> Self {
+        let display_name = openai_model.id.clone();
+
         Self {
-            id: openai_model.id.clone(),
+            id: openai_model.id,
             model_type: "model".to_string(),
-            display_name: openai_model.id,
+            display_name,
             created_at: openai_model.created,
         }
     }
 }
 
-impl From<crate::messages::openai::ModelsResponse> for anthropic::AnthropicModelsResponse {
-    fn from(openai_response: crate::messages::openai::ModelsResponse) -> Self {
+impl From<openai::ModelsResponse> for anthropic::AnthropicModelsResponse {
+    fn from(openai_response: openai::ModelsResponse) -> Self {
         Self {
             data: openai_response
                 .data
@@ -467,6 +377,13 @@ mod tests {
         let raw = r#"{"command": "echo "hello""}"#;
         let value = super::parse_argument_string(raw);
         assert!(matches!(value, Value::String(s) if s == raw));
+    }
+
+    #[test]
+    fn parse_argument_string_handles_empty_string() {
+        let value = super::parse_argument_string("");
+        assert!(value.is_object());
+        assert_eq!(value, json!({}));
     }
 
     #[test]

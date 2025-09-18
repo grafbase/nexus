@@ -102,16 +102,16 @@ impl Provider for GoogleProvider {
         // Convert to Google format
         let google_request = GoogleGenerateRequest::from(request);
 
-        // Log the Google request for debugging
+        // Log the request for debugging Google 500 errors
         log::debug!("Sending request to Google API at URL: {}", url);
-        if let Ok(json) = sonic_rs::to_string_pretty(&google_request) {
-            // Truncate for readability if too long
-            let preview = if json.len() > 3000 {
-                format!("{}... (truncated, {} bytes total)", &json[..3000], json.len())
+        if let Ok(json) = sonic_rs::to_string(&google_request) {
+            // Only log first part to avoid noise
+            let preview = if json.len() > 1000 {
+                format!("{}... (truncated, {} bytes total)", &json[..1000], json.len())
             } else {
                 json
             };
-            log::debug!("Google API request body:\n{}", preview);
+            log::debug!("Google API request: {}", preview);
         }
 
         // Use create_post_request to ensure headers are applied
@@ -156,12 +156,6 @@ impl Provider for GoogleProvider {
             LlmError::InternalError(None)
         })?;
 
-        // Log the actual response for debugging
-        if response_text.len() < 1000 {
-            log::debug!("Google API response: {}", response_text);
-        } else {
-            log::debug!("Google API response (first 1000 chars): {}...", &response_text[..1000]);
-        }
 
         // Try to parse the response
         let google_response: GoogleGenerateResponse = sonic_rs::from_str(&response_text).map_err(|e| {

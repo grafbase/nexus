@@ -634,21 +634,10 @@ impl From<unified::UnifiedRequest> for GoogleGenerateRequest {
 
         // Convert tools
         let tools = tools.map(|tool_list| {
-            let tool_count = tool_list.len();
-            log::debug!("Converting {} tools to Google format", tool_count);
 
             let function_declarations: Vec<GoogleFunctionDeclaration> = tool_list
                 .into_iter()
-                .map(|tool| {
-                    let declaration = GoogleFunctionDeclaration::from(tool);
-                    log::debug!(
-                        "Converted tool '{}' with parameters: {}",
-                        declaration.name,
-                        sonic_rs::to_string(&declaration.parameters)
-                            .unwrap_or_else(|_| "<serialization failed>".to_string())
-                    );
-                    declaration
-                })
+                .map(GoogleFunctionDeclaration::from)
                 .collect();
 
             vec![GoogleTool {
@@ -661,11 +650,9 @@ impl From<unified::UnifiedRequest> for GoogleGenerateRequest {
             let (mode, allowed_names) = match choice {
                 unified::UnifiedToolChoice::Mode(mode) => {
                     let google_mode = GoogleFunctionCallingMode::from(mode);
-                    log::debug!("Tool choice mode mapped to {:?}", google_mode);
                     (google_mode, None)
                 }
                 unified::UnifiedToolChoice::Specific { function } => {
-                    log::debug!("Tool choice specific function: {}", function.name);
                     (GoogleFunctionCallingMode::Any, Some(vec![function.name]))
                 }
             };
@@ -698,21 +685,13 @@ impl From<unified::UnifiedRequest> for GoogleGenerateRequest {
             system_instruction,
         };
 
+        // Debug log for troubleshooting Google 500 errors
         log::debug!(
-            "Final Google request - has tools: {}, has tool_config: {}, contents count: {}",
+            "Google request structure - contents: {}, has_tools: {}, has_system: {}",
+            result.contents.len(),
             result.tools.is_some(),
-            result.tool_config.is_some(),
-            result.contents.len()
+            result.system_instruction.is_some()
         );
-
-        if let Ok(json) = sonic_rs::to_string(&result) {
-            let preview = if json.len() > 2000 {
-                format!("{}... (truncated, {} bytes total)", &json[..2000], json.len())
-            } else {
-                json
-            };
-            log::debug!("Complete Google request JSON: {}", preview);
-        }
 
         result
     }

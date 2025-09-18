@@ -393,6 +393,37 @@ impl<'a> OpenAICompletionsStreamRequest<'a> {
         self
     }
 
+    /// Send the request and return status code and body (for error testing)
+    pub async fn send_raw(self) -> (u16, serde_json::Value) {
+        let openai_path = &self.test_server.config.llm.protocols.openai.path;
+        let url = format!("http://{}{}/v1/chat/completions", self.test_server.address, openai_path);
+
+        // Ensure streaming is enabled
+        let mut request = self.request;
+        request["stream"] = json!(true);
+
+        let mut request_builder = self.test_server.client.client.post(&url).json(&request);
+
+        // Add all headers to the request
+        for (key, value) in &self.headers {
+            if let Ok(value) = value.to_str() {
+                request_builder = request_builder.header(key.as_str(), value);
+            }
+        }
+
+        let response = request_builder.send().await.unwrap();
+        let status = response.status().as_u16();
+
+        // Check if response has a body
+        let body = if response.content_length().unwrap_or(0) > 0 {
+            response.json::<serde_json::Value>().await.unwrap_or(json!(null))
+        } else {
+            json!(null)
+        };
+
+        (status, body)
+    }
+
     /// Send the request and return streaming chunks
     pub async fn send(self) -> Vec<serde_json::Value> {
         use eventsource_stream::Eventsource;
@@ -466,6 +497,35 @@ impl<'a> AnthropicCompletionsRequest<'a> {
         self
     }
 
+    /// Send the request and return status code and body (for error testing)
+    pub async fn send_raw(self) -> (u16, serde_json::Value) {
+        let anthropic_path = &self.test_server.config.llm.protocols.anthropic.path;
+        let url = format!("http://{}{}/v1/messages", self.test_server.address, anthropic_path);
+
+        // Convert serde_json::Value to JSON string using sonic_rs for compatibility
+        let json_string = sonic_rs::to_string(&self.request).unwrap();
+        let mut request_builder = self
+            .test_server
+            .client
+            .client
+            .post(&url)
+            .header("content-type", "application/json")
+            .body(json_string);
+
+        // Add all headers to the request
+        for (key, value) in &self.headers {
+            if let Ok(value) = value.to_str() {
+                request_builder = request_builder.header(key.as_str(), value);
+            }
+        }
+
+        let response = request_builder.send().await.unwrap();
+        let status = response.status().as_u16();
+        let body = response.json().await.unwrap();
+
+        (status, body)
+    }
+
     /// Send the request and return the response
     pub async fn send(self) -> serde_json::Value {
         let anthropic_path = &self.test_server.config.llm.protocols.anthropic.path;
@@ -518,6 +578,45 @@ impl<'a> AnthropicCompletionsStreamRequest<'a> {
         let header_value = HeaderValue::from_str(value).unwrap();
         self.headers.insert(header_name, header_value);
         self
+    }
+
+    /// Send the request and return status code and body (for error testing)
+    pub async fn send_raw(self) -> (u16, serde_json::Value) {
+        let anthropic_path = &self.test_server.config.llm.protocols.anthropic.path;
+        let url = format!("http://{}{}/v1/messages", self.test_server.address, anthropic_path);
+
+        // Ensure streaming is enabled
+        let mut request = self.request;
+        request["stream"] = json!(true);
+
+        // Convert serde_json::Value to JSON string using sonic_rs for compatibility
+        let json_string = sonic_rs::to_string(&request).unwrap();
+        let mut request_builder = self
+            .test_server
+            .client
+            .client
+            .post(&url)
+            .header("content-type", "application/json")
+            .body(json_string);
+
+        // Add all headers to the request
+        for (key, value) in &self.headers {
+            if let Ok(value) = value.to_str() {
+                request_builder = request_builder.header(key.as_str(), value);
+            }
+        }
+
+        let response = request_builder.send().await.unwrap();
+        let status = response.status().as_u16();
+
+        // Check if response has a body
+        let body = if response.content_length().unwrap_or(0) > 0 {
+            response.json::<serde_json::Value>().await.unwrap_or(json!(null))
+        } else {
+            json!(null)
+        };
+
+        (status, body)
     }
 
     /// Send the request and return streaming chunks

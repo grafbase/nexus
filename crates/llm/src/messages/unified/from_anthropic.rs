@@ -5,7 +5,6 @@ use std::borrow::Cow;
 
 impl From<anthropic::AnthropicChatRequest> for unified::UnifiedRequest {
     fn from(req: anthropic::AnthropicChatRequest) -> Self {
-        // Move all data - no clones!
         Self {
             model: req.model,
             messages: req.messages.into_iter().map(unified::UnifiedMessage::from).collect(),
@@ -237,7 +236,7 @@ impl From<anthropic::AnthropicStopReason> for unified::UnifiedStopReason {
 impl From<anthropic::AnthropicModel> for unified::UnifiedModel {
     fn from(model: anthropic::AnthropicModel) -> Self {
         Self {
-            id: model.id.clone(),
+            id: model.id,
             object_type: unified::UnifiedObjectType::Model,
             display_name: model.display_name,
             created: model.created_at,

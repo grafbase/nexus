@@ -123,8 +123,14 @@ async fn endpoint_public_access() {
     assert_eq!(response.headers().get("content-type").unwrap(), "application/json");
 
     let metadata: OAuthProtectedResourceMetadata = response.json().await.unwrap();
-    assert_eq!(metadata.resource, "http://127.0.0.1:8080/");
-    assert_eq!(metadata.authorization_servers.len(), 1);
+    insta::assert_json_snapshot!(metadata, @r#"
+    {
+      "resource": "http://127.0.0.1:8080/",
+      "authorization_servers": [
+        "http://127.0.0.1:4444/"
+      ]
+    }
+    "#);
 }
 
 #[tokio::test]

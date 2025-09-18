@@ -115,7 +115,7 @@ url = "https://api.githubcopilot.com/mcp/"
 auth.token = "{{ env.GITHUB_TOKEN }}"
 
 [mcp.servers.filesystem]
-cmd = ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/Users/YOUR_USERNAME/Desktop"]
+cmd = ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/home/YOUR_USERNAME/Desktop"]
 
 [mcp.servers.python_server]
 cmd = ["python", "-m", "mcp_server"]
@@ -1327,7 +1327,7 @@ Nexus provides comprehensive observability through OpenTelemetry metrics, distri
 
 **Telemetry activation is controlled by exporters configuration:**
 - **Metrics**: Enabled when OTLP exporters are configured
-- **Tracing**: Enabled when OTLP exporters are configured  
+- **Tracing**: Enabled when OTLP exporters are configured
 - **Logs**: Enabled when OTLP exporters are configured
 
 Each telemetry signal (metrics, tracing, logs) can override the global exporters configuration with their own specific exporters.

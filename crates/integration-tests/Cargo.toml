@@ -38,8 +38,8 @@ rmcp = { workspace = true, features = [
 rustls.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-sonic-rs.workspace = true
 server.workspace = true
+sonic-rs.workspace = true
 telemetry.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full"] }

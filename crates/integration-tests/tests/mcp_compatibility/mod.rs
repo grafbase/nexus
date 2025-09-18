@@ -21,7 +21,16 @@ async fn search_structured_content_enabled_by_default() {
     // Search for the tool
     let search_results = client.search(&["adder"]).await;
     assert!(!search_results.is_empty());
-    assert_eq!(search_results[0]["name"], "test_server__adder");
+    insta::assert_json_snapshot!(search_results, @r###"
+    [
+      {
+        "server_name": "test_server",
+        "name": "test_server__adder",
+        "description": "Adds two numbers together",
+        "score": 1.0
+      }
+    ]
+    "###);
 
     // Verify the underlying response structure uses structuredContent
     // We can't directly inspect the raw response in the high-level API,
@@ -47,7 +56,16 @@ async fn search_legacy_content_json_mode() {
     // Search for the tool - should work with legacy format
     let search_results = client.search(&["adder"]).await;
     assert!(!search_results.is_empty());
-    assert_eq!(search_results[0]["name"], "test_server__adder");
+    insta::assert_json_snapshot!(search_results, @r###"
+    [
+      {
+        "server_name": "test_server",
+        "name": "test_server__adder",
+        "description": "Adds two numbers together",
+        "score": 1.0
+      }
+    ]
+    "###);
 }
 
 #[tokio::test]
@@ -97,8 +115,16 @@ async fn test_client_search_handles_both_formats() {
         // High-level search method should work regardless of format
         let results = client.search(&["adder"]).await;
         assert!(!results.is_empty());
-        assert_eq!(results[0]["name"], "test_server__adder");
-        assert_eq!(results[0]["description"], "Adds two numbers together");
+        insta::assert_json_snapshot!(results, @r###"
+        [
+          {
+            "server_name": "test_server",
+            "name": "test_server__adder",
+            "description": "Adds two numbers together",
+            "score": 1.0
+          }
+        ]
+        "###);
     }
 }
 

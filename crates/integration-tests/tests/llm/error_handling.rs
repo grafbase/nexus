@@ -186,16 +186,19 @@ async fn streaming_mock_not_implemented_returns_error() {
 
     // The error message depends on whether we fail at mock level or stream parsing
     if body["error"]["code"] == 400 {
-        assert_eq!(body["error"]["type"], "invalid_request_error");
-        assert!(
-            body["error"]["message"]
-                .as_str()
-                .unwrap()
-                .contains("Streaming is not yet supported")
-        );
+        insta::assert_json_snapshot!(body, @r#"
+        {
+          "error": {
+            "message": "Invalid request: Streaming is not yet supported",
+            "type": "invalid_request_error",
+            "code": 400
+          }
+        }
+        "#);
     } else {
-        assert_eq!(body["error"]["code"], 502);
-        assert_eq!(body["error"]["type"], "api_error");
+        // Check that it's a 502 api_error
+        assert_eq!(status, 502);
+        assert!(body["error"]["type"].as_str() == Some("api_error"));
     }
 }
 
