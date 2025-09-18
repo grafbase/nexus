@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::messages::{openai, unified};
+use crate::messages::unified;
 
 /// Describes the type of content in an Anthropic message.
 ///
@@ -26,6 +26,13 @@ pub enum ContentType {
     /// Captures the actual string value for forward compatibility.
     #[serde(untagged)]
     Other(String),
+}
+
+/// Anthropic message role in responses.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AnthropicRole {
+    Assistant,
 }
 
 /// The reason why the model stopped generating tokens.
@@ -85,7 +92,8 @@ pub struct AnthropicResponse {
 
     /// Conversational role of the generated message.
     /// This will always be "assistant".
-    pub role: openai::ChatRole,
+    #[allow(dead_code)]
+    pub role: AnthropicRole,
 
     /// Content blocks in the response.
     /// Each block contains a portion of the response with its type.
@@ -149,95 +157,19 @@ pub struct AnthropicUsage {
     pub output_tokens: i32,
 }
 
-impl From<StopReason> for openai::FinishReason {
+impl From<StopReason> for unified::UnifiedFinishReason {
     fn from(reason: StopReason) -> Self {
         match reason {
-            StopReason::EndTurn => openai::FinishReason::Stop,
-            StopReason::MaxTokens => openai::FinishReason::Length,
-            StopReason::StopSequence => openai::FinishReason::Stop,
-            StopReason::ToolUse => openai::FinishReason::ToolCalls,
-            StopReason::PauseTurn => openai::FinishReason::Other("pause".to_string()),
-            StopReason::Refusal => openai::FinishReason::ContentFilter,
+            StopReason::EndTurn => unified::UnifiedFinishReason::Stop,
+            StopReason::MaxTokens => unified::UnifiedFinishReason::Length,
+            StopReason::StopSequence => unified::UnifiedFinishReason::Stop,
+            StopReason::ToolUse => unified::UnifiedFinishReason::ToolCalls,
+            StopReason::PauseTurn => unified::UnifiedFinishReason::Stop, // Map pause to stop
+            StopReason::Refusal => unified::UnifiedFinishReason::ContentFilter,
             StopReason::Other(s) => {
-                log::warn!("Unknown stop reason from Anthropic: {s}");
-                openai::FinishReason::Other(s)
+                log::warn!("Unknown stop reason from Anthropic: {s}, mapping to stop");
+                unified::UnifiedFinishReason::Stop
             }
-        }
-    }
-}
-
-impl From<AnthropicResponse> for openai::ChatCompletionResponse {
-    fn from(response: AnthropicResponse) -> Self {
-        // Extract text content
-        let message_content = response
-            .content
-            .iter()
-            .filter_map(|c| match &c.r#type {
-                ContentType::Text => c.text.clone(),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("");
-
-        // Extract tool calls
-        let tool_calls: Vec<openai::ToolCall> = response
-            .content
-            .iter()
-            .filter_map(|c| match &c.r#type {
-                ContentType::ToolUse => Some(openai::ToolCall {
-                    id: c
-                        .id
-                        .clone()
-                        .unwrap_or_else(|| format!("toolu_{}", uuid::Uuid::new_v4())),
-                    tool_type: openai::ToolCallType::Function,
-                    function: openai::FunctionCall {
-                        name: c.name.clone().unwrap_or_default(),
-                        arguments: c
-                            .input
-                            .as_ref()
-                            .map(|v| serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string()))
-                            .unwrap_or_else(|| "{}".to_string()),
-                    },
-                }),
-                _ => None,
-            })
-            .collect();
-
-        // Determine if we have content or tool calls
-        let content = if message_content.is_empty() {
-            None
-        } else {
-            Some(message_content)
-        };
-
-        let tool_calls_opt = if tool_calls.is_empty() { None } else { Some(tool_calls) };
-
-        Self {
-            id: response.id,
-            object: openai::ObjectType::ChatCompletion,
-            created: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
-            model: String::new(), // Will be set by the provider
-            choices: vec![openai::ChatChoice {
-                index: 0,
-                message: openai::ChatMessage {
-                    role: response.role,
-                    content,
-                    tool_calls: tool_calls_opt,
-                    tool_call_id: None,
-                },
-                finish_reason: response
-                    .stop_reason
-                    .map(Into::into)
-                    .unwrap_or(openai::FinishReason::Stop),
-            }],
-            usage: openai::Usage {
-                prompt_tokens: response.usage.input_tokens as u32,
-                completion_tokens: response.usage.output_tokens as u32,
-                total_tokens: (response.usage.input_tokens + response.usage.output_tokens) as u32,
-            },
         }
     }
 }
@@ -604,7 +536,7 @@ impl AnthropicStreamProcessor {
         }
     }
 
-    /// Process an Anthropic stream event and convert to OpenAI-compatible chunk if applicable.
+    /// Process an Anthropic stream event and convert to UnifiedChunk if applicable.
     pub fn process_event(&mut self, event: AnthropicStreamEvent<'_>) -> Option<unified::UnifiedChunk> {
         match event {
             AnthropicStreamEvent::MessageStart { message } => {
@@ -614,25 +546,21 @@ impl AnthropicStreamProcessor {
                 self.usage = Some(message.usage);
 
                 // Emit initial chunk with role
-                Some(unified::UnifiedChunk::from(openai::ChatCompletionChunk {
-                    id: self.message_id.clone().unwrap_or_default(),
-                    object: openai::ObjectType::ChatCompletionChunk,
-                    created: self.created,
-                    model: self.model.clone().unwrap_or_default(),
-                    choices: vec![openai::ChatChoiceDelta {
+                Some(unified::UnifiedChunk {
+                    id: self.message_id.clone().unwrap_or_default().into(),
+                    model: self.model.clone().unwrap_or_default().into(),
+                    choices: vec![unified::UnifiedChoiceDelta {
                         index: 0,
-                        delta: openai::ChatMessageDelta {
-                            role: Some(openai::ChatRole::Assistant),
+                        delta: unified::UnifiedMessageDelta {
+                            role: Some(unified::UnifiedRole::Assistant),
                             content: None,
                             tool_calls: None,
-                            function_call: None,
                         },
                         finish_reason: None,
-                        logprobs: None,
                     }],
-                    system_fingerprint: None,
                     usage: None,
-                }))
+                    created: self.created,
+                })
             }
 
             AnthropicStreamEvent::ContentBlockStart { index, content_block } => {
@@ -648,35 +576,30 @@ impl AnthropicStreamProcessor {
                         self.current_tool_calls.insert(index, tool_call.clone());
 
                         // Emit tool call start chunk
-                        let tool_call_value = openai::StreamingToolCall::Start {
+                        let tool_call_value = unified::UnifiedStreamingToolCall::Start {
                             index: 0,
                             id: tool_call.id.unwrap_or_default(),
-                            r#type: openai::ToolCallType::Function,
-                            function: openai::FunctionStart {
+                            function: unified::UnifiedFunctionStart {
                                 name: tool_call.name.unwrap_or_default(),
                                 arguments: String::new(),
                             },
                         };
 
-                        Some(unified::UnifiedChunk::from(openai::ChatCompletionChunk {
-                            id: self.message_id.clone().unwrap_or_default(),
-                            object: openai::ObjectType::ChatCompletionChunk,
-                            created: self.created,
-                            model: self.model.clone().unwrap_or_default(),
-                            choices: vec![openai::ChatChoiceDelta {
+                        Some(unified::UnifiedChunk {
+                            id: self.message_id.clone().unwrap_or_default().into(),
+                            model: self.model.clone().unwrap_or_default().into(),
+                            choices: vec![unified::UnifiedChoiceDelta {
                                 index: 0,
-                                delta: openai::ChatMessageDelta {
+                                delta: unified::UnifiedMessageDelta {
                                     role: None,
                                     content: None,
                                     tool_calls: Some(vec![tool_call_value]),
-                                    function_call: None,
                                 },
                                 finish_reason: None,
-                                logprobs: None,
                             }],
-                            system_fingerprint: None,
                             usage: None,
-                        }))
+                            created: self.created,
+                        })
                     }
                     AnthropicContentBlock::Text { .. } => {
                         // For text blocks, we don't emit anything at start
@@ -691,25 +614,21 @@ impl AnthropicStreamProcessor {
                         // Handle text content
                         self.current_text.push_str(&text);
 
-                        Some(unified::UnifiedChunk::from(openai::ChatCompletionChunk {
-                            id: self.message_id.clone().unwrap_or_default(),
-                            object: openai::ObjectType::ChatCompletionChunk,
-                            created: self.created,
-                            model: self.model.clone().unwrap_or_default(),
-                            choices: vec![openai::ChatChoiceDelta {
+                        Some(unified::UnifiedChunk {
+                            id: self.message_id.clone().unwrap_or_default().into(),
+                            model: self.model.clone().unwrap_or_default().into(),
+                            choices: vec![unified::UnifiedChoiceDelta {
                                 index: 0,
-                                delta: openai::ChatMessageDelta {
+                                delta: unified::UnifiedMessageDelta {
                                     role: None,
                                     content: Some(text.into_owned()),
                                     tool_calls: None,
-                                    function_call: None,
                                 },
                                 finish_reason: None,
-                                logprobs: None,
                             }],
-                            system_fingerprint: None,
                             usage: None,
-                        }))
+                            created: self.created,
+                        })
                     }
 
                     AnthropicBlockDelta::InputJsonDelta { partial_json } => {
@@ -718,32 +637,28 @@ impl AnthropicStreamProcessor {
                             tool_call.arguments.push_str(&partial_json);
 
                             // Emit tool call arguments chunk
-                            let tool_call_value = openai::StreamingToolCall::Delta {
+                            let tool_call_value = unified::UnifiedStreamingToolCall::Delta {
                                 index: 0,
-                                function: openai::FunctionDelta {
+                                function: unified::UnifiedFunctionDelta {
                                     arguments: partial_json.into_owned(),
                                 },
                             };
 
-                            Some(unified::UnifiedChunk::from(openai::ChatCompletionChunk {
-                                id: self.message_id.clone().unwrap_or_default(),
-                                object: openai::ObjectType::ChatCompletionChunk,
-                                created: self.created,
-                                model: self.model.clone().unwrap_or_default(),
-                                choices: vec![openai::ChatChoiceDelta {
+                            Some(unified::UnifiedChunk {
+                                id: self.message_id.clone().unwrap_or_default().into(),
+                                model: self.model.clone().unwrap_or_default().into(),
+                                choices: vec![unified::UnifiedChoiceDelta {
                                     index: 0,
-                                    delta: openai::ChatMessageDelta {
+                                    delta: unified::UnifiedMessageDelta {
                                         role: None,
                                         content: None,
                                         tool_calls: Some(vec![tool_call_value]),
-                                        function_call: None,
                                     },
                                     finish_reason: None,
-                                    logprobs: None,
                                 }],
-                                system_fingerprint: None,
                                 usage: None,
-                            }))
+                                created: self.created,
+                            })
                         } else {
                             None
                         }
@@ -756,36 +671,32 @@ impl AnthropicStreamProcessor {
                 self.usage = Some(usage);
 
                 let finish_reason = delta.stop_reason.as_deref().map(|reason| match reason {
-                    "end_turn" => openai::FinishReason::Stop,
-                    "max_tokens" => openai::FinishReason::Length,
-                    "stop_sequence" => openai::FinishReason::Stop,
-                    "tool_use" => openai::FinishReason::ToolCalls,
-                    other => openai::FinishReason::Other(other.to_string()),
+                    "end_turn" => unified::UnifiedFinishReason::Stop,
+                    "max_tokens" => unified::UnifiedFinishReason::Length,
+                    "stop_sequence" => unified::UnifiedFinishReason::Stop,
+                    "tool_use" => unified::UnifiedFinishReason::ToolCalls,
+                    _other => unified::UnifiedFinishReason::Stop,
                 });
 
-                Some(unified::UnifiedChunk::from(openai::ChatCompletionChunk {
-                    id: self.message_id.clone().unwrap_or_default(),
-                    object: openai::ObjectType::ChatCompletionChunk,
-                    created: self.created,
-                    model: self.model.clone().unwrap_or_default(),
-                    choices: vec![openai::ChatChoiceDelta {
+                Some(unified::UnifiedChunk {
+                    id: self.message_id.clone().unwrap_or_default().into(),
+                    model: self.model.clone().unwrap_or_default().into(),
+                    choices: vec![unified::UnifiedChoiceDelta {
                         index: 0,
-                        delta: openai::ChatMessageDelta {
+                        delta: unified::UnifiedMessageDelta {
                             role: None,
                             content: None,
                             tool_calls: None,
-                            function_call: None,
                         },
                         finish_reason,
-                        logprobs: None,
                     }],
-                    system_fingerprint: None,
-                    usage: self.usage.as_ref().map(|u| openai::Usage {
+                    usage: self.usage.as_ref().map(|u| unified::UnifiedUsage {
                         prompt_tokens: u.input_tokens as u32,
                         completion_tokens: u.output_tokens as u32,
                         total_tokens: (u.input_tokens + u.output_tokens) as u32,
                     }),
-                }))
+                    created: self.created,
+                })
             }
 
             AnthropicStreamEvent::Error { error } => {

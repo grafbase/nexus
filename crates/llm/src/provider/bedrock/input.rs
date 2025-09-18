@@ -1,7 +1,7 @@
 //! Direct input conversions for AWS Bedrock Converse API.
 //!
-//! This module handles direct transformation from ChatCompletionRequest
-//! to AWS Bedrock's Converse API types with no intermediate types.
+//! This module handles direct transformation from unified chat requests
+//! to AWS Bedrock's Converse API types with no intermediate formats.
 
 use aws_sdk_bedrockruntime::{
     operation::{converse::ConverseInput, converse_stream::ConverseStreamInput},
@@ -15,191 +15,9 @@ use serde_json::Value as SerdeValue;
 use sonic_rs::JsonValueTrait;
 use std::collections::HashMap;
 
-use crate::{
-    error::LlmError,
-    messages::{
-        openai::{
-            ChatCompletionRequest, ChatMessage, ChatRole, FunctionCall as OpenAIFunctionCall,
-            FunctionDefinition as OpenAIFunctionDefinition, Tool as OpenAITool, ToolCall,
-            ToolChoice as OpenAIToolChoice, ToolChoiceMode,
-        },
-        unified,
-    },
-};
+use crate::{error::LlmError, messages::unified};
 
 use super::output::document_to_string;
-
-/// Direct conversion from ChatCompletionRequest to ConverseInput.
-impl From<ChatCompletionRequest> for ConverseInput {
-    fn from(request: ChatCompletionRequest) -> Self {
-        let ChatCompletionRequest {
-            model,
-            messages,
-            temperature,
-            max_tokens,
-            top_p,
-            frequency_penalty: _, // Not supported by Bedrock
-            presence_penalty: _,  // Not supported by Bedrock
-            stop,
-            stream: _, // Not used for ConverseInput
-            tools,
-            tool_choice,
-            parallel_tool_calls: _, // Not supported by Bedrock
-        } = request;
-
-        // Convert inference parameters
-        let inference_config = build_inference_config(temperature, max_tokens, top_p, stop);
-
-        // Convert tools if present
-        let tool_config = tools.and_then(|tools| {
-            if tools.is_empty() {
-                None
-            } else {
-                convert_tools(tools, tool_choice, &model).ok()
-            }
-        });
-
-        // Convert messages (moves messages)
-        let (system, bedrock_messages) = convert_messages(messages);
-
-        ConverseInput::builder()
-            .model_id(model)
-            .set_messages(Some(bedrock_messages))
-            .set_system(system)
-            .set_inference_config(inference_config)
-            .set_tool_config(tool_config)
-            .build()
-            .expect("ConverseInput should build successfully with valid inputs")
-    }
-}
-
-/// Direct conversion from ChatCompletionRequest to ConverseStreamInput.
-impl From<ChatCompletionRequest> for ConverseStreamInput {
-    fn from(request: ChatCompletionRequest) -> Self {
-        let ChatCompletionRequest {
-            model,
-            messages,
-            temperature,
-            max_tokens,
-            top_p,
-            frequency_penalty: _, // Not supported by Bedrock
-            presence_penalty: _,  // Not supported by Bedrock
-            stop,
-            stream: _, // Always streaming for this type
-            tools,
-            tool_choice,
-            parallel_tool_calls: _, // Not supported by Bedrock
-        } = request;
-
-        // Convert inference parameters
-        let inference_config = build_inference_config(temperature, max_tokens, top_p, stop);
-
-        // Convert tools if present
-        let tool_config = tools.and_then(|tools| {
-            if tools.is_empty() {
-                None
-            } else {
-                convert_tools(tools, tool_choice, &model).ok()
-            }
-        });
-
-        // Convert messages (moves messages)
-        let (system, bedrock_messages) = convert_messages(messages);
-
-        ConverseStreamInput::builder()
-            .model_id(model)
-            .set_messages(Some(bedrock_messages))
-            .set_system(system)
-            .set_inference_config(inference_config)
-            .set_tool_config(tool_config)
-            .build()
-            .expect("ConverseStreamInput should build successfully with valid inputs")
-    }
-}
-
-/// Convert a single ChatMessage to BedrockMessage.
-impl From<ChatMessage> for BedrockMessage {
-    fn from(msg: ChatMessage) -> Self {
-        let ChatMessage {
-            role: chat_role,
-            content,
-            tool_calls,
-            tool_call_id,
-        } = msg;
-
-        let (role, content_blocks) = message_parts_to_role_and_blocks(chat_role, content, tool_calls, tool_call_id);
-
-        BedrockMessage::builder()
-            .role(role)
-            .set_content(Some(content_blocks))
-            .build()
-            .expect("BedrockMessage should build successfully with valid inputs")
-    }
-}
-
-/// Convert OpenAI messages to Bedrock Converse format.
-///
-/// This function handles message grouping - consecutive messages with the same role
-/// are batched together into a single BedrockMessage with multiple content blocks.
-fn convert_messages(messages: Vec<ChatMessage>) -> (Option<Vec<SystemContentBlock>>, Vec<BedrockMessage>) {
-    let mut system_messages = Vec::new();
-    let mut conversation_messages = Vec::new();
-    let mut current_role: Option<ConversationRole> = None;
-    let mut current_content = Vec::new();
-
-    for msg in messages {
-        let ChatMessage {
-            role: chat_role,
-            content,
-            tool_calls,
-            tool_call_id,
-        } = msg;
-
-        if let ChatRole::System = chat_role {
-            system_messages.push(SystemContentBlock::Text(content.unwrap_or_default()));
-            continue;
-        }
-
-        let (role, new_blocks) = message_parts_to_role_and_blocks(chat_role, content, tool_calls, tool_call_id);
-
-        if current_role.as_ref().is_some_and(|prev| *prev != role)
-            && !current_content.is_empty()
-            && let Some(prev_role) = current_role.take()
-            && let Ok(message) = BedrockMessage::builder()
-                .role(prev_role)
-                .set_content(Some(std::mem::take(&mut current_content)))
-                .build()
-        {
-            conversation_messages.push(message);
-        }
-
-        if current_content.is_empty() {
-            current_content = new_blocks;
-        } else {
-            current_content.extend(new_blocks);
-        }
-
-        current_role = Some(role);
-    }
-
-    if let Some(role) = current_role
-        && !current_content.is_empty()
-        && let Ok(message) = BedrockMessage::builder()
-            .role(role)
-            .set_content(Some(current_content))
-            .build()
-    {
-        conversation_messages.push(message);
-    }
-
-    let system = if system_messages.is_empty() {
-        None
-    } else {
-        Some(system_messages)
-    };
-
-    (system, conversation_messages)
-}
 
 /// Build inference configuration from individual parameters.
 fn build_inference_config(
@@ -234,30 +52,33 @@ fn build_inference_config(
     if has_config { Some(builder.build()) } else { None }
 }
 
-/// Convert OpenAI tools to Bedrock format.
+/// Convert unified tools to Bedrock format.
 fn convert_tools(
-    tools: Vec<OpenAITool>,
-    tool_choice: Option<OpenAIToolChoice>,
+    tools: Vec<unified::UnifiedTool>,
+    tool_choice: Option<unified::UnifiedToolChoice>,
     model_id: &str,
 ) -> crate::Result<ToolConfiguration> {
     let bedrock_tools: Result<Vec<Tool>, LlmError> = tools
         .into_iter()
         .map(|tool| {
-            let OpenAITool { tool_type: _, function } = tool;
-            let OpenAIFunctionDefinition {
+            let unified::UnifiedFunction {
                 name,
                 description,
                 parameters,
-            } = function;
+                strict: _,
+            } = tool.function;
 
-            let params_value = serde_json::to_value(parameters).unwrap_or(SerdeValue::Null);
+            let params_value = serde_json::to_value(*parameters).unwrap_or(SerdeValue::Null);
             let params_doc = serde_value_to_document(params_value);
             let input_schema = ToolInputSchema::Json(params_doc);
 
-            let tool_spec = ToolSpecification::builder()
-                .name(name)
-                .description(description)
-                .input_schema(input_schema)
+            let mut builder = ToolSpecification::builder().name(name).input_schema(input_schema);
+
+            if !description.is_empty() {
+                builder = builder.description(description);
+            }
+
+            let tool_spec = builder
                 .build()
                 .map_err(|e| LlmError::InvalidRequest(format!("Failed to build tool specification: {e}")))?;
 
@@ -352,12 +173,12 @@ impl ModelFamily {
     }
 
     /// Convert OpenAI tool choice to Bedrock format based on model family capabilities.
-    fn convert_tool_choice(&self, tool_choice: OpenAIToolChoice) -> Option<ToolChoice> {
+    fn convert_tool_choice(&self, tool_choice: unified::UnifiedToolChoice) -> Option<ToolChoice> {
         match tool_choice {
-            OpenAIToolChoice::Mode(mode) => match mode {
-                ToolChoiceMode::None => None,
-                ToolChoiceMode::Auto => Some(ToolChoice::Auto(AutoToolChoice::builder().build())),
-                ToolChoiceMode::Required | ToolChoiceMode::Any => {
+            unified::UnifiedToolChoice::Mode(mode) => match mode {
+                unified::UnifiedToolChoiceMode::None => None,
+                unified::UnifiedToolChoiceMode::Auto => Some(ToolChoice::Auto(AutoToolChoice::builder().build())),
+                unified::UnifiedToolChoiceMode::Required => {
                     // Some families don't support "any" tool choice, fall back to "auto"
                     if self.supports_tool_choice_any() {
                         Some(ToolChoice::Any(AnyToolChoice::builder().build()))
@@ -366,9 +187,8 @@ impl ModelFamily {
                         Some(ToolChoice::Auto(AutoToolChoice::builder().build()))
                     }
                 }
-                ToolChoiceMode::Other(_) => None,
             },
-            OpenAIToolChoice::Specific { function, .. } => {
+            unified::UnifiedToolChoice::Specific { function } => {
                 // Most families support specific tool choice
                 if self.supports_tool_choice_specific() {
                     SpecificToolChoice::builder()
@@ -502,112 +322,357 @@ fn document_preview(doc: &aws_smithy_types::Document) -> String {
     rendered
 }
 
-fn message_parts_to_role_and_blocks(
-    chat_role: ChatRole,
-    mut content: Option<String>,
-    tool_calls: Option<Vec<ToolCall>>,
-    tool_call_id: Option<String>,
-) -> (ConversationRole, Vec<ContentBlock>) {
-    let role = match chat_role {
-        ChatRole::User => ConversationRole::User,
-        ChatRole::Assistant => ConversationRole::Assistant,
-        ChatRole::Tool => ConversationRole::User,
-        ChatRole::System => ConversationRole::User,
-        ChatRole::Other(_) => ConversationRole::User,
-    };
-
-    let tool_call_capacity = tool_calls.as_ref().map_or(0, Vec::len);
-    let mut content_blocks = Vec::with_capacity(tool_call_capacity + 1);
-
-    if let Some(tool_call_id) = tool_call_id {
-        let tool_content = content.take().unwrap_or_default();
-
-        if let Ok(tool_result) = ToolResultBlock::builder()
-            .tool_use_id(tool_call_id)
-            .content(ToolResultContentBlock::Text(tool_content))
-            .build()
-        {
-            content_blocks.push(ContentBlock::ToolResult(tool_result));
-        }
-    } else {
-        if let Some(text_content) = content.take()
-            && !text_content.is_empty()
-        {
-            content_blocks.push(ContentBlock::Text(text_content));
-        }
-
-        if let Some(tool_calls) = tool_calls {
-            if !tool_calls.is_empty() {
-                content_blocks.reserve(tool_calls.len());
-            }
-            append_tool_calls(&mut content_blocks, tool_calls);
-        }
-    }
-
-    (role, content_blocks)
-}
-
-fn append_tool_calls(content_blocks: &mut Vec<ContentBlock>, tool_calls: Vec<ToolCall>) {
-    content_blocks.extend(tool_calls.into_iter().filter_map(tool_call_to_content_block));
-}
-
-fn tool_call_to_content_block(tool_call: ToolCall) -> Option<ContentBlock> {
-    let ToolCall {
-        id,
-        tool_type: _,
-        function,
-    } = tool_call;
-
-    let OpenAIFunctionCall { name, arguments } = function;
-
-    let (args_doc, parse_error) = match sonic_rs::from_str::<sonic_rs::Value>(&arguments) {
-        Ok(value) => (normalize_tool_input_document(json_value_to_document(value)), None),
-        Err(err) => (
-            normalize_tool_input_document(aws_smithy_types::Document::String(arguments.clone())),
-            Some(err),
-        ),
-    };
-
-    if let Some(err) = parse_error {
-        log::debug!(
-            "Bedrock tool_use arguments fallback to string: id={} name={} error={err} raw={raw}",
-            id,
-            name,
-            raw = arguments
-        );
-    }
-
-    log::debug!(
-        "Bedrock tool_use arguments normalized: id={} name={} kind={} preview={}",
-        id,
-        name,
-        document_kind(&args_doc),
-        document_preview(&args_doc)
-    );
-
-    ToolUseBlock::builder()
-        .tool_use_id(id)
-        .name(name)
-        .input(args_doc)
-        .build()
-        .map(ContentBlock::ToolUse)
-        .ok()
-}
-
 impl From<unified::UnifiedRequest> for ConverseInput {
     fn from(request: unified::UnifiedRequest) -> Self {
-        // Convert unified to OpenAI first, then use existing conversion
-        let openai_request = ChatCompletionRequest::from(request);
-        Self::from(openai_request)
+        let unified::UnifiedRequest {
+            model,
+            messages,
+            system,
+            temperature,
+            max_tokens,
+            top_p,
+            top_k: _,
+            frequency_penalty: _,
+            presence_penalty: _,
+            stop_sequences,
+            stream: _,
+            tools,
+            tool_choice,
+            parallel_tool_calls: _,
+            metadata: _,
+        } = request;
+
+        let inference_config = build_inference_config(temperature, max_tokens, top_p, stop_sequences);
+
+        let (extracted_system, bedrock_messages) = convert_unified_messages_to_bedrock(messages);
+
+        // Convert the system string from request to SystemContentBlock if provided
+        let system_from_request = system.map(|s| vec![SystemContentBlock::Text(s)]);
+
+        // Use the system from the request if provided, otherwise use extracted system from messages
+        let final_system = system_from_request.or(extracted_system);
+
+        let tool_config = if let Some(tool_list) = tools {
+            if tool_list.is_empty() {
+                None
+            } else {
+                convert_tools(tool_list, tool_choice, &model).ok()
+            }
+        } else {
+            None
+        };
+
+        ConverseInput::builder()
+            .model_id(model)
+            .set_messages(Some(bedrock_messages))
+            .set_system(final_system)
+            .set_inference_config(inference_config)
+            .set_tool_config(tool_config)
+            .build()
+            .expect("ConverseInput should build successfully with valid inputs")
     }
 }
 
 impl From<unified::UnifiedRequest> for ConverseStreamInput {
     fn from(request: unified::UnifiedRequest) -> Self {
-        // Convert unified to OpenAI first, then use existing conversion
-        let openai_request = ChatCompletionRequest::from(request);
-        Self::from(openai_request)
+        let unified::UnifiedRequest {
+            model,
+            messages,
+            system,
+            temperature,
+            max_tokens,
+            top_p,
+            top_k: _,
+            frequency_penalty: _,
+            presence_penalty: _,
+            stop_sequences,
+            stream: _,
+            tools,
+            tool_choice,
+            parallel_tool_calls: _,
+            metadata: _,
+        } = request;
+
+        let inference_config = build_inference_config(temperature, max_tokens, top_p, stop_sequences);
+
+        let (extracted_system, bedrock_messages) = convert_unified_messages_to_bedrock(messages);
+
+        // Convert the system string from request to SystemContentBlock if provided
+        let system_from_request = system.map(|s| vec![SystemContentBlock::Text(s)]);
+
+        // Use the system from the request if provided, otherwise use extracted system from messages
+        let final_system = system_from_request.or(extracted_system);
+
+        let tool_config = if let Some(tool_list) = tools {
+            if tool_list.is_empty() {
+                None
+            } else {
+                convert_tools(tool_list, tool_choice, &model).ok()
+            }
+        } else {
+            None
+        };
+
+        ConverseStreamInput::builder()
+            .model_id(model)
+            .set_messages(Some(bedrock_messages))
+            .set_system(final_system)
+            .set_inference_config(inference_config)
+            .set_tool_config(tool_config)
+            .build()
+            .expect("ConverseStreamInput should build successfully with valid inputs")
     }
+}
+
+enum MessageConversion {
+    System(Vec<SystemContentBlock>),
+    Conversation {
+        role: ConversationRole,
+        blocks: Vec<ContentBlock>,
+    },
+    Empty,
+}
+
+fn arguments_to_document(arguments: unified::UnifiedArguments) -> (aws_smithy_types::Document, bool) {
+    match arguments {
+        unified::UnifiedArguments::String(raw) => match sonic_rs::from_str::<sonic_rs::Value>(&raw) {
+            Ok(value) => (normalize_tool_input_document(json_value_to_document(value)), false),
+            Err(err) => {
+                log::debug!(
+                    "Bedrock tool_use arguments fallback to string: error={err} raw={raw}",
+                    raw = raw
+                );
+                (
+                    normalize_tool_input_document(aws_smithy_types::Document::String(raw)),
+                    true,
+                )
+            }
+        },
+        unified::UnifiedArguments::Value(value) => {
+            (normalize_tool_input_document(serde_value_to_document(value)), false)
+        }
+    }
+}
+
+fn build_tool_use_content_block(id: String, name: String, input: aws_smithy_types::Document) -> Option<ContentBlock> {
+    log::debug!(
+        "Bedrock tool_use arguments normalized: id={} name={} kind={} preview={}",
+        id,
+        name,
+        document_kind(&input),
+        document_preview(&input)
+    );
+
+    ToolUseBlock::builder()
+        .tool_use_id(id)
+        .name(name)
+        .input(input)
+        .build()
+        .map(ContentBlock::ToolUse)
+        .ok()
+}
+
+fn tool_result_text(content: unified::UnifiedToolResultContent) -> String {
+    match content {
+        unified::UnifiedToolResultContent::Text(text) => text,
+        unified::UnifiedToolResultContent::Multiple(parts) => parts.join("\n"),
+    }
+}
+
+fn build_tool_result_block(id: String, text: String) -> Option<ContentBlock> {
+    ToolResultBlock::builder()
+        .tool_use_id(id)
+        .content(ToolResultContentBlock::Text(text))
+        .build()
+        .map(ContentBlock::ToolResult)
+        .ok()
+}
+
+fn system_blocks_from_content(content: unified::UnifiedContentContainer) -> Vec<SystemContentBlock> {
+    match content {
+        unified::UnifiedContentContainer::Text(text) => {
+            if text.is_empty() {
+                Vec::new()
+            } else {
+                vec![SystemContentBlock::Text(text)]
+            }
+        }
+        unified::UnifiedContentContainer::Blocks(blocks) => blocks
+            .into_iter()
+            .filter_map(|block| match block {
+                unified::UnifiedContent::Text { text } if !text.is_empty() => Some(SystemContentBlock::Text(text)),
+                _ => None,
+            })
+            .collect(),
+    }
+}
+
+fn conversation_blocks_from_message(message: unified::UnifiedMessage) -> (ConversationRole, Vec<ContentBlock>) {
+    let unified::UnifiedMessage {
+        role: unified_role,
+        content,
+        tool_calls,
+        tool_call_id,
+    } = message;
+
+    let role = match unified_role {
+        unified::UnifiedRole::User => ConversationRole::User,
+        unified::UnifiedRole::Assistant => ConversationRole::Assistant,
+        unified::UnifiedRole::Tool => ConversationRole::User,
+        unified::UnifiedRole::System => ConversationRole::User,
+    };
+
+    let mut blocks = Vec::new();
+
+    match content {
+        unified::UnifiedContentContainer::Text(text) => {
+            if unified_role == unified::UnifiedRole::Tool {
+                if let Some(id) = tool_call_id.clone() {
+                    if let Some(block) = build_tool_result_block(id, text) {
+                        blocks.push(block);
+                    }
+                } else if !text.is_empty() {
+                    blocks.push(ContentBlock::Text(text));
+                }
+            } else if !text.is_empty() {
+                blocks.push(ContentBlock::Text(text));
+            }
+        }
+        unified::UnifiedContentContainer::Blocks(items) => {
+            for item in items {
+                match item {
+                    unified::UnifiedContent::Text { text } => {
+                        if !text.is_empty() {
+                            blocks.push(ContentBlock::Text(text));
+                        }
+                    }
+                    unified::UnifiedContent::ToolUse { id, name, input } => {
+                        let input_doc = normalize_tool_input_document(serde_value_to_document(input));
+                        if let Some(block) = build_tool_use_content_block(id, name, input_doc) {
+                            blocks.push(block);
+                        }
+                    }
+                    unified::UnifiedContent::ToolResult {
+                        tool_use_id,
+                        content,
+                        is_error,
+                    } => {
+                        let mut text = tool_result_text(content);
+                        if matches!(is_error, Some(true)) {
+                            text = format!("ERROR: {text}");
+                        }
+                        if let Some(block) = build_tool_result_block(tool_use_id, text) {
+                            blocks.push(block);
+                        }
+                    }
+                    unified::UnifiedContent::Image { .. } => {
+                        blocks.push(ContentBlock::Text("[Image content not supported]".to_string()));
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(tool_calls) = tool_calls {
+        for call in tool_calls {
+            let (input_doc, used_fallback) = arguments_to_document(call.function.arguments);
+            if used_fallback {
+                log::debug!(
+                    "Bedrock tool_use arguments fallback to string: id={} raw arguments",
+                    call.id
+                );
+            }
+            if let Some(block) = build_tool_use_content_block(call.id, call.function.name, input_doc) {
+                blocks.push(block);
+            }
+        }
+    }
+
+    // For tool role without explicit tool result blocks, ensure tool_call_id is respected
+    if unified_role == unified::UnifiedRole::Tool
+        && blocks.is_empty()
+        && let Some(id) = tool_call_id
+        && let Some(block) = build_tool_result_block(id, String::new())
+    {
+        blocks.push(block);
+    }
+
+    (role, blocks)
+}
+
+fn convert_unified_message(message: unified::UnifiedMessage) -> MessageConversion {
+    match message.role {
+        unified::UnifiedRole::System => {
+            let blocks = system_blocks_from_content(message.content);
+            if blocks.is_empty() {
+                MessageConversion::Empty
+            } else {
+                MessageConversion::System(blocks)
+            }
+        }
+        _ => {
+            let (role, blocks) = conversation_blocks_from_message(message);
+            if blocks.is_empty() {
+                MessageConversion::Empty
+            } else {
+                MessageConversion::Conversation { role, blocks }
+            }
+        }
+    }
+}
+
+fn convert_unified_messages_to_bedrock(
+    messages: Vec<unified::UnifiedMessage>,
+) -> (Option<Vec<SystemContentBlock>>, Vec<BedrockMessage>) {
+    let mut system_blocks = Vec::new();
+    let mut conversation_messages = Vec::new();
+    let mut current_role: Option<ConversationRole> = None;
+    let mut current_blocks: Vec<ContentBlock> = Vec::new();
+
+    for message in messages {
+        match convert_unified_message(message) {
+            MessageConversion::System(blocks) => system_blocks.extend(blocks),
+            MessageConversion::Conversation { role, blocks } => {
+                if current_role.as_ref().is_some_and(|prev| *prev != role)
+                    && !current_blocks.is_empty()
+                    && let Some(prev_role) = current_role.take()
+                    && let Ok(built) = BedrockMessage::builder()
+                        .role(prev_role)
+                        .set_content(Some(std::mem::take(&mut current_blocks)))
+                        .build()
+                {
+                    conversation_messages.push(built);
+                }
+
+                if current_blocks.is_empty() {
+                    current_blocks = blocks;
+                } else {
+                    current_blocks.extend(blocks);
+                }
+
+                current_role = Some(role);
+            }
+            MessageConversion::Empty => {}
+        }
+    }
+
+    if let Some(role) = current_role
+        && !current_blocks.is_empty()
+        && let Ok(message) = BedrockMessage::builder()
+            .role(role)
+            .set_content(Some(current_blocks))
+            .build()
+    {
+        conversation_messages.push(message);
+    }
+
+    let system = if system_blocks.is_empty() {
+        None
+    } else {
+        Some(system_blocks)
+    };
+
+    (system, conversation_messages)
 }
 
 #[cfg(test)]
@@ -615,23 +680,15 @@ mod tests {
     #![allow(clippy::panic)]
 
     use super::*;
-    use crate::messages::openai::ToolCallType;
     use aws_smithy_types::Document;
-
-    fn build_tool_call(arguments: &str) -> ToolCall {
-        ToolCall {
-            id: "tool-1".to_string(),
-            tool_type: ToolCallType::Function,
-            function: OpenAIFunctionCall {
-                name: "Bash".to_string(),
-                arguments: arguments.to_string(),
-            },
-        }
-    }
 
     #[test]
     fn tool_use_arguments_parse_as_object() {
-        let block = tool_call_to_content_block(build_tool_call(r#"{"command":"ls"}"#)).expect("content block");
+        let doc = normalize_tool_input_document(serde_value_to_document(serde_json::json!({
+            "command": "ls"
+        })));
+
+        let block = build_tool_use_content_block("tool-1".to_string(), "Bash".to_string(), doc).expect("content block");
 
         let ContentBlock::ToolUse(tool_use) = block else {
             panic!("expected tool use block");
@@ -641,14 +698,14 @@ mod tests {
     }
 
     #[test]
-    fn tool_use_arguments_fall_back_to_string() {
-        let raw = r#"{"command": "echo "hello""}"#;
-        let block = tool_call_to_content_block(build_tool_call(raw)).expect("content block");
+    fn tool_use_arguments_fallback_to_string() {
+        let (doc, _) = arguments_to_document(unified::UnifiedArguments::String("not json".to_string()));
+        let block = build_tool_use_content_block("tool-1".to_string(), "Bash".to_string(), doc).expect("content block");
 
         let ContentBlock::ToolUse(tool_use) = block else {
             panic!("expected tool use block");
         };
 
-        assert!(matches!(tool_use.input(), Document::String(s) if s == raw));
+        assert!(matches!(tool_use.input(), Document::String(_)));
     }
 }

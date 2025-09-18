@@ -1,5 +1,6 @@
 use serde::Serialize;
-use sonic_rs::JsonValueTrait;
+use serde_json::{self, Value as SerdeValue, json};
+use std::collections::HashMap;
 
 use crate::messages::{openai, unified};
 use crate::provider::google::output::{
@@ -164,6 +165,31 @@ impl From<openai::Tool> for GoogleFunctionDeclaration {
     }
 }
 
+impl From<unified::UnifiedTool> for GoogleFunctionDeclaration {
+    fn from(tool: unified::UnifiedTool) -> Self {
+        let unified::UnifiedFunction {
+            name,
+            description,
+            parameters,
+            strict: _,
+        } = tool.function;
+
+        let cleaned_schema = strip_unsupported_schema_fields(*parameters);
+        let json = sonic_rs::to_string(&cleaned_schema).unwrap_or_else(|_| "{}".to_string());
+        let parameters = Some(parse_owned_lazy(&json));
+
+        Self {
+            name,
+            description: if description.is_empty() {
+                None
+            } else {
+                Some(description)
+            },
+            parameters,
+        }
+    }
+}
+
 /// Recursively removes unsupported JSON Schema fields from the schema
 /// Google's API doesn't support fields like 'additionalProperties' and '$schema'
 fn strip_unsupported_schema_fields(mut schema: openai::JsonSchema) -> openai::JsonSchema {
@@ -223,6 +249,335 @@ impl From<openai::ToolChoiceMode> for GoogleFunctionCallingMode {
     }
 }
 
+impl From<unified::UnifiedToolChoiceMode> for GoogleFunctionCallingMode {
+    fn from(mode: unified::UnifiedToolChoiceMode) -> Self {
+        match mode {
+            unified::UnifiedToolChoiceMode::None => GoogleFunctionCallingMode::None,
+            unified::UnifiedToolChoiceMode::Auto => GoogleFunctionCallingMode::Auto,
+            unified::UnifiedToolChoiceMode::Required => GoogleFunctionCallingMode::Any,
+        }
+    }
+}
+
+fn empty_owned_object() -> sonic_rs::OwnedLazyValue {
+    sonic_rs::from_str("{}").expect("static JSON object should parse")
+}
+
+fn parse_owned_lazy(json: &str) -> sonic_rs::OwnedLazyValue {
+    sonic_rs::from_str(json).unwrap_or_else(|_| empty_owned_object())
+}
+
+fn owned_lazy_from_serde(value: SerdeValue) -> sonic_rs::OwnedLazyValue {
+    let json_string = serde_json::to_string(&value).unwrap_or_else(|_| "{}".to_string());
+    parse_owned_lazy(json_string.as_str())
+}
+
+fn arguments_to_owned_lazy(arguments: unified::UnifiedArguments) -> sonic_rs::OwnedLazyValue {
+    match arguments {
+        unified::UnifiedArguments::String(raw) => parse_owned_lazy(raw.as_str()),
+        unified::UnifiedArguments::Value(value) => owned_lazy_from_serde(value),
+    }
+}
+
+fn tool_result_value(content: unified::UnifiedToolResultContent, is_error: Option<bool>) -> SerdeValue {
+    let mut base = match content {
+        unified::UnifiedToolResultContent::Text(text) => match serde_json::from_str::<SerdeValue>(&text) {
+            Ok(SerdeValue::Object(obj)) => SerdeValue::Object(obj),
+            Ok(other) => json!({ "result": other }),
+            Err(_) => json!({ "result": text }),
+        },
+        unified::UnifiedToolResultContent::Multiple(values) => json!({ "result": values }),
+    };
+
+    if let Some(flag) = is_error
+        && let SerdeValue::Object(ref mut map) = base
+    {
+        map.insert("is_error".to_string(), SerdeValue::Bool(flag));
+    }
+
+    base
+}
+
+fn tool_result_to_owned_lazy(
+    content: unified::UnifiedToolResultContent,
+    is_error: Option<bool>,
+) -> sonic_rs::OwnedLazyValue {
+    owned_lazy_from_serde(tool_result_value(content, is_error))
+}
+
+fn tool_text_to_owned_lazy(text: String) -> sonic_rs::OwnedLazyValue {
+    tool_result_to_owned_lazy(unified::UnifiedToolResultContent::Text(text), None)
+}
+
+fn push_text_part(parts: &mut Vec<GooglePart>, text: String) {
+    if text.is_empty() {
+        return;
+    }
+
+    parts.push(GooglePart {
+        text: Some(text),
+        function_call: None,
+        function_response: None,
+    });
+}
+
+fn extract_system_text(content: unified::UnifiedContentContainer) -> Option<String> {
+    match content {
+        unified::UnifiedContentContainer::Text(text) => Some(text),
+        unified::UnifiedContentContainer::Blocks(blocks) => {
+            let mut collected = Vec::new();
+            for block in blocks {
+                if let unified::UnifiedContent::Text { text } = block {
+                    collected.push(text);
+                }
+            }
+
+            if collected.is_empty() {
+                None
+            } else {
+                Some(collected.join("\n"))
+            }
+        }
+    }
+}
+
+fn push_function_call(
+    parts: &mut Vec<GooglePart>,
+    id: String,
+    name: String,
+    args: sonic_rs::OwnedLazyValue,
+    tool_call_names: &mut HashMap<String, String>,
+) {
+    tool_call_names.insert(id, name.clone());
+    parts.push(GooglePart {
+        text: None,
+        function_call: Some(GoogleFunctionCall {
+            name,
+            args,
+            thought_signature: None,
+        }),
+        function_response: None,
+    });
+}
+
+fn push_function_response(
+    parts: &mut Vec<GooglePart>,
+    tool_use_id: String,
+    response: sonic_rs::OwnedLazyValue,
+    tool_call_names: &HashMap<String, String>,
+) {
+    let function_name = tool_call_names.get(&tool_use_id).cloned().unwrap_or_else(|| {
+        log::warn!("Could not find function name for tool_use_id: {tool_use_id}, using fallback");
+        tool_use_id
+    });
+
+    parts.push(GooglePart {
+        text: None,
+        function_call: None,
+        function_response: Some(GoogleFunctionResponse {
+            name: function_name,
+            response,
+        }),
+    });
+}
+
+fn convert_unified_messages(
+    messages: Vec<unified::UnifiedMessage>,
+    system_instruction: Option<GoogleContent>,
+) -> (Vec<GoogleContent>, Option<GoogleContent>) {
+    let mut contents = Vec::new();
+    let mut system_instruction = system_instruction;
+    let mut tool_call_names: HashMap<String, String> = HashMap::new();
+
+    for message in messages {
+        match message.role {
+            unified::UnifiedRole::System => {
+                if let Some(text) = extract_system_text(message.content) {
+                    system_instruction = Some(GoogleContent {
+                        parts: vec![GooglePart {
+                            text: Some(text),
+                            function_call: None,
+                            function_response: None,
+                        }],
+                        role: GoogleRole::User,
+                    });
+                }
+            }
+            unified::UnifiedRole::User => handle_user_message(message, &mut contents, &mut tool_call_names),
+            unified::UnifiedRole::Assistant => handle_assistant_message(message, &mut contents, &mut tool_call_names),
+            unified::UnifiedRole::Tool => handle_tool_message(message, &mut contents, &mut tool_call_names),
+        }
+    }
+
+    (contents, system_instruction)
+}
+
+fn handle_user_message(
+    message: unified::UnifiedMessage,
+    contents: &mut Vec<GoogleContent>,
+    tool_call_names: &mut HashMap<String, String>,
+) {
+    let unified::UnifiedMessage {
+        content,
+        tool_calls,
+        tool_call_id: _,
+        ..
+    } = message;
+
+    let mut parts = Vec::new();
+
+    match content {
+        unified::UnifiedContentContainer::Text(text) => push_text_part(&mut parts, text),
+        unified::UnifiedContentContainer::Blocks(blocks) => {
+            for block in blocks {
+                match block {
+                    unified::UnifiedContent::Text { text } => push_text_part(&mut parts, text),
+                    unified::UnifiedContent::ToolUse { id, name, input } => {
+                        let args = owned_lazy_from_serde(input);
+                        push_function_call(&mut parts, id, name, args, tool_call_names);
+                    }
+                    unified::UnifiedContent::ToolResult {
+                        tool_use_id,
+                        content,
+                        is_error,
+                    } => {
+                        let response = tool_result_to_owned_lazy(content, is_error);
+                        push_function_response(&mut parts, tool_use_id, response, tool_call_names);
+                    }
+                    unified::UnifiedContent::Image { .. } => {
+                        push_text_part(&mut parts, "[Image content not supported]".to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(calls) = tool_calls {
+        for call in calls {
+            let args = arguments_to_owned_lazy(call.function.arguments);
+            push_function_call(&mut parts, call.id, call.function.name, args, tool_call_names);
+        }
+    }
+
+    if !parts.is_empty() {
+        contents.push(GoogleContent {
+            parts,
+            role: GoogleRole::User,
+        });
+    }
+}
+
+fn handle_assistant_message(
+    message: unified::UnifiedMessage,
+    contents: &mut Vec<GoogleContent>,
+    tool_call_names: &mut HashMap<String, String>,
+) {
+    let unified::UnifiedMessage {
+        content, tool_calls, ..
+    } = message;
+
+    let mut parts = Vec::new();
+
+    match content {
+        unified::UnifiedContentContainer::Text(text) => push_text_part(&mut parts, text),
+        unified::UnifiedContentContainer::Blocks(blocks) => {
+            for block in blocks {
+                match block {
+                    unified::UnifiedContent::Text { text } => push_text_part(&mut parts, text),
+                    unified::UnifiedContent::ToolUse { id, name, input } => {
+                        let args = owned_lazy_from_serde(input);
+                        push_function_call(&mut parts, id, name, args, tool_call_names);
+                    }
+                    unified::UnifiedContent::ToolResult {
+                        tool_use_id,
+                        content,
+                        is_error,
+                    } => {
+                        let response = tool_result_to_owned_lazy(content, is_error);
+                        push_function_response(&mut parts, tool_use_id, response, tool_call_names);
+                    }
+                    unified::UnifiedContent::Image { .. } => {
+                        push_text_part(&mut parts, "[Image content not supported]".to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(calls) = tool_calls {
+        for call in calls {
+            let args = arguments_to_owned_lazy(call.function.arguments);
+            push_function_call(&mut parts, call.id, call.function.name, args, tool_call_names);
+        }
+    }
+
+    if !parts.is_empty() {
+        contents.push(GoogleContent {
+            parts,
+            role: GoogleRole::Model,
+        });
+    }
+}
+
+fn handle_tool_message(
+    message: unified::UnifiedMessage,
+    contents: &mut Vec<GoogleContent>,
+    tool_call_names: &mut HashMap<String, String>,
+) {
+    let unified::UnifiedMessage {
+        content,
+        tool_calls: _,
+        tool_call_id,
+        ..
+    } = message;
+
+    let mut parts = Vec::new();
+
+    match content {
+        unified::UnifiedContentContainer::Text(text) => {
+            if let Some(id) = tool_call_id {
+                let response = tool_text_to_owned_lazy(text);
+                push_function_response(&mut parts, id, response, tool_call_names);
+            } else {
+                push_text_part(&mut parts, text);
+            }
+        }
+        unified::UnifiedContentContainer::Blocks(blocks) => {
+            for block in blocks {
+                match block {
+                    unified::UnifiedContent::ToolResult {
+                        tool_use_id,
+                        content,
+                        is_error,
+                    } => {
+                        let response = tool_result_to_owned_lazy(content, is_error);
+                        push_function_response(&mut parts, tool_use_id, response, tool_call_names);
+                    }
+                    unified::UnifiedContent::Text { text } => {
+                        let response = tool_text_to_owned_lazy(text);
+                        let id = tool_call_id.clone().unwrap_or_else(|| "unknown_function".to_string());
+                        push_function_response(&mut parts, id, response, tool_call_names);
+                    }
+                    unified::UnifiedContent::ToolUse { id, name, input } => {
+                        let args = owned_lazy_from_serde(input);
+                        push_function_call(&mut parts, id, name, args, tool_call_names);
+                    }
+                    unified::UnifiedContent::Image { .. } => {
+                        push_text_part(&mut parts, "[Image content not supported]".to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    if !parts.is_empty() {
+        contents.push(GoogleContent {
+            parts,
+            role: GoogleRole::User,
+        });
+    }
+}
+
 /// Configuration for function calling behavior.
 ///
 /// Controls how the model should use the provided functions.
@@ -245,20 +600,44 @@ pub struct GoogleFunctionCallingConfig {
     allowed_function_names: Option<Vec<String>>,
 }
 
-impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
-    fn from(request: openai::ChatCompletionRequest) -> Self {
-        let mut google_contents = Vec::new();
-        let mut system_instruction = None;
+impl From<unified::UnifiedRequest> for GoogleGenerateRequest {
+    fn from(request: unified::UnifiedRequest) -> Self {
+        let unified::UnifiedRequest {
+            model: _, // Model resolution handled by provider before conversion
+            messages,
+            system,
+            max_tokens,
+            temperature,
+            top_p,
+            top_k: _,
+            frequency_penalty: _,
+            presence_penalty: _,
+            stop_sequences,
+            stream: _,
+            tools,
+            tool_choice,
+            parallel_tool_calls: _,
+            metadata: _,
+        } = request;
 
-        // Track tool calls from assistant messages to map tool_call_id to function names
-        let mut tool_call_mapping: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let system_instruction = system.map(|text| GoogleContent {
+            parts: vec![GooglePart {
+                text: Some(text),
+                function_call: None,
+                function_response: None,
+            }],
+            role: GoogleRole::User,
+        });
 
-        // Extract tools and tool_choice before consuming request
-        let tools = request.tools.map(|tools| {
-            let tool_count = tools.len();
+        // Convert conversation messages directly from unified representation
+        let (contents, system_instruction) = convert_unified_messages(messages, system_instruction);
+
+        // Convert tools
+        let tools = tools.map(|tool_list| {
+            let tool_count = tool_list.len();
             log::debug!("Converting {} tools to Google format", tool_count);
 
-            let function_declarations: Vec<GoogleFunctionDeclaration> = tools
+            let function_declarations: Vec<GoogleFunctionDeclaration> = tool_list
                 .into_iter()
                 .map(|tool| {
                     let declaration = GoogleFunctionDeclaration::from(tool);
@@ -271,19 +650,21 @@ impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
                     declaration
                 })
                 .collect();
+
             vec![GoogleTool {
                 function_declarations: Some(function_declarations),
             }]
         });
 
-        let tool_config = request.tool_choice.map(|choice| {
+        // Convert tool choice
+        let tool_config = tool_choice.map(|choice| {
             let (mode, allowed_names) = match choice {
-                openai::ToolChoice::Mode(mode) => {
-                    let google_mode = GoogleFunctionCallingMode::from(mode.clone());
-                    log::debug!("Tool choice mode: {:?} -> {:?}", mode, google_mode);
+                unified::UnifiedToolChoice::Mode(mode) => {
+                    let google_mode = GoogleFunctionCallingMode::from(mode);
+                    log::debug!("Tool choice mode mapped to {:?}", google_mode);
                     (google_mode, None)
                 }
-                openai::ToolChoice::Specific { function, .. } => {
+                unified::UnifiedToolChoice::Specific { function } => {
                     log::debug!("Tool choice specific function: {}", function.name);
                     (GoogleFunctionCallingMode::Any, Some(vec![function.name]))
                 }
@@ -297,187 +678,19 @@ impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
             }
         });
 
-        for msg in request.messages {
-            match msg.role {
-                openai::ChatRole::System => {
-                    // Google uses systemInstruction for system messages
-                    system_instruction = Some(GoogleContent {
-                        parts: vec![GooglePart {
-                            text: Some(msg.content.unwrap_or_default()),
-                            function_call: None,
-                            function_response: None,
-                        }],
-                        role: GoogleRole::User, // System instruction role is typically "user"
-                    });
-                }
-                openai::ChatRole::User => {
-                    google_contents.push(GoogleContent {
-                        parts: vec![GooglePart {
-                            text: Some(msg.content.unwrap_or_default()),
-                            function_call: None,
-                            function_response: None,
-                        }],
-                        role: GoogleRole::User,
-                    });
-                }
-                openai::ChatRole::Assistant => {
-                    let mut parts = Vec::new();
-
-                    // Add text content if present
-                    if let Some(content) = msg.content
-                        && !content.is_empty()
-                    {
-                        parts.push(GooglePart {
-                            text: Some(content),
-                            function_call: None,
-                            function_response: None,
-                        });
-                    }
-
-                    // Add tool calls if present
-                    if let Some(tool_calls) = msg.tool_calls {
-                        for tool_call in tool_calls {
-                            // Parse arguments as JSON
-                            let args = sonic_rs::from_str::<sonic_rs::OwnedLazyValue>(&tool_call.function.arguments)
-                                .unwrap_or_else(|_| sonic_rs::from_str("{}").unwrap());
-
-                            // Store the mapping from tool_call_id to function name
-                            // We need to clone the name here since we're moving it into GoogleFunctionCall below
-                            tool_call_mapping.insert(tool_call.id, tool_call.function.name.clone());
-
-                            parts.push(GooglePart {
-                                text: None,
-                                function_call: Some(GoogleFunctionCall {
-                                    name: tool_call.function.name,
-                                    args,
-                                    thought_signature: None,
-                                }),
-                                function_response: None,
-                            });
-                        }
-                    }
-
-                    // Only add if we have parts
-                    if !parts.is_empty() {
-                        google_contents.push(GoogleContent {
-                            parts,
-                            role: GoogleRole::Model, // Google uses "model" instead of "assistant"
-                        });
-                    }
-                }
-                openai::ChatRole::Tool => {
-                    // Convert tool response to Google's function response format
-                    if let Some(tool_call_id) = msg.tool_call_id {
-                        // Look up the function name from our mapping
-                        let function_name = tool_call_mapping.get(&tool_call_id)
-                            .cloned()
-                            .unwrap_or_else(|| {
-                                log::warn!("Could not find function name for tool_call_id: {tool_call_id}, using 'unknown_function'");
-                                "unknown_function".to_string()
-                            });
-
-                        let response_content = msg.content.unwrap_or_default();
-
-                        // Google's API requires function_response.response to be a JSON object
-                        // Parse response as JSON and ensure it's an object
-                        let response_value = match sonic_rs::from_str::<sonic_rs::Value>(&response_content) {
-                            Ok(value) if value.is_object() => {
-                                // Already a JSON object, use as-is
-                                log::debug!("Tool response is already a JSON object: {value}");
-                                value
-                            }
-                            Ok(value) => {
-                                // Valid JSON but not an object (string, number, array, etc.)
-                                log::debug!(
-                                    "Tool response is JSON but not an object (type: {}), wrapping it",
-                                    if value.is_str() {
-                                        "string"
-                                    } else if value.is_number() {
-                                        "number"
-                                    } else if value.is_array() {
-                                        "array"
-                                    } else if value.is_boolean() {
-                                        "boolean"
-                                    } else {
-                                        "null"
-                                    }
-                                );
-                                sonic_rs::json!({
-                                    "result": response_content
-                                })
-                            }
-                            Err(e) => {
-                                // Not valid JSON at all
-                                log::debug!("Tool response is not valid JSON ({e}), wrapping as string");
-                                sonic_rs::json!({
-                                    "result": response_content
-                                })
-                            }
-                        };
-
-                        let response_json = sonic_rs::to_string(&response_value).unwrap_or_else(|_| "{}".to_string());
-                        let response_lazy = sonic_rs::from_str::<sonic_rs::OwnedLazyValue>(&response_json)
-                            .unwrap_or_else(|_| sonic_rs::from_str("{}").unwrap());
-
-                        let function_response = GoogleFunctionResponse {
-                            name: function_name.clone(),
-                            response: response_lazy,
-                        };
-
-                        log::debug!(
-                            "Creating function response for '{}': {:?}",
-                            function_name,
-                            sonic_rs::to_string(&function_response.response)
-                                .unwrap_or_else(|_| "serialization failed".to_string())
-                        );
-
-                        google_contents.push(GoogleContent {
-                            parts: vec![GooglePart {
-                                text: None,
-                                function_call: None,
-                                function_response: Some(function_response),
-                            }],
-                            role: GoogleRole::User, // Function responses are sent as user messages
-                        });
-                    } else {
-                        log::warn!("Tool message missing tool_call_id, treating as regular user message");
-                        google_contents.push(GoogleContent {
-                            parts: vec![GooglePart {
-                                text: Some(msg.content.unwrap_or_default()),
-                                function_call: None,
-                                function_response: None,
-                            }],
-                            role: GoogleRole::User,
-                        });
-                    }
-                }
-                openai::ChatRole::Other(role) => {
-                    log::warn!("Unknown chat role from request: {role}, treating as user");
-                    google_contents.push(GoogleContent {
-                        parts: vec![GooglePart {
-                            text: Some(msg.content.unwrap_or_default()),
-                            function_call: None,
-                            function_response: None,
-                        }],
-                        role: GoogleRole::User,
-                    });
-                }
-            }
-        }
-
         let generation_config = GoogleGenerationConfig {
-            temperature: request.temperature,
-            top_p: request.top_p,
+            temperature,
+            top_p,
             top_k: None,
-            max_output_tokens: request.max_tokens.map(|x| x as i32),
-            stop_sequences: request.stop,
+            max_output_tokens: max_tokens.map(|value| value as i32),
+            stop_sequences,
             candidate_count: Some(1),
             response_mime_type: None,
             response_schema: None,
         };
 
         let result = Self {
-            contents: google_contents,
+            contents,
             generation_config: Some(generation_config),
             safety_settings: None,
             tools,
@@ -485,7 +698,6 @@ impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
             system_instruction,
         };
 
-        // Log the final request structure for debugging
         log::debug!(
             "Final Google request - has tools: {}, has tool_config: {}, contents count: {}",
             result.tools.is_some(),
@@ -494,7 +706,6 @@ impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
         );
 
         if let Ok(json) = sonic_rs::to_string(&result) {
-            // Truncate for readability if too long
             let preview = if json.len() > 2000 {
                 format!("{}... (truncated, {} bytes total)", &json[..2000], json.len())
             } else {
@@ -504,14 +715,6 @@ impl From<openai::ChatCompletionRequest> for GoogleGenerateRequest {
         }
 
         result
-    }
-}
-
-impl From<unified::UnifiedRequest> for GoogleGenerateRequest {
-    fn from(request: unified::UnifiedRequest) -> Self {
-        // Convert unified to OpenAI first, then use existing conversion
-        let openai_request = openai::ChatCompletionRequest::from(request);
-        Self::from(openai_request)
     }
 }
 

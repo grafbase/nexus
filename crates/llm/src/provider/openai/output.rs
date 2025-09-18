@@ -100,18 +100,38 @@ impl From<OpenAIChoice> for openai::ChatChoice {
 
 impl From<OpenAIResponse> for unified::UnifiedResponse {
     fn from(response: OpenAIResponse) -> Self {
-        // First convert to OpenAI format
-        let openai_response = openai::ChatCompletionResponse {
-            id: response.id,
-            object: openai::ObjectType::ChatCompletion,
-            created: response.created,
-            model: String::new(), // Will be set by the provider
-            choices: response.choices.into_iter().map(Into::into).collect(),
-            usage: response.usage,
-        };
+        let usage = response.usage;
 
-        // Then convert to unified format
-        unified::UnifiedResponse::from(openai_response)
+        let choices = response
+            .choices
+            .into_iter()
+            .map(|choice| {
+                let finish_reason = choice.finish_reason.map(|reason| {
+                    let openai_reason: openai::FinishReason = reason.into();
+                    unified::UnifiedFinishReason::from(openai_reason)
+                });
+
+                unified::UnifiedChoice {
+                    index: choice.index,
+                    message: unified::UnifiedMessage::from(choice.message),
+                    finish_reason,
+                }
+            })
+            .collect();
+
+        unified::UnifiedResponse {
+            id: response.id,
+            model: String::new(), // Provider fills in the model identifier later
+            choices,
+            usage: unified::UnifiedUsage {
+                prompt_tokens: usage.prompt_tokens,
+                completion_tokens: usage.completion_tokens,
+                total_tokens: usage.total_tokens,
+            },
+            created: response.created,
+            stop_reason: None,
+            stop_sequence: None,
+        }
     }
 }
 

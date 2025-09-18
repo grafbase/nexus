@@ -1,7 +1,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::messages::{openai, unified};
+use crate::messages::{openai::JsonSchema, unified};
 
 /// Request body for Anthropic Messages API.
 ///
@@ -98,7 +98,7 @@ pub struct AnthropicRequest {
 pub struct AnthropicMessage {
     /// The role of the message sender.
     /// Must be either "user" or "assistant".
-    pub role: openai::ChatRole,
+    pub role: AnthropicRole,
 
     /// The content of the message.
     /// Can be a string or an array of content blocks for tool responses.
@@ -155,17 +155,15 @@ pub struct AnthropicTool {
     pub description: String,
 
     /// The parameters the tool accepts, described as a JSON Schema object.
-    pub input_schema: Box<openai::JsonSchema>,
+    pub input_schema: Box<JsonSchema>,
 }
 
-impl From<openai::Tool> for AnthropicTool {
-    fn from(tool: openai::Tool) -> Self {
-        Self {
-            name: tool.function.name,
-            description: tool.function.description,
-            input_schema: Box::new(tool.function.parameters),
-        }
-    }
+/// Anthropic message role.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AnthropicRole {
+    User,
+    Assistant,
 }
 
 impl From<unified::UnifiedTool> for AnthropicTool {
@@ -192,26 +190,6 @@ pub enum AnthropicToolChoice {
     Tool { name: String },
 }
 
-impl From<openai::ToolChoice> for AnthropicToolChoice {
-    fn from(choice: openai::ToolChoice) -> Self {
-        match choice {
-            openai::ToolChoice::Mode(mode) => {
-                match mode {
-                    openai::ToolChoiceMode::Auto => AnthropicToolChoice::Auto,
-                    openai::ToolChoiceMode::Required | openai::ToolChoiceMode::Any => AnthropicToolChoice::Any,
-                    openai::ToolChoiceMode::None => AnthropicToolChoice::Auto, // Anthropic doesn't have "none", use "auto"
-                    openai::ToolChoiceMode::Other(_) => AnthropicToolChoice::Auto, // Default to auto for unknown values
-                }
-            }
-            openai::ToolChoice::Specific { function, tool_type: _ } => {
-                // For Anthropic, we need to use the function name directly
-                // regardless of the tool_type from OpenAI format
-                AnthropicToolChoice::Tool { name: function.name }
-            }
-        }
-    }
-}
-
 impl From<unified::UnifiedToolChoice> for AnthropicToolChoice {
     fn from(choice: unified::UnifiedToolChoice) -> Self {
         match choice {
@@ -225,75 +203,15 @@ impl From<unified::UnifiedToolChoice> for AnthropicToolChoice {
     }
 }
 
-impl From<openai::ChatMessage> for AnthropicMessage {
-    fn from(msg: openai::ChatMessage) -> Self {
-        // Handle tool role messages and assistant messages with tool calls
-        let content = match msg.role {
-            openai::ChatRole::Tool => {
-                // Tool role: create a tool_result block
-                if let Some(tool_call_id) = msg.tool_call_id {
-                    AnthropicMessageContent::Blocks(vec![AnthropicContentBlock::ToolResult {
-                        tool_use_id: tool_call_id,
-                        content: msg.content,
-                        is_error: None,
-                    }])
-                } else {
-                    // Fallback if tool_call_id is missing
-                    AnthropicMessageContent::Text(msg.content.unwrap_or_default())
-                }
-            }
-            openai::ChatRole::Assistant if msg.tool_calls.is_some() => {
-                // Assistant with tool calls: create content blocks
-                let mut blocks = Vec::new();
-
-                // Add text content if present
-                if let Some(text) = msg.content
-                    && !text.is_empty()
-                {
-                    blocks.push(AnthropicContentBlock::Text { text });
-                }
-
-                // Add tool use blocks
-                if let Some(tool_calls) = msg.tool_calls {
-                    for tool_call in tool_calls {
-                        // Parse the arguments from JSON string to JsonSchema
-                        // Parse arguments to OwnedLazyValue for tool input
-
-                        blocks.push(AnthropicContentBlock::ToolUse {
-                            id: tool_call.id,
-                            name: tool_call.function.name,
-                            input: serde_json::from_str(tool_call.function.arguments.as_str()).unwrap_or(Value::Null),
-                        });
-                    }
-                }
-
-                AnthropicMessageContent::Blocks(blocks)
-            }
-            _ => {
-                // Regular text message
-                AnthropicMessageContent::Text(msg.content.unwrap_or_default())
-            }
-        };
-
-        Self {
-            role: match msg.role {
-                openai::ChatRole::Tool => openai::ChatRole::User, // Anthropic requires tool results to be from "user"
-                role => role,
-            },
-            content,
-        }
-    }
-}
-
 impl From<unified::UnifiedMessage> for AnthropicMessage {
     fn from(msg: unified::UnifiedMessage) -> Self {
         // Convert role
         let role = match msg.role {
-            unified::UnifiedRole::User => openai::ChatRole::User,
-            unified::UnifiedRole::Assistant => openai::ChatRole::Assistant,
+            unified::UnifiedRole::User => AnthropicRole::User,
+            unified::UnifiedRole::Assistant => AnthropicRole::Assistant,
             // Anthropic doesn't have System or Tool roles as messages
-            unified::UnifiedRole::System => openai::ChatRole::User,
-            unified::UnifiedRole::Tool => openai::ChatRole::User,
+            unified::UnifiedRole::System => AnthropicRole::User,
+            unified::UnifiedRole::Tool => AnthropicRole::User,
         };
 
         // Convert content

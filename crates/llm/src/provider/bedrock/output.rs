@@ -5,13 +5,72 @@
 
 use aws_sdk_bedrockruntime::{
     operation::converse::ConverseOutput,
-    types::{self, ContentBlock, ContentBlockDelta, ConverseStreamOutput, StopReason},
+    types::{self, ContentBlock, ContentBlockDelta, ConverseStreamOutput, StopReason, ToolResultContentBlock},
 };
+use serde_json::{self, Value as SerdeValue};
+use std::borrow::Cow;
 
-use crate::messages::{openai, unified};
+use crate::messages::unified;
 
-/// Convert a Bedrock Converse response to OpenAI format.
-impl From<ConverseOutput> for openai::ChatCompletionResponse {
+fn document_to_serde(doc: &aws_smithy_types::Document) -> SerdeValue {
+    let rendered = document_to_string(doc);
+    serde_json::from_str(&rendered).unwrap_or_else(|_| SerdeValue::String(rendered))
+}
+
+fn convert_tool_result_block(block: &types::ToolResultBlock) -> unified::UnifiedContent {
+    let mut pieces = Vec::new();
+
+    for item in block.content() {
+        match item {
+            ToolResultContentBlock::Text(text) => pieces.push(text.clone()),
+            ToolResultContentBlock::Json(doc) => pieces.push(document_to_string(doc)),
+            ToolResultContentBlock::Document(_) => {
+                pieces.push("[Document tool result]".to_string());
+            }
+            ToolResultContentBlock::Image(_) => {
+                pieces.push("[Image tool result]".to_string());
+            }
+            ToolResultContentBlock::Video(_) => {
+                pieces.push("[Video tool result]".to_string());
+            }
+            _ => {
+                pieces.push("[Unknown tool result]".to_string());
+            }
+        }
+    }
+
+    let content = match pieces.len() {
+        0 => unified::UnifiedToolResultContent::Text(String::new()),
+        1 => unified::UnifiedToolResultContent::Text(pieces.into_iter().next().unwrap()),
+        _ => unified::UnifiedToolResultContent::Multiple(pieces),
+    };
+
+    let is_error = block
+        .status()
+        .map(|status| matches!(status, types::ToolResultStatus::Error));
+
+    unified::UnifiedContent::ToolResult {
+        tool_use_id: block.tool_use_id().to_string(),
+        content,
+        is_error,
+    }
+}
+
+fn stop_reason_to_unified(reason: StopReason) -> unified::UnifiedFinishReason {
+    match reason {
+        StopReason::EndTurn => unified::UnifiedFinishReason::Stop,
+        StopReason::MaxTokens => unified::UnifiedFinishReason::Length,
+        StopReason::StopSequence => unified::UnifiedFinishReason::Stop,
+        StopReason::ToolUse => unified::UnifiedFinishReason::ToolCalls,
+        StopReason::ContentFiltered | StopReason::GuardrailIntervened => unified::UnifiedFinishReason::ContentFilter,
+        _ => {
+            log::warn!("Unknown stop reason: {:?}", reason);
+            unified::UnifiedFinishReason::Stop
+        }
+    }
+}
+
+impl From<ConverseOutput> for unified::UnifiedResponse {
     fn from(output: ConverseOutput) -> Self {
         let converse_output = output.output.unwrap_or_else(|| {
             log::debug!("Missing output in Converse response - using empty message");
@@ -25,233 +84,181 @@ impl From<ConverseOutput> for openai::ChatCompletionResponse {
 
         let message = match converse_output {
             types::ConverseOutput::Message(msg) => msg,
-            _ => {
-                log::debug!("Unexpected output type in Converse response - using empty message");
-
+            other => {
+                log::debug!("Unexpected output type in Converse response: {:?}", other);
                 types::Message::builder()
                     .build()
                     .expect("Empty message should build successfully")
             }
         };
 
-        let mut content = String::new();
-        let mut tool_calls = Vec::new();
-
-        // Debug logging for empty content
         if message.content().is_empty() {
             log::debug!("Bedrock Converse API returned empty content");
         }
 
+        let mut unified_blocks = Vec::with_capacity(message.content().len());
+
         for block in message.content() {
             match block {
                 ContentBlock::Text(text) => {
-                    if !content.is_empty() {
-                        content.push(' ');
-                    }
-                    content.push_str(text);
+                    unified_blocks.push(unified::UnifiedContent::Text { text: text.clone() });
                 }
                 ContentBlock::ToolUse(tool_use) => {
-                    tool_calls.push(openai::ToolCall {
+                    let input = document_to_serde(&tool_use.input);
+                    unified_blocks.push(unified::UnifiedContent::ToolUse {
                         id: tool_use.tool_use_id.clone(),
-                        tool_type: openai::ToolCallType::Function,
-                        function: openai::FunctionCall {
-                            name: tool_use.name.clone(),
-                            arguments: document_to_string(&tool_use.input),
-                        },
+                        name: tool_use.name.clone(),
+                        input,
                     });
                 }
-                _ => {
-                    log::warn!("Unexpected content block type in response");
+                ContentBlock::ToolResult(result) => {
+                    unified_blocks.push(convert_tool_result_block(result));
+                }
+                other => {
+                    log::warn!("Unexpected content block type in response: {:?}", other);
                 }
             }
         }
 
-        let finish_reason = openai::FinishReason::from(output.stop_reason);
-
-        let message = openai::ChatMessage {
-            role: openai::ChatRole::Assistant,
-            content: if content.is_empty() { None } else { Some(content) },
-            tool_calls: if tool_calls.is_empty() { None } else { Some(tool_calls) },
+        let message = unified::UnifiedMessage {
+            role: unified::UnifiedRole::Assistant,
+            content: unified::UnifiedContentContainer::Blocks(unified_blocks),
+            tool_calls: None,
             tool_call_id: None,
         };
 
+        let finish_reason = Some(stop_reason_to_unified(output.stop_reason));
+
         let usage = output
             .usage
-            .map(|u| openai::Usage {
-                prompt_tokens: u.input_tokens as u32,
-                completion_tokens: u.output_tokens as u32,
-                total_tokens: u.total_tokens as u32,
+            .map(|usage| unified::UnifiedUsage {
+                prompt_tokens: usage.input_tokens as u32,
+                completion_tokens: usage.output_tokens as u32,
+                total_tokens: usage.total_tokens as u32,
             })
-            .unwrap_or(openai::Usage {
+            .unwrap_or(unified::UnifiedUsage {
                 prompt_tokens: 0,
                 completion_tokens: 0,
                 total_tokens: 0,
             });
 
-        openai::ChatCompletionResponse {
+        unified::UnifiedResponse {
             id: format!("bedrock-{}", uuid::Uuid::new_v4()),
-            object: openai::ObjectType::ChatCompletion,
-            created: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs(),
-            model: String::new(), // Will be set by provider
-            choices: vec![openai::ChatChoice {
+            model: String::new(),
+            choices: vec![unified::UnifiedChoice {
                 index: 0,
                 message,
                 finish_reason,
             }],
             usage,
+            created: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs(),
+            stop_reason: None,
+            stop_sequence: None,
         }
     }
 }
 
-impl From<ConverseOutput> for unified::UnifiedResponse {
-    fn from(output: ConverseOutput) -> Self {
-        // First convert to OpenAI format, then to unified
-        let openai_response = openai::ChatCompletionResponse::from(output);
-        unified::UnifiedResponse::from(openai_response)
-    }
-}
-
-/// Convert Bedrock StopReason to OpenAI FinishReason.
-impl From<StopReason> for openai::FinishReason {
-    fn from(reason: StopReason) -> Self {
-        match reason {
-            StopReason::EndTurn => openai::FinishReason::Stop,
-            StopReason::MaxTokens => openai::FinishReason::Length,
-            StopReason::StopSequence => openai::FinishReason::Stop,
-            StopReason::ToolUse => openai::FinishReason::ToolCalls,
-            StopReason::ContentFiltered => openai::FinishReason::ContentFilter,
-            StopReason::GuardrailIntervened => openai::FinishReason::ContentFilter,
-            _ => {
-                log::warn!("Unknown stop reason: {:?}", reason);
-                openai::FinishReason::Stop
-            }
-        }
-    }
-}
-
-impl TryFrom<ConverseStreamOutput> for openai::ChatCompletionChunk {
+impl TryFrom<ConverseStreamOutput> for unified::UnifiedChunk {
     type Error = ();
 
     fn try_from(event: ConverseStreamOutput) -> Result<Self, Self::Error> {
         match event {
-            ConverseStreamOutput::MessageStart(_) => {
-                // First chunk with role
-                Ok(openai::ChatCompletionChunk {
-                    id: format!("bedrock-{}", uuid::Uuid::new_v4()),
-                    object: openai::ObjectType::ChatCompletionChunk,
-                    created: std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs(),
-                    model: String::new(), // Will be set by provider
-                    choices: vec![openai::ChatChoiceDelta {
-                        index: 0,
-                        delta: openai::ChatMessageDelta {
-                            role: Some(openai::ChatRole::Assistant),
-                            content: None,
-                            tool_calls: None,
-                            function_call: None,
-                        },
-                        finish_reason: None,
-                        logprobs: None,
-                    }],
-                    system_fingerprint: None,
-                    usage: None,
-                })
-            }
+            ConverseStreamOutput::MessageStart(_) => Ok(unified::UnifiedChunk {
+                id: format!("bedrock-{}", uuid::Uuid::new_v4()).into(),
+                model: Cow::Borrowed(""),
+                created: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+                usage: None,
+                choices: vec![unified::UnifiedChoiceDelta {
+                    index: 0,
+                    delta: unified::UnifiedMessageDelta {
+                        role: Some(unified::UnifiedRole::Assistant),
+                        content: None,
+                        tool_calls: None,
+                    },
+                    finish_reason: None,
+                }],
+            }),
             ConverseStreamOutput::ContentBlockDelta(block_delta) => {
                 let Some(delta) = block_delta.delta() else {
                     return Err(());
                 };
 
                 match delta {
-                    ContentBlockDelta::Text(text) => {
-                        Ok(openai::ChatCompletionChunk {
-                            id: format!("bedrock-{}", uuid::Uuid::new_v4()),
-                            object: openai::ObjectType::ChatCompletionChunk,
-                            created: std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs(),
-                            model: String::new(), // Will be set by provider
-                            choices: vec![openai::ChatChoiceDelta {
-                                index: 0,
-                                delta: openai::ChatMessageDelta {
-                                    role: None,
-                                    content: Some(text.to_string()),
-                                    tool_calls: None,
-                                    function_call: None,
-                                },
-                                finish_reason: None,
-                                logprobs: None,
-                            }],
-                            system_fingerprint: None,
-                            usage: None,
-                        })
-                    }
-                    ContentBlockDelta::ToolUse(tool_use_delta) => {
-                        // Handle incremental tool arguments
-                        let tool_call = openai::StreamingToolCall::Delta {
+                    ContentBlockDelta::Text(text) => Ok(unified::UnifiedChunk {
+                        id: format!("bedrock-{}", uuid::Uuid::new_v4()).into(),
+                        model: Cow::Borrowed(""),
+                        created: std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs(),
+                        usage: None,
+                        choices: vec![unified::UnifiedChoiceDelta {
                             index: 0,
-                            function: openai::FunctionDelta {
+                            delta: unified::UnifiedMessageDelta {
+                                role: None,
+                                content: Some(text.to_string()),
+                                tool_calls: None,
+                            },
+                            finish_reason: None,
+                        }],
+                    }),
+                    ContentBlockDelta::ToolUse(tool_use_delta) => {
+                        let tool_call = unified::UnifiedStreamingToolCall::Delta {
+                            index: 0,
+                            function: unified::UnifiedFunctionDelta {
                                 arguments: tool_use_delta.input().to_string(),
                             },
                         };
 
-                        Ok(openai::ChatCompletionChunk {
-                            id: format!("bedrock-{}", uuid::Uuid::new_v4()),
-                            object: openai::ObjectType::ChatCompletionChunk,
+                        Ok(unified::UnifiedChunk {
+                            id: format!("bedrock-{}", uuid::Uuid::new_v4()).into(),
+                            model: Cow::Borrowed(""),
                             created: std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
                                 .as_secs(),
-                            model: String::new(), // Will be set by provider
-                            choices: vec![openai::ChatChoiceDelta {
+                            usage: None,
+                            choices: vec![unified::UnifiedChoiceDelta {
                                 index: 0,
-                                delta: openai::ChatMessageDelta {
+                                delta: unified::UnifiedMessageDelta {
                                     role: None,
+
                                     content: None,
                                     tool_calls: Some(vec![tool_call]),
-                                    function_call: None,
                                 },
                                 finish_reason: None,
-                                logprobs: None,
                             }],
-                            system_fingerprint: None,
-                            usage: None,
                         })
                     }
                     _ => Err(()),
                 }
             }
             ConverseStreamOutput::MessageStop(msg_stop) => {
-                // Final chunk with finish reason
-                let finish_reason = Some(openai::FinishReason::from(msg_stop.stop_reason));
+                let finish_reason = Some(stop_reason_to_unified(msg_stop.stop_reason));
 
-                Ok(openai::ChatCompletionChunk {
-                    id: format!("bedrock-{}", uuid::Uuid::new_v4()),
-                    object: openai::ObjectType::ChatCompletionChunk,
+                Ok(unified::UnifiedChunk {
+                    id: format!("bedrock-{}", uuid::Uuid::new_v4()).into(),
+                    model: Cow::Borrowed(""),
                     created: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_secs(),
-                    model: String::new(), // Will be set by provider
-                    choices: vec![openai::ChatChoiceDelta {
+                    usage: None,
+                    choices: vec![unified::UnifiedChoiceDelta {
                         index: 0,
-                        delta: openai::ChatMessageDelta {
+                        delta: unified::UnifiedMessageDelta {
                             role: None,
                             content: None,
                             tool_calls: None,
-                            function_call: None,
                         },
                         finish_reason,
-                        logprobs: None,
                     }],
-                    system_fingerprint: None,
-                    usage: None,
                 })
             }
             ConverseStreamOutput::ContentBlockStart(block_start) => {
@@ -262,38 +269,32 @@ impl TryFrom<ConverseStreamOutput> for openai::ChatCompletionChunk {
 
                 match start {
                     aws_sdk_bedrockruntime::types::ContentBlockStart::ToolUse(tool_use) => {
-                        // Create tool call start chunk
-                        let tool_call = openai::StreamingToolCall::Start {
+                        let tool_call = unified::UnifiedStreamingToolCall::Start {
                             index: 0,
                             id: tool_use.tool_use_id().to_string(),
-                            r#type: openai::ToolCallType::Function,
-                            function: openai::FunctionStart {
+                            function: unified::UnifiedFunctionStart {
                                 name: tool_use.name().to_string(),
                                 arguments: String::new(), // Arguments come in delta events
                             },
                         };
 
-                        Ok(openai::ChatCompletionChunk {
-                            id: format!("bedrock-{}", uuid::Uuid::new_v4()),
-                            object: openai::ObjectType::ChatCompletionChunk,
+                        Ok(unified::UnifiedChunk {
+                            id: format!("bedrock-{}", uuid::Uuid::new_v4()).into(),
+                            model: Cow::Borrowed(""),
                             created: std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap_or_default()
                                 .as_secs(),
-                            model: String::new(), // Will be set by provider
-                            choices: vec![openai::ChatChoiceDelta {
+                            usage: None,
+                            choices: vec![unified::UnifiedChoiceDelta {
                                 index: 0,
-                                delta: openai::ChatMessageDelta {
+                                delta: unified::UnifiedMessageDelta {
                                     role: None,
                                     content: None,
                                     tool_calls: Some(vec![tool_call]),
-                                    function_call: None,
                                 },
                                 finish_reason: None,
-                                logprobs: None,
                             }],
-                            system_fingerprint: None,
-                            usage: None,
                         })
                     }
                     _ => {
@@ -312,21 +313,19 @@ impl TryFrom<ConverseStreamOutput> for openai::ChatCompletionChunk {
                     return Err(());
                 };
 
-                Ok(openai::ChatCompletionChunk {
-                    id: format!("bedrock-{}", uuid::Uuid::new_v4()),
-                    object: openai::ObjectType::ChatCompletionChunk,
+                Ok(unified::UnifiedChunk {
+                    id: format!("bedrock-{}", uuid::Uuid::new_v4()).into(),
+                    model: Cow::Borrowed(""),
                     created: std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap_or_default()
                         .as_secs(),
-                    model: String::new(), // Will be set by provider
-                    choices: vec![],
-                    system_fingerprint: None,
-                    usage: Some(openai::Usage {
+                    usage: Some(unified::UnifiedUsage {
                         prompt_tokens: usage.input_tokens as u32,
                         completion_tokens: usage.output_tokens as u32,
                         total_tokens: usage.total_tokens as u32,
                     }),
+                    choices: vec![],
                 })
             }
             _ => {

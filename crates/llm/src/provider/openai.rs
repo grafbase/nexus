@@ -110,10 +110,6 @@ impl Provider for OpenAIProvider {
         let body = sonic_rs::to_vec(&openai_request)
             .map_err(|e| LlmError::InvalidRequest(format!("Failed to serialize request: {e}")))?;
 
-        // Debug: Log the serialized body
-        if let Ok(body_str) = std::str::from_utf8(&body) {
-            log::debug!("Serialized OpenAI request body: {}", body_str);
-        }
         let response = request_builder
             .header("Content-Type", "application/json")
             .body(body)
@@ -151,11 +147,13 @@ impl Provider for OpenAIProvider {
         let openai_response: OpenAIResponse = sonic_rs::from_str(&response_text).map_err(|e| {
             log::error!("Failed to parse OpenAI chat completion response: {e}");
             log::debug!("Response parsing failed, length: {} bytes", response_text.len());
+
             LlmError::InternalError(None)
         })?;
 
         let mut response = UnifiedResponse::from(openai_response);
         response.model = original_model;
+
         Ok(response)
     }
 
@@ -198,10 +196,6 @@ impl Provider for OpenAIProvider {
         let body = sonic_rs::to_vec(&openai_request)
             .map_err(|e| LlmError::InvalidRequest(format!("Failed to serialize request: {e}")))?;
 
-        // Debug: Log the serialized body
-        if let Ok(body_str) = std::str::from_utf8(&body) {
-            log::debug!("Serialized OpenAI request body: {}", body_str);
-        }
         let response = request_builder
             .header("Content-Type", "application/json")
             .body(body)
@@ -288,5 +282,3 @@ impl HttpProvider for OpenAIProvider {
 pub(super) fn extract_model_from_full_name(full_name: &str) -> String {
     full_name.split('/').next_back().unwrap_or(full_name).to_string()
 }
-
-// OpenAI API request/response types

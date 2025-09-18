@@ -82,33 +82,53 @@ pub struct OpenAIRequest {
 
 impl From<unified::UnifiedRequest> for OpenAIRequest {
     fn from(request: unified::UnifiedRequest) -> Self {
-        // First convert unified to OpenAI format
-        let openai_request = openai::ChatCompletionRequest::from(request);
-
-        let openai::ChatCompletionRequest {
+        let unified::UnifiedRequest {
             model,
             messages,
-            temperature,
+            system,
             max_tokens,
+            temperature,
             top_p,
+            top_k: _, // OpenAI does not support top_k
             frequency_penalty,
             presence_penalty,
-            stop,
+            stop_sequences,
             stream,
             tools,
             tool_choice,
             parallel_tool_calls,
-        } = openai_request;
+            metadata: _, // Not forwarded to OpenAI
+        } = request;
+
+        // Convert system field and messages directly to OpenAI chat messages without
+        // building an intermediate ChatCompletionRequest.
+        let mut openai_messages = Vec::with_capacity(messages.len() + if system.is_some() { 1 } else { 0 });
+
+        if let Some(system_content) = system {
+            openai_messages.push(openai::ChatMessage {
+                role: openai::ChatRole::System,
+                content: Some(system_content),
+                tool_calls: None,
+                tool_call_id: None,
+            });
+        }
+
+        for message in messages {
+            openai_messages.push(openai::ChatMessage::from(message));
+        }
+
+        let tools = tools.map(|items| items.into_iter().map(openai::Tool::from).collect());
+        let tool_choice = tool_choice.map(openai::ToolChoice::from);
 
         Self {
             model,
-            messages,
+            messages: openai_messages,
             temperature,
             max_completion_tokens: max_tokens,
             top_p,
             frequency_penalty,
             presence_penalty,
-            stop,
+            stop: stop_sequences,
             stream: stream.unwrap_or(false),
             tools,
             tool_choice,

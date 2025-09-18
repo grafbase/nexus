@@ -15,11 +15,12 @@ use aws_sdk_bedrockruntime::{
 use aws_smithy_runtime_api::client::result::SdkError;
 use futures::stream;
 use secrecy::ExposeSecret;
+use std::borrow::Cow;
 
 use crate::{
     error::LlmError,
     messages::{
-        openai::{self, Model, ObjectType},
+        openai::{Model, ObjectType},
         unified::{UnifiedChunk, UnifiedRequest, UnifiedResponse},
     },
     provider::{ChatCompletionStream, ModelManager, Provider},
@@ -147,9 +148,8 @@ impl Provider for BedrockProvider {
                 loop {
                     match event_receiver.recv().await {
                         Ok(Some(event)) => {
-                            if let Ok(openai_chunk) = openai::ChatCompletionChunk::try_from(event) {
-                                let mut chunk = UnifiedChunk::from(openai_chunk);
-                                chunk.model = model.clone().into(); // Set model like other providers
+                            if let Ok(mut chunk) = UnifiedChunk::try_from(event) {
+                                chunk.model = Cow::Owned(model.clone());
                                 return Some((Ok(chunk), (event_receiver, model)));
                             }
                         }
