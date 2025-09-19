@@ -3,6 +3,7 @@
 //! Provides OpenTelemetry metrics, tracing, and logging integration.
 
 pub mod logs;
+mod metadata;
 pub mod metrics;
 pub mod tracing;
 

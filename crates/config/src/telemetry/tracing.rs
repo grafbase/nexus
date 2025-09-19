@@ -184,7 +184,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_debug_snapshot!(config, @r###"
+        assert_debug_snapshot!(config, @r#"
         TracingConfig {
             sampling: 1.0,
             parent_based_sampler: true,
@@ -228,11 +228,13 @@ mod tests {
                             max_export_batch_size: 512,
                             max_concurrent_exports: 1,
                         },
+                        grpc: None,
+                        http: None,
                     },
                 },
             ),
         }
-        "###);
+        "#);
     }
 
     #[test]
@@ -301,7 +303,7 @@ sampling rate must be between 0.0 and 1.0, got -0.1
         .unwrap();
 
         let exporters = config.exporters().unwrap();
-        assert_debug_snapshot!(exporters, @r###"
+        assert_debug_snapshot!(exporters, @r#"
         ExportersConfig {
             otlp: OtlpExporterConfig {
                 enabled: true,
@@ -330,8 +332,10 @@ sampling rate must be between 0.0 and 1.0, got -0.1
                     max_export_batch_size: 512,
                     max_concurrent_exports: 1,
                 },
+                grpc: None,
+                http: None,
             },
         }
-        "###);
+        "#);
     }
 }

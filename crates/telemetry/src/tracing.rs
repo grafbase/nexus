@@ -10,6 +10,8 @@ use opentelemetry_sdk::Resource;
 use std::borrow::Cow;
 use std::time::Duration;
 
+use crate::metadata;
+
 /// Guard that ensures proper cleanup of tracing resources
 pub struct TracingGuard;
 
@@ -74,18 +76,32 @@ pub async fn init_tracing(config: &TelemetryConfig) -> anyhow::Result<TracingGua
     );
 
     let exporter = match otlp_config.protocol {
-        config::OtlpProtocol::Grpc => SpanExporter::builder()
-            .with_tonic()
-            .with_endpoint(otlp_config.endpoint.to_string())
-            .with_timeout(otlp_config.timeout)
-            .build()
-            .context("Failed to build gRPC OTLP span exporter")?,
-        config::OtlpProtocol::Http => SpanExporter::builder()
-            .with_http()
-            .with_endpoint(otlp_config.endpoint.to_string())
-            .with_timeout(otlp_config.timeout)
-            .build()
-            .context("Failed to build HTTP OTLP span exporter")?,
+        config::OtlpProtocol::Grpc => {
+            use opentelemetry_otlp::WithTonicConfig;
+
+            let mut builder = SpanExporter::builder()
+                .with_tonic()
+                .with_endpoint(otlp_config.endpoint.to_string())
+                .with_timeout(otlp_config.timeout);
+
+            let metadata = metadata::build_metadata(otlp_config)?;
+            builder = builder.with_metadata(metadata);
+
+            builder.build().context("Failed to build gRPC OTLP span exporter")?
+        }
+        config::OtlpProtocol::Http => {
+            use opentelemetry_otlp::WithHttpConfig;
+
+            let mut builder = SpanExporter::builder()
+                .with_http()
+                .with_endpoint(otlp_config.endpoint.to_string())
+                .with_timeout(otlp_config.timeout);
+
+            let headers = metadata::build_http_headers(otlp_config)?;
+            builder = builder.with_headers(headers);
+
+            builder.build().context("Failed to build HTTP OTLP span exporter")?
+        }
     };
 
     log::debug!("OTLP span exporter created successfully");
@@ -104,7 +120,7 @@ pub async fn init_tracing(config: &TelemetryConfig) -> anyhow::Result<TracingGua
     // Note: Trace context propagation from incoming requests is handled at the HTTP middleware level
     // We don't need OpenTelemetry propagators since we're not making outgoing traced requests
 
-    log::info!(
+    log::debug!(
         "Tracing subsystem initialized successfully with service name: {}",
         config.service_name().unwrap_or("nexus")
     );

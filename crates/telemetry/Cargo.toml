@@ -12,6 +12,7 @@ anyhow.workspace = true
 config.workspace = true
 fastrace = { workspace = true, features = ["enable"] }
 fastrace-opentelemetry.workspace = true
+http.workspace = true
 log.workspace = true
 logforth.workspace = true
 opentelemetry.workspace = true
@@ -19,7 +20,6 @@ opentelemetry-otlp.workspace = true
 opentelemetry-semantic-conventions.workspace = true
 opentelemetry_sdk.workspace = true
 tokio.workspace = true
-tonic.workspace = true
 
 [lints]
 workspace = true

@@ -18,6 +18,8 @@ use opentelemetry_sdk::{
     logs::{BatchLogProcessor, LoggerProviderBuilder, SdkLoggerProvider},
 };
 
+use crate::metadata;
+
 /// Guard that ensures proper cleanup of logs resources
 pub struct LogsGuard {
     provider: SdkLoggerProvider,
@@ -164,22 +166,30 @@ pub async fn init_logs(config: &TelemetryConfig) -> Result<(OtelLogsAppender, Lo
     let resource = resource_builder.build();
 
     // Create OTLP exporter
-    let exporter = match &otlp_config.protocol {
+    let exporter = match otlp_config.protocol {
         OtlpProtocol::Grpc => {
+            use opentelemetry_otlp::WithTonicConfig;
+
             let mut builder = opentelemetry_otlp::LogExporter::builder()
                 .with_tonic()
-                .with_endpoint(otlp_config.endpoint.to_string());
+                .with_endpoint(otlp_config.endpoint.to_string())
+                .with_timeout(otlp_config.timeout);
 
-            builder = builder.with_timeout(otlp_config.timeout);
+            let metadata = metadata::build_metadata(otlp_config)?;
+            builder = builder.with_metadata(metadata);
 
             builder.build()?
         }
         OtlpProtocol::Http => {
+            use opentelemetry_otlp::WithHttpConfig;
+
             let mut builder = opentelemetry_otlp::LogExporter::builder()
                 .with_http()
-                .with_endpoint(otlp_config.endpoint.to_string());
+                .with_endpoint(otlp_config.endpoint.to_string())
+                .with_timeout(otlp_config.timeout);
 
-            builder = builder.with_timeout(otlp_config.timeout);
+            let headers = metadata::build_http_headers(otlp_config)?;
+            builder = builder.with_headers(headers);
 
             builder.build()?
         }
@@ -197,6 +207,12 @@ pub async fn init_logs(config: &TelemetryConfig) -> Result<(OtelLogsAppender, Lo
     let service_name = config.service_name().unwrap_or("nexus").to_string();
     let appender = OtelLogsAppender::new(provider.clone(), service_name);
     let guard = LogsGuard { provider };
+
+    log::debug!(
+        "OTLP logs exporter initialized to {} via {:?}",
+        otlp_config.endpoint,
+        otlp_config.protocol
+    );
 
     Ok((appender, guard))
 }

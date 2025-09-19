@@ -43,7 +43,9 @@ pub use rate_limit::*;
 use serde::Deserialize;
 pub use server::ServerConfig;
 pub use telemetry::OtlpProtocol;
-pub use telemetry::exporters::{ExportersConfig, OtlpExporterConfig};
+pub use telemetry::exporters::{
+    ExportersConfig, GrpcHeaders, HttpHeaders, OtlpExporterConfig, OtlpGrpcConfig, OtlpHttpConfig,
+};
 pub use telemetry::tracing::{PropagationConfig, TracingConfig};
 pub use telemetry::{LogsConfig, MetricsConfig, TelemetryConfig};
 pub use tls::TlsServerConfig;
