@@ -1,7 +1,9 @@
-use std::fmt;
+use std::{collections::BTreeMap, fmt};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+use crate::error::LlmError;
 
 /// Request body for Anthropic Messages API.
 ///
@@ -307,6 +309,66 @@ pub struct AnthropicErrorDetails {
 
     /// Human-readable error message
     pub message: String,
+
+    /// Optional code provided by Anthropic for further classification
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+
+    /// Optional parameter associated with the error
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub param: Option<String>,
+
+    /// Additional fields returned by Anthropic
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty", flatten)]
+    pub metadata: BTreeMap<String, serde_json::Value>,
+}
+
+impl AnthropicError {
+    fn from_parts(error_type: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            error_type: "error".to_string(),
+            error: AnthropicErrorDetails {
+                error_type: error_type.into(),
+                message: message.into(),
+                code: None,
+                param: None,
+                metadata: BTreeMap::new(),
+            },
+        }
+    }
+}
+
+impl From<LlmError> for AnthropicError {
+    fn from(error: LlmError) -> Self {
+        match error {
+            LlmError::ProviderApiError { status: _, message } => {
+                // Try to decode Anthropic-native error payloads and forward them verbatim
+                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&message)
+                    && let Some(error_value) = value.get("error")
+                    && let Ok(details) = serde_json::from_value::<AnthropicErrorDetails>(error_value.clone())
+                {
+                    let outer_type = value
+                        .get("type")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("error")
+                        .to_string();
+                    return Self {
+                        error_type: outer_type,
+                        error: details,
+                    };
+                }
+
+                // Fallback to a generic api_error payload with the upstream message including status
+                Self::from_parts("api_error", message)
+            }
+            LlmError::InternalError(Some(provider_msg)) => Self::from_parts("internal_error", provider_msg),
+            other => {
+                let error_type = other.error_type().to_string();
+                let message = other.client_message();
+                Self::from_parts(error_type, message)
+            }
+        }
+    }
 }
 
 /// Model information in Anthropic format.

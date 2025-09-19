@@ -96,10 +96,10 @@ async fn duplicate_tool_ids_fail_as_expected() {
     // Verify the error message using insta snapshot
     insta::assert_json_snapshot!(body, @r###"
     {
+      "type": "error",
       "error": {
-        "message": "Provider API error (422): {\"error\":{\"type\":\"invalid_request_error\",\"message\":\"messages: `tool_use` ids must be unique (duplicate id: toolu_01XyzAbc123)\"}}",
-        "type": "api_error",
-        "code": 502
+        "type": "invalid_request_error",
+        "message": "messages: `tool_use` ids must be unique (duplicate id: toolu_01XyzAbc123)"
       }
     }
     "###);
