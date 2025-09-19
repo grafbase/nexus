@@ -1,6 +1,6 @@
 //! Logger initialization for the server
 
-use jiff::{tz::TimeZone, Zoned};
+use jiff::{Zoned, tz::TimeZone};
 use logforth::{
     append::{FastraceEvent, Stderr},
     filter::EnvFilter,
