@@ -287,17 +287,6 @@ pub struct AnthropicUsage {
     pub output_tokens: i32,
 }
 
-/// Error response in Anthropic format.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnthropicError {
-    /// The type of error (always "error")
-    #[serde(rename = "type")]
-    pub error_type: String,
-
-    /// Error details
-    pub error: AnthropicErrorDetails,
-}
-
 /// Error details in Anthropic format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnthropicErrorDetails {

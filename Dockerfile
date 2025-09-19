@@ -1,4 +1,4 @@
-FROM rust:1.89-slim AS chef
+FROM rust:1.90-slim AS chef
 
 RUN apt-get update && apt-get install -y \
     curl \
