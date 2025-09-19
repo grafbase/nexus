@@ -6,6 +6,10 @@ use axum::{
 use serde::Serialize;
 use thiserror::Error;
 
+use crate::messages::anthropic;
+
+pub type LlmResult<T> = std::result::Result<T, LlmError>;
+
 /// LLM service errors with appropriate HTTP status codes.
 #[derive(Debug, Error)]
 pub enum LlmError {
@@ -98,6 +102,15 @@ impl LlmError {
             Self::InternalError(_) => "internal_error",
         }
     }
+
+    /// Message that is safe to expose to API consumers.
+    pub fn client_message(&self) -> String {
+        match self {
+            Self::InternalError(Some(provider_msg)) => provider_msg.clone(),
+            Self::InternalError(None) => "Internal server error".to_string(),
+            _ => self.to_string(),
+        }
+    }
 }
 
 /// Error response format compatible with OpenAI API.
@@ -117,30 +130,10 @@ impl IntoResponse for LlmError {
     fn into_response(self) -> Response {
         let status = self.status_code();
 
-        // Log all 5xx errors for administrators
-        if status.is_server_error() {
-            match &self {
-                Self::InternalError(Some(provider_msg)) => {
-                    log::error!("Provider returned internal error: {provider_msg}");
-                }
-                Self::InternalError(None) => {
-                    // Full error details are already logged where the error was created
-                    log::error!("Internal server error occurred");
-                }
-                _ => {
-                    log::error!("Server error ({}): {}", status.as_u16(), self);
-                }
-            }
-        }
-
         // No Retry-After headers to maintain consistency with downstream LLM providers
 
         // For internal errors, only show provider messages, not Nexus internals
-        let message = match &self {
-            Self::InternalError(Some(provider_msg)) => provider_msg.clone(),
-            Self::InternalError(None) => "Internal server error".to_string(),
-            _ => self.to_string(),
-        };
+        let message = self.client_message();
 
         let error_response = ErrorResponse {
             error: ErrorDetails {
@@ -154,3 +147,25 @@ impl IntoResponse for LlmError {
         (status, Json(error_response)).into_response()
     }
 }
+
+pub struct AnthropicErrorResponse {
+    status: StatusCode,
+    body: anthropic::AnthropicError,
+}
+
+impl From<LlmError> for AnthropicErrorResponse {
+    fn from(error: LlmError) -> Self {
+        let status = error.status_code();
+        let body = anthropic::AnthropicError::from(error);
+
+        Self { status, body }
+    }
+}
+
+impl IntoResponse for AnthropicErrorResponse {
+    fn into_response(self) -> Response {
+        (self.status, Json(self.body)).into_response()
+    }
+}
+
+pub type AnthropicResult<T> = std::result::Result<T, AnthropicErrorResponse>;

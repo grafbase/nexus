@@ -18,12 +18,10 @@ mod request;
 mod server;
 pub mod token_counter;
 
-pub use error::LlmError;
+pub use error::{AnthropicResult, LlmError, LlmResult as Result};
 use server::{LlmHandler, LlmServerBuilder};
 
 use crate::messages::unified;
-
-pub type Result<T> = std::result::Result<T, LlmError>;
 
 /// Creates an axum router for LLM endpoints.
 pub async fn router(config: &config::Config) -> anyhow::Result<Router> {
@@ -150,7 +148,7 @@ async fn anthropic_messages(
     client_identity: Option<Extension<config::ClientIdentity>>,
     span_context: Option<Extension<fastrace::collector::SpanContext>>,
     Sonic(request): Sonic<anthropic::AnthropicChatRequest>,
-) -> Result<impl IntoResponse> {
+) -> AnthropicResult<impl IntoResponse> {
     log::debug!("Anthropic messages handler called for model: {}", request.model);
     log::debug!("Request has {} messages", request.messages.len());
     log::debug!("Streaming: {}", request.stream.unwrap_or(false));
@@ -183,7 +181,17 @@ async fn anthropic_messages(
                 }
                 Err(e) => {
                     log::error!("Stream error: {e}");
-                    Event::default().data(format!(r#"{{"error":"{}"}}"#, e))
+                    let anthropic_error = anthropic::AnthropicError::from(e);
+                    let error_event = anthropic::AnthropicStreamEvent::Error {
+                        error: anthropic_error.error,
+                    };
+                    let json = sonic_rs::to_string(&error_event).unwrap_or_else(|se| {
+                        log::error!("Failed to serialize Anthropic stream error event: {se}");
+                        r#"{"type":"error","error":{"type":"internal_error","message":"serialization failed"}}"#
+                            .to_string()
+                    });
+
+                    Event::default().data(json)
                 }
             };
 
@@ -206,7 +214,7 @@ async fn anthropic_messages(
 }
 
 /// Handle Anthropic list models requests.
-async fn anthropic_list_models(State(server): State<Arc<LlmHandler>>) -> Result<impl IntoResponse> {
+async fn anthropic_list_models(State(server): State<Arc<LlmHandler>>) -> AnthropicResult<impl IntoResponse> {
     let openai_response = server.models();
 
     // Convert OpenAI models response to Anthropic format

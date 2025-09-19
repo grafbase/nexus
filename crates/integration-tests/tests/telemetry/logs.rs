@@ -23,25 +23,6 @@ struct LogRow {
     service_name: String,
 }
 
-/// Extended log row with attributes for detailed testing
-#[derive(Debug, Deserialize, Serialize, Row)]
-struct LogRowWithAttributes {
-    #[serde(rename = "TraceId")]
-    trace_id: String,
-    #[serde(rename = "SpanId")]
-    span_id: String,
-    #[serde(rename = "Body")]
-    body: String,
-    #[serde(rename = "SeverityText")]
-    severity_text: String,
-    #[serde(rename = "SeverityNumber")]
-    severity_number: u8,
-    #[serde(rename = "ServiceName")]
-    service_name: String,
-    #[serde(rename = "LogAttributes")]
-    log_attributes: Vec<(String, String)>,
-}
-
 fn create_test_config_with_logs(service_name: &str) -> String {
     formatdoc! {r#"
         [server]
