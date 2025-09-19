@@ -266,6 +266,7 @@ Comprehensive testing setup:
 OpenTelemetry integration and observability:
 - **Metrics**: Counter, histogram, and gauge creation with OTLP export
 - **OTLP Support**: Export to OpenTelemetry collectors via gRPC or HTTP
+- **Custom Headers**: Configure per-exporter OTLP headers using HTTP-compliant names/values
 - **SDK Management**: Proper initialization and shutdown via TelemetryGuard
 - **Standard Names**: Consistent metric naming following OTel semantic conventions
 

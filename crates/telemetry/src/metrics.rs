@@ -15,6 +15,8 @@ use opentelemetry_sdk::{
     metrics::{PeriodicReader, SdkMeterProvider},
 };
 
+use crate::metadata;
+
 const METER_NAME: &str = "nexus";
 
 /// Get the global meter for recording metrics
@@ -67,18 +69,32 @@ async fn create_otlp_meter_provider(telemetry_config: &TelemetryConfig) -> anyho
 
     // Create the OTLP exporter based on protocol
     let exporter = match exporter_config.protocol {
-        OtlpProtocol::Grpc => MetricExporter::builder()
-            .with_tonic()
-            .with_endpoint(exporter_config.endpoint.as_str())
-            .with_timeout(exporter_config.timeout)
-            .build()
-            .context("Failed to create gRPC OTLP metric exporter")?,
-        OtlpProtocol::Http => MetricExporter::builder()
-            .with_http()
-            .with_endpoint(exporter_config.endpoint.as_str())
-            .with_timeout(exporter_config.timeout)
-            .build()
-            .context("Failed to create HTTP OTLP metric exporter")?,
+        OtlpProtocol::Grpc => {
+            use opentelemetry_otlp::WithTonicConfig;
+
+            let mut builder = MetricExporter::builder()
+                .with_tonic()
+                .with_endpoint(exporter_config.endpoint.as_str())
+                .with_timeout(exporter_config.timeout);
+
+            let metadata = metadata::build_metadata(exporter_config)?;
+            builder = builder.with_metadata(metadata);
+
+            builder.build().context("Failed to create gRPC OTLP metric exporter")?
+        }
+        OtlpProtocol::Http => {
+            use opentelemetry_otlp::WithHttpConfig;
+
+            let mut builder = MetricExporter::builder()
+                .with_http()
+                .with_endpoint(exporter_config.endpoint.as_str())
+                .with_timeout(exporter_config.timeout);
+
+            let headers = metadata::build_http_headers(exporter_config)?;
+            builder = builder.with_headers(headers);
+
+            builder.build().context("Failed to create HTTP OTLP metric exporter")?
+        }
     };
 
     // Create a periodic reader with the configured batch settings
@@ -92,7 +108,7 @@ async fn create_otlp_meter_provider(telemetry_config: &TelemetryConfig) -> anyho
         .with_reader(reader)
         .build();
 
-    log::info!(
+    log::debug!(
         "OTLP metrics exporter initialized to {} via {:?}",
         exporter_config.endpoint,
         exporter_config.protocol

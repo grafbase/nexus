@@ -1351,6 +1351,11 @@ endpoint = "http://localhost:4317"   # Default: http://localhost:4317
 protocol = "grpc"                    # Default: grpc (options: grpc, http)
 timeout = "60s"                      # Default: 60s
 
+# Optional: Additional headers (applied to all OTLP requests)
+[telemetry.exporters.otlp.headers]
+authorization = "Bearer {{ env.OTLP_TOKEN }}"
+x-nexus-shard = "primary"
+
 # Batch export configuration (all optional with defaults)
 [telemetry.exporters.otlp.batch_export]
 scheduled_delay = "5s"               # Default: 5s
@@ -1387,6 +1392,9 @@ enabled = true
 endpoint = "http://localhost:4317"
 protocol = "grpc"                 # or "http"
 timeout = "60s"
+
+[telemetry.tracing.exporters.otlp.headers]
+authorization = "Bearer {{ env.OTLP_TOKEN }}"
 ```
 
 **See [Distributed Tracing](#distributed-tracing) for span hierarchy and attributes.**
@@ -1405,6 +1413,9 @@ enabled = true
 endpoint = "http://logs-collector:4317"  # Different endpoint for logs
 protocol = "grpc"                         # or "http"
 timeout = "30s"
+
+[telemetry.logs.exporters.otlp.headers]
+authorization = "Bearer {{ env.OTLP_TOKEN }}"
 
 # Logs are automatically correlated with active trace and span IDs
 ```
