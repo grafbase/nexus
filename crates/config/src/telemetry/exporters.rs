@@ -104,6 +104,27 @@ pub struct OtlpGrpcConfig {
     /// gRPC metadata to include with requests
     #[serde(default)]
     pub headers: GrpcHeaders,
+
+    /// TLS configuration for secure connections
+    #[serde(default)]
+    pub tls: Option<OtlpGrpcTlsConfig>,
+}
+
+/// TLS configuration for OTLP gRPC connections
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OtlpGrpcTlsConfig {
+    /// Domain name for TLS verification (SNI)
+    pub domain_name: Option<String>,
+
+    /// Path to the client private key PEM file
+    pub key: Option<String>,
+
+    /// Path to the client certificate PEM file
+    pub cert: Option<String>,
+
+    /// Path to the CA certificate PEM file
+    pub ca: Option<String>,
 }
 
 /// HTTP-specific configuration for OTLP
@@ -473,5 +494,104 @@ mod tests {
         "#})
         .unwrap();
         assert_eq!(default_config.otlp.protocol, OtlpProtocol::Grpc);
+    }
+
+    #[test]
+    fn grpc_tls_config_full() {
+        let config: ExportersConfig = toml::from_str(indoc! {r#"
+            [otlp]
+            enabled = true
+            protocol = "grpc"
+
+            [otlp.grpc.tls]
+            domain_name = "example.com"
+            key = "/path/to/key.pem"
+            cert = "/path/to/cert.pem"
+            ca = "/path/to/ca.pem"
+        "#})
+        .unwrap();
+
+        assert!(config.otlp.grpc.is_some());
+        let grpc = config.otlp.grpc.as_ref().unwrap();
+        assert!(grpc.tls.is_some());
+
+        let tls = grpc.tls.as_ref().unwrap();
+        assert_eq!(tls.domain_name.as_deref(), Some("example.com"));
+        assert_eq!(tls.key.as_deref(), Some("/path/to/key.pem"));
+        assert_eq!(tls.cert.as_deref(), Some("/path/to/cert.pem"));
+        assert_eq!(tls.ca.as_deref(), Some("/path/to/ca.pem"));
+    }
+
+    #[test]
+    fn grpc_tls_config_partial() {
+        let config: ExportersConfig = toml::from_str(indoc! {r#"
+            [otlp]
+            enabled = true
+            protocol = "grpc"
+
+            [otlp.grpc.tls]
+            domain_name = "example.com"
+            ca = "/path/to/ca.pem"
+        "#})
+        .unwrap();
+
+        assert!(config.otlp.grpc.is_some());
+        let grpc = config.otlp.grpc.as_ref().unwrap();
+        assert!(grpc.tls.is_some());
+
+        let tls = grpc.tls.as_ref().unwrap();
+        assert_eq!(tls.domain_name.as_deref(), Some("example.com"));
+        assert!(tls.key.is_none());
+        assert!(tls.cert.is_none());
+        assert_eq!(tls.ca.as_deref(), Some("/path/to/ca.pem"));
+    }
+
+    #[test]
+    fn grpc_tls_with_headers() {
+        let config: ExportersConfig = toml::from_str(indoc! {r#"
+            [otlp]
+            enabled = true
+            protocol = "grpc"
+
+            [otlp.grpc.headers]
+            authorization = "Bearer token"
+            x-custom = "value"
+
+            [otlp.grpc.tls]
+            domain_name = "secure.example.com"
+            ca = "/etc/ssl/ca.pem"
+        "#})
+        .unwrap();
+
+        assert!(config.otlp.grpc.is_some());
+        let grpc = config.otlp.grpc.as_ref().unwrap();
+
+        // Check headers
+        assert_eq!(grpc.headers.iter().count(), 2);
+
+        // Check TLS
+        assert!(grpc.tls.is_some());
+        let tls = grpc.tls.as_ref().unwrap();
+        assert_eq!(tls.domain_name.as_deref(), Some("secure.example.com"));
+        assert_eq!(tls.ca.as_deref(), Some("/etc/ssl/ca.pem"));
+    }
+
+    #[test]
+    fn http_no_tls_config() {
+        // Ensure HTTP protocol doesn't accidentally get TLS config
+        let result: Result<ExportersConfig, _> = toml::from_str(indoc! {r#"
+            [otlp]
+            enabled = true
+            protocol = "http"
+
+            [otlp.http.headers]
+            Authorization = "Bearer token"
+
+            [otlp.http.tls]
+            domain_name = "example.com"
+        "#});
+
+        // This should fail because http section doesn't have a tls field
+        assert!(result.is_err());
     }
 }

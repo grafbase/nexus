@@ -175,6 +175,11 @@ pub async fn init_logs(config: &TelemetryConfig) -> Result<(OtelLogsAppender, Lo
                 .with_endpoint(otlp_config.endpoint.to_string())
                 .with_timeout(otlp_config.timeout);
 
+            // Apply TLS configuration if provided
+            if let Some(tls_config) = metadata::build_tls_config(otlp_config)? {
+                builder = builder.with_tls_config(tls_config);
+            }
+
             let metadata = metadata::build_metadata(otlp_config)?;
             builder = builder.with_metadata(metadata);
 

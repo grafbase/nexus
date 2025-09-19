@@ -77,6 +77,11 @@ async fn create_otlp_meter_provider(telemetry_config: &TelemetryConfig) -> anyho
                 .with_endpoint(exporter_config.endpoint.as_str())
                 .with_timeout(exporter_config.timeout);
 
+            // Apply TLS configuration if provided
+            if let Some(tls_config) = metadata::build_tls_config(exporter_config)? {
+                builder = builder.with_tls_config(tls_config);
+            }
+
             let metadata = metadata::build_metadata(exporter_config)?;
             builder = builder.with_metadata(metadata);
 

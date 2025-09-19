@@ -1351,10 +1351,23 @@ endpoint = "http://localhost:4317"   # Default: http://localhost:4317
 protocol = "grpc"                    # Default: grpc (options: grpc, http)
 timeout = "60s"                      # Default: 60s
 
-# Optional: Additional headers (applied to all OTLP requests)
-[telemetry.exporters.otlp.headers]
+# Protocol-specific configuration
+# For gRPC protocol (headers must be lowercase, cannot start with "grpc-"):
+[telemetry.exporters.otlp.grpc.headers]
 authorization = "Bearer {{ env.OTLP_TOKEN }}"
 x-nexus-shard = "primary"
+
+# TLS configuration for secure gRPC connections (all fields optional):
+[telemetry.exporters.otlp.grpc.tls]
+domain_name = "custom_name"      # Domain name for TLS verification (SNI)
+key = "/path/to/key.pem"         # Path to client private key PEM file
+cert = "/path/to/cert.pem"       # Path to client certificate PEM file
+ca = "/path/to/ca.pem"           # Path to CA certificate PEM file
+
+# For HTTP protocol (standard HTTP header names):
+[telemetry.exporters.otlp.http.headers]
+Authorization = "Bearer {{ env.OTLP_TOKEN }}"
+X-Nexus-Shard = "primary"
 
 # Batch export configuration (all optional with defaults)
 [telemetry.exporters.otlp.batch_export]
@@ -1393,8 +1406,20 @@ endpoint = "http://localhost:4317"
 protocol = "grpc"                 # or "http"
 timeout = "60s"
 
-[telemetry.tracing.exporters.otlp.headers]
+# Protocol-specific headers
+[telemetry.tracing.exporters.otlp.grpc.headers]
 authorization = "Bearer {{ env.OTLP_TOKEN }}"
+
+# TLS configuration (same format as global OTLP):
+# [telemetry.tracing.exporters.otlp.grpc.tls]
+# domain_name = "custom_name"
+# key = "/path/to/key.pem"
+# cert = "/path/to/cert.pem"
+# ca = "/path/to/ca.pem"
+
+# Or for HTTP:
+# [telemetry.tracing.exporters.otlp.http.headers]
+# Authorization = "Bearer {{ env.OTLP_TOKEN }}"
 ```
 
 **See [Distributed Tracing](#distributed-tracing) for span hierarchy and attributes.**
@@ -1414,8 +1439,20 @@ endpoint = "http://logs-collector:4317"  # Different endpoint for logs
 protocol = "grpc"                         # or "http"
 timeout = "30s"
 
-[telemetry.logs.exporters.otlp.headers]
+# Protocol-specific headers
+[telemetry.logs.exporters.otlp.grpc.headers]
 authorization = "Bearer {{ env.OTLP_TOKEN }}"
+
+# TLS configuration (same format as global OTLP):
+# [telemetry.logs.exporters.otlp.grpc.tls]
+# domain_name = "custom_name"
+# key = "/path/to/key.pem"
+# cert = "/path/to/cert.pem"
+# ca = "/path/to/ca.pem"
+
+# Or for HTTP:
+# [telemetry.logs.exporters.otlp.http.headers]
+# Authorization = "Bearer {{ env.OTLP_TOKEN }}"
 
 # Logs are automatically correlated with active trace and span IDs
 ```
