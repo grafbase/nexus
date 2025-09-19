@@ -11,12 +11,12 @@ repository.workspace = true
 anyhow = { workspace = true, features = ["backtrace"] }
 axum = { workspace = true, features = ["macros", "json", "http2"] }
 axum-server.workspace = true
-jiff.workspace = true
 config.workspace = true
 fast-glob.workspace = true
 fastrace = { workspace = true, features = ["enable"] }
 http.workspace = true
 http-body.workspace = true
+jiff.workspace = true
 jwt-compact = { workspace = true, features = ["clock", "rsa", "ed25519-compact", "p256"] }
 llm.workspace = true
 log = { workspace = true, features = ["kv"] }
