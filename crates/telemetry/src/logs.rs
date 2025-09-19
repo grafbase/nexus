@@ -1,6 +1,6 @@
 //! OpenTelemetry logs integration with logforth
 
-use std::sync::Arc;
+use std::{sync::Arc, time::SystemTime};
 
 use anyhow::Result;
 use config::{OtlpProtocol, TelemetryConfig};
@@ -9,7 +9,7 @@ use log::{Level, Record};
 use logforth::{append::Append, diagnostic::Diagnostic};
 use opentelemetry::{
     InstrumentationScope, KeyValue,
-    logs::{LogRecord as OtelLogRecord, Logger, LoggerProvider, Severity},
+    logs::{LogRecord, Logger, LoggerProvider, Severity},
     trace::{SpanId, TraceId},
 };
 use opentelemetry_otlp::WithExportConfig;
@@ -96,6 +96,9 @@ impl Append for OtelLogsAppender {
 
         // Create the OpenTelemetry log record
         let mut log_record = logger.create_log_record();
+
+        // Set the observed timestamp explicitly to current UTC time
+        log_record.set_observed_timestamp(SystemTime::now());
 
         // Set basic fields
         log_record.set_severity_number(Self::map_level(record.level()));

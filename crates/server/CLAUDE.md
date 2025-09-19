@@ -50,7 +50,7 @@ pub async fn serve(ServeConfig { listen_address, config }: ServeConfig) -> anyho
     // 3. Initialize rate limit manager if enabled
     let rate_limit_manager = if config.server.rate_limits.enabled {
         Some(Arc::new(RateLimitManager::new(
-            config.server.rate_limits.clone(), 
+            config.server.rate_limits.clone(),
             config.mcp.clone(),
             config.telemetry.as_ref()
         ).await?))
@@ -277,7 +277,7 @@ Use structured logging with appropriate levels:
 
 ```rust
 // Info: Server lifecycle events
-log::info!("MCP endpoint available at: https://{}{}", address, path);
+log::info!("MCP endpoint: https://{}{}", address, path);
 
 // Debug: Request processing details
 log::debug!("Validating JWT for issuer: {}", issuer);

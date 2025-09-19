@@ -218,19 +218,19 @@ pub async fn serve(
                 .map_err(|e| anyhow!("Failed to load TLS certificate and key: {e}"))?;
 
             if mcp_actually_exposed {
-                log::info!("MCP endpoint available at: https://{listen_address}{}", config.mcp.path);
+                log::info!("MCP endpoint: https://{listen_address}{}", config.mcp.path);
             }
 
             if llm_actually_exposed {
                 if config.llm.protocols.openai.enabled {
                     log::info!(
-                        "LLM endpoint (OpenAI protocol) available at: https://{listen_address}{}",
+                        "OpenAI LLM endpoint: https://{listen_address}{}",
                         config.llm.protocols.openai.path
                     );
                 }
                 if config.llm.protocols.anthropic.enabled {
                     log::info!(
-                        "LLM endpoint (Anthropic protocol) available at: https://{listen_address}{}",
+                        "Anthropic LLM endpoint: https://{listen_address}{}",
                         config.llm.protocols.anthropic.path
                     );
                 }
@@ -252,19 +252,19 @@ pub async fn serve(
         }
         None => {
             if mcp_actually_exposed {
-                log::info!("MCP endpoint available at: http://{listen_address}{}", config.mcp.path);
+                log::info!("MCP endpoint: http://{listen_address}{}", config.mcp.path);
             }
 
             if llm_actually_exposed {
                 if config.llm.protocols.openai.enabled {
                     log::info!(
-                        "LLM endpoint (OpenAI protocol) available at: http://{listen_address}{}",
+                        "OpenAI LLM endpoint: http://{listen_address}{}",
                         config.llm.protocols.openai.path
                     );
                 }
                 if config.llm.protocols.anthropic.enabled {
                     log::info!(
-                        "LLM endpoint (Anthropic protocol) available at: http://{listen_address}{}",
+                        "Anthropic LLM endpoint: http://{listen_address}{}",
                         config.llm.protocols.anthropic.path
                     );
                 }

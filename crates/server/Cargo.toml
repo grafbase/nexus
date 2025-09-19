@@ -11,6 +11,7 @@ repository.workspace = true
 anyhow = { workspace = true, features = ["backtrace"] }
 axum = { workspace = true, features = ["macros", "json", "http2"] }
 axum-server.workspace = true
+jiff.workspace = true
 config.workspace = true
 fast-glob.workspace = true
 fastrace = { workspace = true, features = ["enable"] }
