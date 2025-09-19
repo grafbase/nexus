@@ -2,6 +2,15 @@
 
 When editing code in this repository, you are working on **Nexus**, an AI router that aggregates MCP (Model Context Protocol) servers and LLMs. This system helps reduce tool proliferation by intelligently routing and indexing available tools.
 
+## Commit Messages
+
+- Follow the [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) specification for every commit message.
+- Use recent commits (`git log`) as a reference for tone and formatting if you need examples.
+- Structure messages as `type(issue number): subject`, where
+- Common `type` values include `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, and `build`; pick the one that best matches the change.
+- The issue number is a linear issue number, in the format of `gb-1234`. The user should give you this in the prompt, but if you don't have it, you can ask the user for it.
+- Keep the subject in the imperative mood, ≤72 characters, and avoid punctuation at the end.
+
 ## Domain Context
 
 - **MCP (Model Context Protocol)**: A protocol for connecting AI models with external tools and data sources
