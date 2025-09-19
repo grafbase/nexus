@@ -231,6 +231,21 @@ async fn claude_code_mixed_content_conversation() {
                         }
                     }
                 ]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_create_main",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "main.rs created successfully."
+                            }
+                        ]
+                    }
+                ]
             }
         ],
         "max_tokens": 1024
