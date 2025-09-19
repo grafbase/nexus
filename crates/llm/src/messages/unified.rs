@@ -424,6 +424,25 @@ pub enum UnifiedToolResultContent {
     Multiple(Vec<String>),
 }
 
+impl UnifiedToolResultContent {
+    /// Converts a unified tool result content into a string.
+    pub fn into_text(self) -> Option<String> {
+        match self {
+            Self::Text(text) => {
+                if text.is_empty() {
+                    None
+                } else {
+                    Some(text)
+                }
+            }
+            Self::Multiple(texts) => {
+                let joined = texts.join("\n");
+                if joined.is_empty() { None } else { Some(joined) }
+            }
+        }
+    }
+}
+
 /// Image source for multi-modal content.
 ///
 /// Supports both inline image data and external references.

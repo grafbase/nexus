@@ -1713,6 +1713,31 @@ Add to your Claude Code configuration:
 
 Make sure Nexus is running before starting Claude Code.
 
+### Codex CLI
+
+Configure Codex CLI to talk to Nexus by editing `~/.codex/config.toml`:
+
+> Note: Nexus serves its OpenAI-compatible endpoint at `/llm/openai/`; Codex expects the `/v1` suffix. Make sure the `base_url` ends with `/v1`.
+
+```toml
+[model_providers.nexus]
+name = "Nexus AI router"
+base_url = "http://127.0.0.1:8000/llm/openai/v1"
+wire_api = "chat"
+query_params = {}
+```
+
+- `base_url` must point to the Nexus OpenAI-compatible endpoint and include the `/v1` suffix (adjust host/port if Nexus runs elsewhere).
+- `query_params` can stay empty, but the table must exist to satisfy Codex's schema.
+
+Start Codex with a Nexus-managed model:
+
+```bash
+codex -c model="anthropic/claude-3-5-haiku-latest" -c model_provider=nexus
+```
+
+Swap the model name for any provider/model pair that you have configured in Nexus.
+
 ## How It Works
 
 ### MCP Tool Aggregation

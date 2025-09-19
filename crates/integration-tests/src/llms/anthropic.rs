@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
@@ -214,7 +214,7 @@ async fn create_message(
     }
 
     // Validate for duplicate tool_use IDs (simulates actual Anthropic API behavior)
-    let mut tool_use_ids = std::collections::HashSet::new();
+    let mut tool_use_ids = HashSet::new();
     for message in &request.messages {
         if let AnthropicMessageContent::Blocks(blocks) = &message.content {
             for block in blocks {
@@ -235,6 +235,11 @@ async fn create_message(
                 }
             }
         }
+    }
+
+    // Ensure tool_use blocks are immediately followed by tool_result blocks in next message
+    if let Err(error_response) = validate_tool_use_sequence(&request.messages) {
+        return error_response.into_response();
     }
 
     // Check if we should return a tool call
@@ -622,6 +627,76 @@ impl AnthropicMessageContent {
             }
         }
     }
+}
+
+fn validate_tool_use_sequence(messages: &[AnthropicMessage]) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    let mut pending_ids = HashSet::new();
+    let mut expecting_results = false;
+
+    for (index, message) in messages.iter().enumerate() {
+        if expecting_results {
+            match &message.content {
+                AnthropicMessageContent::Text(_) => {
+                    return Err(tool_result_error_response(index, pending_ids.clone()));
+                }
+                AnthropicMessageContent::Blocks(blocks) => {
+                    for block in blocks {
+                        if let AnthropicContentBlock::ToolResult { tool_use_id, .. } = block {
+                            pending_ids.remove(tool_use_id);
+                        }
+                    }
+
+                    if pending_ids.is_empty() {
+                        expecting_results = false;
+                    } else {
+                        return Err(tool_result_error_response(index, pending_ids.clone()));
+                    }
+                }
+            }
+        }
+
+        if let AnthropicMessageContent::Blocks(blocks) = &message.content {
+            let mut new_tool_ids = HashSet::new();
+            for block in blocks {
+                if let AnthropicContentBlock::ToolUse { id, .. } = block {
+                    new_tool_ids.insert(id.clone());
+                }
+            }
+
+            if !new_tool_ids.is_empty() {
+                pending_ids = new_tool_ids;
+                expecting_results = true;
+            }
+        }
+    }
+
+    if expecting_results && !pending_ids.is_empty() {
+        return Err(tool_result_error_response(messages.len(), pending_ids));
+    }
+
+    Ok(())
+}
+
+fn tool_result_error_response(
+    message_index: usize,
+    missing_ids: HashSet<String>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    let ids: Vec<String> = missing_ids.into_iter().collect();
+    let message = format!(
+        "messages.{message_index}: `tool_use` ids were found without `tool_result` blocks immediately after: {}. Each `tool_use` block must have a corresponding `tool_result` block in the next message.",
+        ids.join(", ")
+    );
+
+    (
+        StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({
+            "type": "error",
+            "error": {
+                "type": "invalid_request_error",
+                "message": message,
+            }
+        })),
+    )
 }
 
 #[derive(Debug, Serialize)]

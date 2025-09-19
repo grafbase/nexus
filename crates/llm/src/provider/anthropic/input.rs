@@ -118,6 +118,21 @@ pub enum AnthropicMessageContent {
     Blocks(Vec<AnthropicContentBlock>),
 }
 
+impl AnthropicMessageContent {
+    pub fn into_block_vec(self) -> Vec<AnthropicContentBlock> {
+        match self {
+            AnthropicMessageContent::Blocks(blocks) => blocks,
+            AnthropicMessageContent::Text(text) => {
+                if text.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![AnthropicContentBlock::Text { text }]
+                }
+            }
+        }
+    }
+}
+
 /// A content block in an Anthropic message.
 ///
 /// Used for tool use and tool results.
@@ -203,47 +218,25 @@ impl From<unified::UnifiedToolChoice> for AnthropicToolChoice {
     }
 }
 
-impl From<unified::UnifiedMessage> for AnthropicMessage {
-    fn from(msg: unified::UnifiedMessage) -> Self {
-        // Convert role
-        let role = match msg.role {
+impl From<unified::UnifiedRole> for AnthropicRole {
+    fn from(role: unified::UnifiedRole) -> Self {
+        match role {
             unified::UnifiedRole::User => AnthropicRole::User,
             unified::UnifiedRole::Assistant => AnthropicRole::Assistant,
-            // Anthropic doesn't have System or Tool roles as messages
-            unified::UnifiedRole::System => AnthropicRole::User,
-            unified::UnifiedRole::Tool => AnthropicRole::User,
-        };
+            // Anthropic flattens System/Tool roles into user messages
+            unified::UnifiedRole::System | unified::UnifiedRole::Tool => AnthropicRole::User,
+        }
+    }
+}
 
-        // Convert content
-        let content = match msg.content {
+impl From<unified::UnifiedContentContainer> for AnthropicMessageContent {
+    fn from(content: unified::UnifiedContentContainer) -> Self {
+        match content {
             unified::UnifiedContentContainer::Text(text) => AnthropicMessageContent::Text(text),
             unified::UnifiedContentContainer::Blocks(blocks) => {
                 let anthropic_blocks: Vec<AnthropicContentBlock> = blocks
                     .into_iter()
-                    .map(|block| match block {
-                        unified::UnifiedContent::Text { text } => AnthropicContentBlock::Text { text },
-                        unified::UnifiedContent::ToolUse { id, name, input } => {
-                            AnthropicContentBlock::ToolUse { id, name, input }
-                        }
-                        unified::UnifiedContent::ToolResult {
-                            tool_use_id,
-                            content,
-                            is_error,
-                        } => AnthropicContentBlock::ToolResult {
-                            tool_use_id,
-                            content: match content {
-                                unified::UnifiedToolResultContent::Text(text) => Some(text),
-                                unified::UnifiedToolResultContent::Multiple(texts) => Some(texts.join("\n")),
-                            },
-                            is_error,
-                        },
-                        unified::UnifiedContent::Image { .. } => {
-                            // Images aren't supported in this conversion yet
-                            AnthropicContentBlock::Text {
-                                text: "[Image content not supported]".to_string(),
-                            }
-                        }
-                    })
+                    .map(|block| convert_content_block(block, None))
                     .collect();
 
                 if anthropic_blocks.is_empty() {
@@ -252,17 +245,131 @@ impl From<unified::UnifiedMessage> for AnthropicMessage {
                     AnthropicMessageContent::Blocks(anthropic_blocks)
                 }
             }
-        };
-
-        // Single source of truth: tool calls are already in content blocks
-        // No need to add tool_calls as additional blocks - eliminates deduplication entirely
-        let final_content = content;
-
-        Self {
-            role,
-            content: final_content,
         }
     }
+}
+
+impl From<unified::UnifiedMessage> for AnthropicMessage {
+    fn from(msg: unified::UnifiedMessage) -> Self {
+        let unified::UnifiedMessage {
+            role: unified_role,
+            content,
+            tool_calls: _,
+            tool_call_id,
+        } = msg;
+
+        // Anthropic flattens tool replies into user-role tool_result blocks.
+        // Keep a single conversion path so request assembly matches the provider
+        // expectations and test helpers.
+        let content = match unified_role {
+            unified::UnifiedRole::Tool => convert_tool_content(content, tool_call_id),
+            _ => AnthropicMessageContent::from(content),
+        };
+
+        let role = AnthropicRole::from(unified_role);
+
+        Self { role, content }
+    }
+}
+
+fn convert_tool_content(
+    content: unified::UnifiedContentContainer,
+    tool_call_id: Option<String>,
+) -> AnthropicMessageContent {
+    match content {
+        unified::UnifiedContentContainer::Text(text) => match tool_call_id {
+            Some(id) => AnthropicMessageContent::Blocks(vec![AnthropicContentBlock::ToolResult {
+                tool_use_id: id,
+                content: if text.is_empty() { None } else { Some(text) },
+                is_error: None,
+            }]),
+            None => AnthropicMessageContent::Text(text),
+        },
+        unified::UnifiedContentContainer::Blocks(blocks) => {
+            // When the unified content does not materialize a tool_result block we
+            // synthesize one so Anthropic sees the tool output directly after the
+            // tool_use chunk that triggered it.
+            let mut anthropic_blocks = Vec::with_capacity(blocks.len());
+            let mut has_tool_result = false;
+
+            for block in blocks {
+                let converted = convert_content_block(block, tool_call_id.as_deref());
+
+                if matches!(converted, AnthropicContentBlock::ToolResult { .. }) {
+                    has_tool_result = true;
+                }
+
+                anthropic_blocks.push(converted);
+            }
+
+            if let Some(ref id) = tool_call_id
+                && !has_tool_result
+            {
+                anthropic_blocks.push(AnthropicContentBlock::ToolResult {
+                    tool_use_id: id.clone(),
+                    content: None,
+                    is_error: None,
+                });
+            }
+
+            if anthropic_blocks.is_empty() {
+                // No blocks means the tool returned an empty payload. Anthropic still
+                // demands a tool_result wrapper, so emit one with empty content.
+                if let Some(id) = tool_call_id {
+                    AnthropicMessageContent::Blocks(vec![AnthropicContentBlock::ToolResult {
+                        tool_use_id: id,
+                        content: None,
+                        is_error: None,
+                    }])
+                } else {
+                    AnthropicMessageContent::Text(String::new())
+                }
+            } else {
+                AnthropicMessageContent::Blocks(anthropic_blocks)
+            }
+        }
+    }
+}
+
+fn convert_content_block(block: unified::UnifiedContent, default_tool_id: Option<&str>) -> AnthropicContentBlock {
+    match block {
+        unified::UnifiedContent::Text { text } => match default_tool_id {
+            // Text appearing inside a tool-role message should be surfaced as the
+            // tool_result payload unless the block already declared its target id.
+            Some(id) => AnthropicContentBlock::ToolResult {
+                tool_use_id: id.to_string(),
+                content: if text.is_empty() { None } else { Some(text) },
+                is_error: None,
+            },
+            None => AnthropicContentBlock::Text { text },
+        },
+        unified::UnifiedContent::ToolUse { id, name, input } => AnthropicContentBlock::ToolUse { id, name, input },
+        unified::UnifiedContent::ToolResult {
+            tool_use_id,
+            content,
+            is_error,
+        } => AnthropicContentBlock::ToolResult {
+            tool_use_id,
+            content: content.into_text(),
+            is_error,
+        },
+        unified::UnifiedContent::Image { .. } => AnthropicContentBlock::Text {
+            text: "[Image content not supported]".to_string(),
+        },
+    }
+}
+
+fn merge_tool_result_content(target: &mut AnthropicMessage, source: AnthropicMessage) {
+    // Tool messages arrive as separate Unified messages. Anthropic expects a single
+    // user-role message containing all tool_result blocks, so fold consecutive tool
+    // replies into one vector.
+    let target_block = std::mem::replace(&mut target.content, AnthropicMessageContent::Blocks(Vec::new()));
+
+    let mut target_blocks = target_block.into_block_vec();
+    let mut source_blocks = source.content.into_block_vec();
+
+    target_blocks.append(&mut source_blocks);
+    target.content = AnthropicMessageContent::Blocks(target_blocks);
 }
 
 impl From<unified::UnifiedRequest> for AnthropicRequest {
@@ -288,8 +395,29 @@ impl From<unified::UnifiedRequest> for AnthropicRequest {
         // System message is already separated in unified format
         let system_message = system;
 
-        // Convert messages from unified format
-        let anthropic_messages: Vec<AnthropicMessage> = messages.into_iter().map(AnthropicMessage::from).collect();
+        // Convert messages from unified format while merging consecutive tool results
+        let mut anthropic_messages: Vec<AnthropicMessage> = Vec::with_capacity(messages.len());
+        let mut last_tool_result_index: Option<usize> = None;
+
+        for message in messages {
+            let is_tool_message = matches!(message.role, unified::UnifiedRole::Tool);
+            let converted = AnthropicMessage::from(message);
+
+            if is_tool_message {
+                if let Some(idx) = last_tool_result_index
+                    && let Some(existing) = anthropic_messages.get_mut(idx)
+                {
+                    merge_tool_result_content(existing, converted);
+                    continue;
+                }
+
+                last_tool_result_index = Some(anthropic_messages.len());
+                anthropic_messages.push(converted);
+            } else {
+                last_tool_result_index = None;
+                anthropic_messages.push(converted);
+            }
+        }
 
         // Convert tools if present
         let anthropic_tools = tools.map(|tools| tools.into_iter().map(AnthropicTool::from).collect());
@@ -310,5 +438,201 @@ impl From<unified::UnifiedRequest> for AnthropicRequest {
             tools: anthropic_tools,
             tool_choice: anthropic_tool_choice,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::messages::unified::{self, UnifiedContent, UnifiedContentContainer, UnifiedMessage, UnifiedRole};
+    use insta::assert_json_snapshot;
+    use serde_json::json;
+
+    #[test]
+    fn converts_tool_role_message_into_tool_result_block() {
+        let messages = vec![
+            UnifiedMessage {
+                role: UnifiedRole::User,
+                content: UnifiedContentContainer::Text("List files in crates/config".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+            },
+            UnifiedMessage {
+                role: UnifiedRole::Assistant,
+                content: UnifiedContentContainer::Blocks(vec![
+                    UnifiedContent::Text {
+                        text: "Let me inspect the repository.".to_string(),
+                    },
+                    UnifiedContent::ToolUse {
+                        id: "toolu_list_files".to_string(),
+                        name: "list_files".to_string(),
+                        input: json!({ "path": "crates/config" }),
+                    },
+                ]),
+                tool_calls: None,
+                tool_call_id: None,
+            },
+            UnifiedMessage {
+                role: UnifiedRole::Tool,
+                content: UnifiedContentContainer::Text("[\"Cargo.toml\", \"src/lib.rs\"]".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("toolu_list_files".to_string()),
+            },
+        ];
+
+        let request = unified::UnifiedRequest {
+            model: "anthropic/claude-3-5-haiku-latest".to_string(),
+            messages,
+            system: None,
+            max_tokens: Some(200),
+            temperature: None,
+            top_p: None,
+            top_k: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            stop_sequences: None,
+            stream: None,
+            tools: None,
+            tool_choice: None,
+            parallel_tool_calls: None,
+            metadata: None,
+        };
+
+        let anthropic_request = AnthropicRequest::from(request);
+        let value = serde_json::to_value(&anthropic_request).unwrap();
+
+        assert_json_snapshot!(value, @r###"
+        {
+          "model": "anthropic/claude-3-5-haiku-latest",
+          "messages": [
+            {
+              "role": "user",
+              "content": "List files in crates/config"
+            },
+            {
+              "role": "assistant",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Let me inspect the repository."
+                },
+                {
+                  "type": "tool_use",
+                  "id": "toolu_list_files",
+                  "name": "list_files",
+                  "input": {
+                    "path": "crates/config"
+                  }
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "tool_result",
+                  "tool_use_id": "toolu_list_files",
+                  "content": "[\"Cargo.toml\", \"src/lib.rs\"]"
+                }
+              ]
+            }
+          ],
+          "max_tokens": 200
+        }
+        "###);
+    }
+
+    #[test]
+    fn converts_multiple_tool_messages_into_results() {
+        let messages = vec![
+            UnifiedMessage {
+                role: UnifiedRole::User,
+                content: UnifiedContentContainer::Text("Help me with file operations".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+            },
+            UnifiedMessage {
+                role: UnifiedRole::Assistant,
+                content: UnifiedContentContainer::Blocks(vec![
+                    UnifiedContent::Text {
+                        text: "I'll help you with file operations.".to_string(),
+                    },
+                    UnifiedContent::ToolUse {
+                        id: "call_file_read_001".to_string(),
+                        name: "Read".to_string(),
+                        input: json!({ "file_path": "./config.toml" }),
+                    },
+                    UnifiedContent::ToolUse {
+                        id: "call_file_write_002".to_string(),
+                        name: "Write".to_string(),
+                        input: json!({
+                            "file_path": "./output.txt",
+                            "content": "Hello World"
+                        }),
+                    },
+                ]),
+                tool_calls: None,
+                tool_call_id: None,
+            },
+            UnifiedMessage {
+                role: UnifiedRole::Tool,
+                content: UnifiedContentContainer::Text("# Configuration\nport = 8080".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_file_read_001".to_string()),
+            },
+            UnifiedMessage {
+                role: UnifiedRole::Tool,
+                content: UnifiedContentContainer::Text("File written successfully".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_file_write_002".to_string()),
+            },
+            UnifiedMessage {
+                role: UnifiedRole::User,
+                content: UnifiedContentContainer::Text("Great!".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+            },
+        ];
+
+        let request = unified::UnifiedRequest {
+            model: "anthropic/claude-3-5-sonnet-20241022".to_string(),
+            messages,
+            system: None,
+            max_tokens: Some(512),
+            temperature: None,
+            top_p: None,
+            top_k: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            stop_sequences: None,
+            stream: None,
+            tools: None,
+            tool_choice: None,
+            parallel_tool_calls: None,
+            metadata: None,
+        };
+
+        let anthropic_request = AnthropicRequest::from(request);
+
+        let merged_message = anthropic_request
+            .messages
+            .iter()
+            .find(|message| {
+                matches!(&message.content, AnthropicMessageContent::Blocks(blocks)
+                if blocks.iter().any(|block| matches!(block,
+                    AnthropicContentBlock::ToolResult { .. }
+                )))
+            })
+            .expect("expected merged tool result message");
+
+        let blocks = match &merged_message.content {
+            AnthropicMessageContent::Blocks(blocks) => blocks,
+            _ => return,
+        };
+
+        assert!(blocks.iter().any(|block| matches!(
+            block,
+            AnthropicContentBlock::ToolResult { tool_use_id, .. } if tool_use_id == "call_file_write_002"
+        )));
     }
 }
