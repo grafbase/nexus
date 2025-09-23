@@ -181,7 +181,11 @@ impl McpTestClient {
     }
 
     pub async fn search(&self, keywords: &[&str]) -> Vec<serde_json::Value> {
-        let result = self.call_tool("search", json!({ "keywords": keywords })).await;
+        let arguments = json!({
+            "keywords": keywords,
+        });
+
+        let result = self.call_tool("search", arguments).await;
 
         // Prefer structured_content if available (new in rmcp 0.4.0)
         if let Some(structured) = result.structured_content {
@@ -191,6 +195,7 @@ impl McpTestClient {
             {
                 return results.as_array().cloned().unwrap_or_default();
             }
+
             // Fallback to treating it as an array directly for backward compatibility
             structured.as_array().cloned().unwrap_or_default()
         } else if !result.content.is_empty() {

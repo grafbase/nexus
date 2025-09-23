@@ -16,13 +16,13 @@ class SimpleMcpServer:
         self.tools = {
             "echo": {
                 "name": "echo",
-                "description": "Echoes back the input text",
+                "description": "Echoes back the input text message verbatim for testing and debugging purposes",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "text": {
                             "type": "string",
-                            "description": "Text to echo back"
+                            "description": "Text message to echo back verbatim"
                         }
                     },
                     "required": ["text"]
@@ -30,17 +30,17 @@ class SimpleMcpServer:
             },
             "add": {
                 "name": "add",
-                "description": "Adds two numbers together",
+                "description": "Performs mathematical addition operation on two numerical values and returns the sum",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "a": {
                             "type": "number",
-                            "description": "First number"
+                            "description": "First numerical value for addition"
                         },
                         "b": {
                             "type": "number",
-                            "description": "Second number"
+                            "description": "Second numerical value for addition"
                         }
                     },
                     "required": ["a", "b"]
@@ -48,13 +48,13 @@ class SimpleMcpServer:
             },
             "environment": {
                 "name": "environment",
-                "description": "Returns environment variable value",
+                "description": "Retrieves system environment variable values from the operating system configuration",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "var": {
                             "type": "string",
-                            "description": "Environment variable name"
+                            "description": "System environment variable name to retrieve"
                         }
                     },
                     "required": ["var"]

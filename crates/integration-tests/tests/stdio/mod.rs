@@ -32,13 +32,13 @@ async fn stdio_basic_echo_tool() {
     [
       {
         "name": "test_stdio__echo",
-        "description": "Echoes back the input text",
+        "description": "Echoes back the input text message verbatim for testing and debugging purposes",
         "input_schema": {
           "type": "object",
           "properties": {
             "text": {
               "type": "string",
-              "description": "Text to echo back"
+              "description": "Text message to echo back verbatim"
             }
           },
           "required": [
@@ -281,20 +281,20 @@ async fn stdio_tool_search() {
     [
       {
         "name": "test_stdio__echo",
-        "description": "Echoes back the input text",
+        "description": "Echoes back the input text message verbatim for testing and debugging purposes",
         "input_schema": {
           "type": "object",
           "properties": {
             "text": {
               "type": "string",
-              "description": "Text to echo back"
+              "description": "Text message to echo back verbatim"
             }
           },
           "required": [
             "text"
           ]
         },
-        "score": 5.026234149932861
+        "score": 4.947417736053467
       }
     ]
     "#);

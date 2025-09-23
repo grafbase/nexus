@@ -5,6 +5,7 @@ mod llm;
 mod oauth2;
 mod prompts_resources;
 mod rate_limiting;
+mod rbac;
 mod resilience;
 mod sse;
 mod stdio;

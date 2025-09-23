@@ -36,7 +36,7 @@ pub use llm::{
 };
 pub use mcp::{
     ClientAuthConfig, HttpConfig, HttpProtocol, McpConfig, McpServer, McpServerRateLimit, StdioConfig, StdioTarget,
-    StdioTargetType, TlsClientConfig,
+    StdioTargetType, TlsClientConfig, ToolAccessConfig,
 };
 pub use oauth::{OauthConfig, ProtectedResourceConfig};
 pub use rate_limit::*;

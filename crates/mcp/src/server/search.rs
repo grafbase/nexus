@@ -1,3 +1,7 @@
+mod grouped;
+
+pub use grouped::GroupedSearchTool;
+
 use crate::index::ToolIndex;
 use indoc::indoc;
 use rmcp::model::{Tool, ToolAnnotations};
@@ -106,6 +110,14 @@ impl SearchTool {
 
             results.push(search_result);
         }
+
+        // Sort by score descending, then by name ascending for deterministic ordering
+        results.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.name.cmp(&b.name))
+        });
 
         Ok(results)
     }
