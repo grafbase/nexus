@@ -410,6 +410,7 @@ async fn mcp_downstream_tool_call() {
 
     let mut headers = HeaderMap::new();
     headers.insert("x-client-id", "test-client".parse().unwrap());
+    headers.insert("x-client-group", "premium".parse().unwrap());
     headers.insert("traceparent", traceparent.parse().unwrap());
 
     let mcp = test_server.mcp_client_with_headers("/mcp", headers).await;

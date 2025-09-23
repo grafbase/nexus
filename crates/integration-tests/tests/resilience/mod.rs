@@ -145,17 +145,17 @@ async fn mixed_success_and_failure_servers() {
     let search_results = mcp_client.search(&["echo"]).await;
 
     // Snapshot the search results - should have the echo tool from working_server
-    insta::assert_json_snapshot!(search_results, @r###"
+    insta::assert_json_snapshot!(search_results, @r#"
     [
       {
         "name": "working_server__echo",
-        "description": "Echoes back the input text",
+        "description": "Echoes back the input text message verbatim for testing and debugging purposes",
         "input_schema": {
           "type": "object",
           "properties": {
             "text": {
               "type": "string",
-              "description": "Text to echo back"
+              "description": "Text message to echo back verbatim"
             }
           },
           "required": [
@@ -165,7 +165,7 @@ async fn mixed_success_and_failure_servers() {
         "score": 3.611918449401855
       }
     ]
-    "###);
+    "#);
 
     // Test that we can execute the tool from the working server
     let result = mcp_client

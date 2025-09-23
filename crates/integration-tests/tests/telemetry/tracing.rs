@@ -525,13 +525,13 @@ async fn sampling_configuration() {
         .expect("Failed to query");
 
     // With 0% sampling, we should have no spans
-    insta::assert_debug_snapshot!(result, @r###"
+    insta::assert_debug_snapshot!(result, @r"
     [
         CountRow {
             count: 0,
         },
     ]
-    "###);
+    ");
 }
 
 #[tokio::test]

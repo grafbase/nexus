@@ -26,6 +26,9 @@ pub fn load<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
         log::warn!("{warning}");
     }
 
+    // Validate MCP access control groups
+    validate_mcp_access_control(&config)?;
+
     Ok(config)
 }
 
@@ -180,7 +183,7 @@ pub(crate) fn validate_rate_limits(config: &Config) -> anyhow::Result<Vec<String
             enabled = true
             client_id.http_header = "X-Client-ID"      # or client_id.jwt_claim = "sub"
             group_id.http_header = "X-Group-ID"        # or group_id.jwt_claim = "groups"
-            
+
             [server.client_identification.validation]
             group_values = ["basic", "premium", "enterprise"]
         "#});
@@ -375,6 +378,278 @@ fn provider_has_any_model_with_group_limit(provider: &LlmProviderConfig, group: 
         .any(|model| model_has_group_limit(model, group))
 }
 
+/// Validates MCP server access control configuration.
+///
+/// This function ensures that:
+/// - Client identification is enabled when access control is configured
+/// - Group ID extraction is configured when groups are used
+/// - All groups referenced in `allow_groups` and `deny_groups` exist in `client_identification.validation.group_values`
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Access control is configured but client identification is not enabled
+/// - Groups are used but `group_id` is not configured
+/// - Any referenced group doesn't exist in `group_values`
+pub(crate) fn validate_mcp_access_control(config: &Config) -> anyhow::Result<()> {
+    // Skip validation if MCP is not enabled or has no servers
+    if !config.mcp.enabled() || !config.mcp.has_servers() {
+        return Ok(());
+    }
+
+    // Skip if no access control is configured
+    if !has_any_mcp_access_control(config) {
+        return Ok(());
+    }
+
+    let client_id = config.server.client_identification.as_ref();
+
+    if uses_mcp_groups(config) {
+        let client_id = ensure_client_identification_enabled(client_id)?;
+
+        ensure_group_id_configured(client_id)?;
+        validate_all_mcp_groups(config, client_id)?;
+    }
+
+    Ok(())
+}
+
+/// Checks if any MCP server has access control configured.
+///
+/// Returns `true` if any server has:
+/// - `allow_groups` defined
+/// - `deny_groups` defined
+/// - Tool-level access controls configured
+fn has_any_mcp_access_control(config: &Config) -> bool {
+    config.mcp.servers.values().any(|server| {
+        server.allow_groups().is_some() || server.deny_groups().is_some() || !server.tool_access_configs().is_empty()
+    })
+}
+
+/// Ensures client identification is properly configured for MCP access control.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Client identification is not configured at all
+/// - Client identification is configured but not enabled
+fn ensure_client_identification_enabled(
+    client_id: Option<&ClientIdentificationConfig>,
+) -> anyhow::Result<&ClientIdentificationConfig> {
+    let Some(client_id) = client_id else {
+        bail!(indoc! {r#"
+            MCP server access control is configured but client identification is not enabled.
+
+            To fix this, enable client identification in your configuration:
+
+            [server.client_identification]
+            enabled = true
+            client_id.http_header = "X-Client-ID"  # or client_id.jwt_claim = "sub"
+            group_id.http_header = "X-Group-ID"    # or group_id.jwt_claim = "groups"
+
+            [server.client_identification.validation]
+            group_values = ["basic", "premium", "enterprise"]
+        "#});
+    };
+
+    if !client_id.enabled {
+        bail!(
+            "MCP server access control is configured but client identification is not enabled. Set server.client_identification.enabled = true"
+        );
+    }
+
+    Ok(client_id)
+}
+
+/// Determines if any MCP server or tool uses group-based access control.
+///
+/// Returns `true` if any server or tool has non-empty `allow_groups` or `deny_groups`.
+fn uses_mcp_groups(config: &Config) -> bool {
+    config.mcp.servers.values().any(|server| {
+        has_non_empty_groups(server.allow_groups())
+            || has_non_empty_groups(server.deny_groups())
+            || server.tool_access_configs().values().any(|tool| {
+                has_non_empty_groups(tool.allow_groups.as_ref()) || has_non_empty_groups(tool.deny_groups.as_ref())
+            })
+    })
+}
+
+/// Checks if an optional group set exists and is non-empty.
+///
+/// Returns `true` if the groups set is `Some` and contains at least one element.
+fn has_non_empty_groups(groups: Option<&std::collections::BTreeSet<String>>) -> bool {
+    groups.is_some_and(|g| !g.is_empty())
+}
+
+/// Ensures that `group_id` extraction is configured when groups are used.
+///
+/// # Errors
+///
+/// Returns an error if `group_id` is not configured in client identification.
+fn ensure_group_id_configured(client_id: &ClientIdentificationConfig) -> anyhow::Result<()> {
+    if client_id.group_id.is_none() {
+        bail!(indoc! {r#"
+            MCP server access control uses groups but group_id is not configured in client identification.
+
+            To fix this, add group_id configuration:
+
+            [server.client_identification]
+            group_id.http_header = "X-Group-ID"    # or group_id.jwt_claim = "groups"
+        "#});
+    }
+    Ok(())
+}
+
+/// Validates all group references in MCP server and tool configurations.
+///
+/// Iterates through all servers and their tools to ensure referenced groups exist.
+///
+/// # Errors
+///
+/// Returns an error if any referenced group doesn't exist in `group_values`.
+fn validate_all_mcp_groups(config: &Config, client_id: &ClientIdentificationConfig) -> anyhow::Result<()> {
+    for (server_name, server) in &config.mcp.servers {
+        validate_server_groups(server_name, server, &client_id.validation.group_values)?;
+        validate_tool_groups(server_name, server, &client_id.validation.group_values)?;
+    }
+    Ok(())
+}
+
+/// Represents the type of group list being validated.
+#[derive(Debug, Clone, Copy)]
+enum GroupListType {
+    Allow,
+    Deny,
+}
+
+impl std::fmt::Display for GroupListType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GroupListType::Allow => write!(f, "allow_groups"),
+            GroupListType::Deny => write!(f, "deny_groups"),
+        }
+    }
+}
+
+/// Context for group validation, containing location information.
+#[derive(Debug, Clone)]
+struct GroupValidationContext<'a> {
+    server_name: &'a str,
+    tool_name: Option<&'a str>,
+}
+
+impl<'a> GroupValidationContext<'a> {
+    fn server(server_name: &'a str) -> Self {
+        Self {
+            server_name,
+            tool_name: None,
+        }
+    }
+
+    fn tool(server_name: &'a str, tool_name: &'a str) -> Self {
+        Self {
+            server_name,
+            tool_name: Some(tool_name),
+        }
+    }
+}
+
+impl std::fmt::Display for GroupValidationContext<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(tool) = self.tool_name {
+            write!(f, "MCP server '{}' tool '{}'", self.server_name, tool)
+        } else {
+            write!(f, "MCP server '{}'", self.server_name)
+        }
+    }
+}
+
+/// Validates server-level group references.
+///
+/// Checks that all groups in the server's `allow_groups` and `deny_groups`
+/// exist in the configured `group_values`.
+///
+/// # Errors
+///
+/// Returns an error if any group doesn't exist in `valid_groups`.
+fn validate_server_groups(
+    server_name: &str,
+    server: &crate::McpServer,
+    valid_groups: &std::collections::BTreeSet<String>,
+) -> anyhow::Result<()> {
+    let context = GroupValidationContext::server(server_name);
+
+    // Check allow_groups
+    if let Some(groups) = server.allow_groups() {
+        validate_groups(groups, valid_groups, &context, GroupListType::Allow)?;
+    }
+
+    // Check deny_groups
+    if let Some(groups) = server.deny_groups() {
+        validate_groups(groups, valid_groups, &context, GroupListType::Deny)?;
+    }
+
+    Ok(())
+}
+
+/// Validates tool-level group references.
+///
+/// Checks that all groups in each tool's `allow_groups` and `deny_groups`
+/// exist in the configured `group_values`.
+///
+/// # Errors
+///
+/// Returns an error if any group doesn't exist in `valid_groups`.
+fn validate_tool_groups(
+    server_name: &str,
+    server: &crate::McpServer,
+    valid_groups: &std::collections::BTreeSet<String>,
+) -> anyhow::Result<()> {
+    for (tool_name, tool_config) in server.tool_access_configs() {
+        let context = GroupValidationContext::tool(server_name, tool_name);
+
+        if let Some(groups) = &tool_config.allow_groups {
+            validate_groups(groups, valid_groups, &context, GroupListType::Allow)?;
+        }
+
+        if let Some(groups) = &tool_config.deny_groups {
+            validate_groups(groups, valid_groups, &context, GroupListType::Deny)?;
+        }
+    }
+    Ok(())
+}
+
+/// Validates that all groups in a set exist in the configured valid groups.
+///
+/// # Arguments
+///
+/// * `groups` - The groups to validate
+/// * `valid_groups` - The set of allowed group values from configuration
+/// * `context` - Location context for error messages
+/// * `list_type` - Whether this is an allow or deny list
+///
+/// # Errors
+///
+/// Returns an error if any group is not found in `valid_groups`.
+fn validate_groups(
+    groups: &std::collections::BTreeSet<String>,
+    valid_groups: &std::collections::BTreeSet<String>,
+    context: &GroupValidationContext<'_>,
+    list_type: GroupListType,
+) -> anyhow::Result<()> {
+    for group in groups {
+        if valid_groups.contains(group) {
+            continue;
+        }
+
+        bail!(
+            "Group '{group}' in {context} {list_type} is not defined in server.client_identification.validation.group_values",
+        );
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use indoc::indoc;
@@ -382,6 +657,156 @@ mod tests {
     use insta::assert_snapshot;
 
     use crate::Config;
+
+    #[test]
+    fn mcp_access_control_invalid_group() {
+        let config_str = indoc! {r#"
+            [server.client_identification]
+            enabled = true
+            client_id.http_header = "X-Client-ID"
+            group_id.http_header = "X-Group-ID"
+
+            [server.client_identification.validation]
+            group_values = ["basic", "premium"]
+
+            [mcp.servers.test]
+            cmd = ["test"]
+            allow_groups = ["basic", "invalid_group"]
+        "#};
+
+        let config: Config = toml::from_str(config_str).unwrap();
+        let result = super::validate_mcp_access_control(&config);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Group 'invalid_group' in MCP server 'test' allow_groups is not defined")
+        );
+    }
+
+    #[test]
+    fn mcp_access_control_without_client_identification() {
+        let config_str = indoc! {r#"
+            [mcp.servers.test]
+            cmd = ["test"]
+            allow_groups = ["premium"]
+        "#};
+
+        let config: Config = toml::from_str(config_str).unwrap();
+        let result = super::validate_mcp_access_control(&config);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("MCP server access control is configured but client identification is not enabled")
+        );
+    }
+
+    #[test]
+    fn mcp_access_control_without_group_id() {
+        let config_str = indoc! {r#"
+            [server.client_identification]
+            enabled = true
+            client_id.http_header = "X-Client-ID"
+
+            [server.client_identification.validation]
+            group_values = ["basic", "premium"]
+
+            [mcp.servers.test]
+            cmd = ["test"]
+            allow_groups = ["basic"]
+        "#};
+
+        let config: Config = toml::from_str(config_str).unwrap();
+        let result = super::validate_mcp_access_control(&config);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("MCP server access control uses groups but group_id is not configured")
+        );
+    }
+
+    #[test]
+    fn mcp_access_control_tool_level_invalid_group() {
+        let config_str = indoc! {r#"
+            [server.client_identification]
+            enabled = true
+            client_id.http_header = "X-Client-ID"
+            group_id.http_header = "X-Group-ID"
+
+            [server.client_identification.validation]
+            group_values = ["basic", "premium"]
+
+            [mcp.servers.test]
+            cmd = ["test"]
+
+            [mcp.servers.test.tools.advanced_tool]
+            allow_groups = ["enterprise"]
+        "#};
+
+        let config: Config = toml::from_str(config_str).unwrap();
+        let result = super::validate_mcp_access_control(&config);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Group 'enterprise' in MCP server 'test' tool 'advanced_tool' allow_groups is not defined")
+        );
+    }
+
+    #[test]
+    fn mcp_access_control_valid_configuration() {
+        let config_str = indoc! {r#"
+            [server.client_identification]
+            enabled = true
+            client_id.http_header = "X-Client-ID"
+            group_id.http_header = "X-Group-ID"
+
+            [server.client_identification.validation]
+            group_values = ["basic", "premium", "enterprise"]
+
+            [mcp.servers.test]
+            cmd = ["test"]
+            allow_groups = ["basic", "premium"]
+            deny_groups = ["enterprise"]
+
+            [mcp.servers.test.tools.special_tool]
+            allow_groups = ["premium"]
+        "#};
+
+        let config: Config = toml::from_str(config_str).unwrap();
+        let result = super::validate_mcp_access_control(&config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn mcp_access_control_no_servers() {
+        let config_str = indoc! {r#"
+            [mcp]
+            enabled = true
+        "#};
+
+        let config: Config = toml::from_str(config_str).unwrap();
+        let result = super::validate_mcp_access_control(&config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn mcp_access_control_no_access_control_configured() {
+        let config_str = indoc! {r#"
+            [mcp.servers.test]
+            cmd = ["test"]
+        "#};
+
+        let config: Config = toml::from_str(config_str).unwrap();
+        let result = super::validate_mcp_access_control(&config);
+        assert!(result.is_ok());
+    }
 
     #[test]
     fn validation_logic_identifies_no_downstreams() {

@@ -7,7 +7,7 @@ pub mod tracing;
 
 use self::builder::McpServerBuilder;
 use crate::cache::DynamicDownstreamCache;
-use config::{Config, McpConfig};
+use config::{ClientIdentity, Config, McpConfig};
 use execute::ExecuteParameters;
 use http::request::Parts;
 use indoc::indoc;
@@ -22,12 +22,12 @@ use rmcp::{
     },
     service::RequestContext,
 };
-use search::{SearchParameters, SearchTool};
+use search::{GroupedSearchTool, SearchParameters, SearchTool};
 use secrecy::SecretString;
 use std::collections::{BTreeMap, HashSet};
 use std::{ops::Deref, sync::Arc};
 
-use crate::downstream::Downstream;
+use crate::{access, downstream::Downstream};
 
 #[derive(Clone)]
 pub(crate) struct McpServer {
@@ -38,8 +38,8 @@ pub(crate) struct McpServerInner {
     info: ServerInfo,
     // Static downstream (servers without auth forwarding)
     static_downstream: Option<Arc<Downstream>>,
-    // Static search tool cache
-    static_search_tool: Option<Arc<SearchTool>>,
+    // Grouped search tool with per-group indexes (for static servers)
+    static_grouped_search: Option<Arc<GroupedSearchTool>>,
     // Names of servers that require auth forwarding
     dynamic_server_names: HashSet<String>,
     // Cache for dynamic downstream instances
@@ -50,6 +50,8 @@ pub(crate) struct McpServerInner {
     enable_structured_content: bool,
     // List of tools
     tools: Vec<Tool>,
+    // Full MCP config for access control checks
+    mcp_config: McpConfig,
 }
 
 impl Deref for McpServer {
@@ -87,17 +89,19 @@ impl McpServer {
         });
 
         // Create static downstream if there are any static servers
-        let (static_downstream, static_search_tool) = if !static_config.servers.is_empty() {
+        let (static_downstream, static_grouped_search) = if !static_config.servers.is_empty() {
             log::debug!(
                 "Initializing {} static MCP server(s) at startup",
                 static_config.servers.len()
             );
 
             let downstream = Downstream::new(&static_config, None).await?;
-            let tools = downstream.list_tools().cloned().collect();
-            let static_search_tool = SearchTool::new(tools)?;
+            let tools: Vec<Tool> = downstream.list_tools().cloned().collect();
 
-            (Some(Arc::new(downstream)), Some(Arc::new(static_search_tool)))
+            // Create grouped search tool with per-group indexes
+            let grouped_search = GroupedSearchTool::new(tools, &config)?;
+
+            (Some(Arc::new(downstream)), Some(Arc::new(grouped_search)))
         } else {
             (None, None)
         };
@@ -125,12 +129,13 @@ impl McpServer {
                 instructions: Some(generate_instructions(&config.mcp)),
             },
             static_downstream,
-            static_search_tool,
+            static_grouped_search,
             dynamic_server_names,
             cache,
             rate_limit_manager,
             enable_structured_content: config.mcp.enable_structured_content,
             tools: vec![search::rmcp_tool(), execute::rmcp_tool()],
+            mcp_config: config.mcp,
         };
 
         Ok(Self {
@@ -139,25 +144,33 @@ impl McpServer {
     }
 
     /// Get or create cached search tool for the given authentication context
-    async fn get_search_tool(&self, token: Option<&SecretString>) -> Result<Arc<SearchTool>, ErrorData> {
+    async fn get_search_tool(
+        &self,
+        token: Option<&SecretString>,
+        user_group: Option<&str>,
+    ) -> Result<Arc<SearchTool>, ErrorData> {
         match token {
             Some(token) if !self.dynamic_server_names.is_empty() => {
-                log::debug!("Retrieving combined search tool (static + dynamic servers)");
+                log::debug!(
+                    "Retrieving combined search tool (static + dynamic servers) for group: {:?}",
+                    user_group
+                );
 
-                // Dynamic case - get from cache
+                // Dynamic case - get from cache with group-based filtering
                 let cached = self
                     .cache
-                    .get_or_create(token)
+                    .get_or_create(token, user_group)
                     .await
                     .map_err(|e| ErrorData::internal_error(format!("Failed to load dynamic tools: {e}"), None))?;
 
                 Ok(Arc::new(cached.search_tool.clone()))
             }
             _ => {
-                log::debug!("Retrieving static-only search tool");
+                log::debug!("Retrieving static-only search tool for group: {:?}", user_group);
 
-                if let Some(search_tool) = &self.static_search_tool {
-                    Ok(search_tool.clone())
+                if let Some(grouped_search) = &self.static_grouped_search {
+                    // Use the appropriate per-group index
+                    Ok(grouped_search.get_search_tool(user_group))
                 } else {
                     // No servers configured - return empty search tool
                     Ok(Arc::new(SearchTool::new(Vec::new()).map_err(|e| {
@@ -174,12 +187,16 @@ impl McpServer {
         params: CallToolRequestParam,
         ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        // Extract token from request
+        // Extract token and client identity from request
         let parts = ctx.extensions.get::<Parts>();
         let token = parts.and_then(|p| p.extensions.get::<SecretString>()).cloned();
 
-        // Get the search tool to access all tools
-        let search_tool = self.get_search_tool(token.as_ref()).await?;
+        // ClientIdentity should be in Parts extensions (inserted by ClientIdentificationMiddleware)
+        let client_identity = parts.and_then(|p| p.extensions.get::<ClientIdentity>());
+        let user_group = client_identity.and_then(|id| id.group.as_deref());
+
+        // Get the search tool to access all tools (using user's group for filtering)
+        let search_tool = self.get_search_tool(token.as_ref(), user_group).await?;
 
         // Check if tool exists in our registry
         if search_tool.find_exact(&params.name).is_none() {
@@ -191,6 +208,17 @@ impl McpServer {
             log::error!("Invalid tool name format: '{}'", params.name);
             ErrorData::invalid_params("Invalid tool name format", None)
         })?;
+
+        // Check access control
+        let server_config = self.mcp_config.servers.get(server_name).ok_or_else(|| {
+            log::error!("Server '{}' not found in configuration", server_name);
+            ErrorData::method_not_found::<CallToolRequestMethod>()
+        })?;
+
+        if !access::can_access_tool(user_group, server_config, tool_name) {
+            // Return "method not found" to avoid leaking information about restricted tools
+            return Err(ErrorData::method_not_found::<CallToolRequestMethod>());
+        }
 
         log::debug!(
             "Parsing tool name '{}': server='{server_name}', tool='{tool_name}'",
@@ -232,7 +260,7 @@ impl McpServer {
 
             let cached = self
                 .cache
-                .get_or_create(token_ref)
+                .get_or_create(token_ref, user_group)
                 .await
                 .map_err(|e| ErrorData::internal_error(format!("Failed to initialize: {e}"), None))?;
 
@@ -249,14 +277,18 @@ impl McpServer {
     }
 
     /// Get the appropriate downstream instance for the given token
+    ///
+    /// NOTE: This is used for prompts and resources, which don't have access control yet.
+    /// For tools, use get_search_tool which properly filters by user group.
     async fn get_downstream(&self, token: Option<&SecretString>) -> Result<Arc<Downstream>, ErrorData> {
         match token {
             Some(token) if !self.dynamic_server_names.is_empty() => {
                 log::debug!("Retrieving combined downstream instance (static + dynamic)");
 
-                // Dynamic case - get from cache
+                // Dynamic case - get from cache without group filtering
+                // (prompts and resources don't have access control yet)
                 let cached =
-                    self.cache.get_or_create(token).await.map_err(|e| {
+                    self.cache.get_or_create(token, None).await.map_err(|e| {
                         ErrorData::internal_error(format!("Failed to load dynamic downstream: {e}"), None)
                     })?;
 
@@ -304,8 +336,12 @@ impl ServerHandler for McpServer {
             "search" => {
                 log::debug!("Executing search tool to find available MCP tools");
 
-                // Get cached search tool
-                let search_tool = self.get_search_tool(token).await?;
+                // Extract user group from request context
+                let client_identity = parts.and_then(|p| p.extensions.get::<ClientIdentity>());
+                let user_group = client_identity.and_then(|id| id.group.as_deref());
+
+                // Get cached search tool for user's group
+                let search_tool = self.get_search_tool(token, user_group).await?;
 
                 let search_params: SearchParameters =
                     serde_json::from_value(serde_json::Value::Object(params.arguments.unwrap_or_default()))

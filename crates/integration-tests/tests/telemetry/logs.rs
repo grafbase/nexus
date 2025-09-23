@@ -178,7 +178,7 @@ async fn logs_include_trace_and_span_ids() {
         "trace_id_matches": true,
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Retrieving static-only search tool"
+        "body_preview": "Retrieving static-only search tool for group: None"
       },
       {
         "trace_id_matches": true,
