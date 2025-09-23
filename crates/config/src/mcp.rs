@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -100,6 +100,30 @@ impl McpServer {
             McpServer::Http(config) => config.get_effective_header_rules().collect(),
         }
     }
+
+    /// Returns the allow_groups configuration for this server, if any.
+    pub fn allow_groups(&self) -> Option<&BTreeSet<String>> {
+        match self {
+            McpServer::Stdio(config) => config.allow_groups.as_ref(),
+            McpServer::Http(config) => config.allow_groups.as_ref(),
+        }
+    }
+
+    /// Returns the deny_groups configuration for this server, if any.
+    pub fn deny_groups(&self) -> Option<&BTreeSet<String>> {
+        match self {
+            McpServer::Stdio(config) => config.deny_groups.as_ref(),
+            McpServer::Http(config) => config.deny_groups.as_ref(),
+        }
+    }
+
+    /// Returns the tool-level access configuration for this server.
+    pub fn tool_access_configs(&self) -> &BTreeMap<String, ToolAccessConfig> {
+        match self {
+            McpServer::Stdio(config) => &config.tools,
+            McpServer::Http(config) => &config.tools,
+        }
+    }
 }
 
 /// Configuration for downstream connection caching.
@@ -170,6 +194,22 @@ pub struct StdioConfig {
     /// Rate limit configuration for this MCP server.
     #[serde(default)]
     pub rate_limits: Option<McpServerRateLimit>,
+
+    /// Groups allowed to access this server.
+    /// If defined and non-empty, only users with groups in this list can access.
+    /// If undefined or empty when deny_groups is also empty/undefined, all users can access.
+    #[serde(default)]
+    pub allow_groups: Option<BTreeSet<String>>,
+
+    /// Groups explicitly denied access to this server.
+    /// Users with groups in this list are denied even if in allow_groups.
+    #[serde(default)]
+    pub deny_groups: Option<BTreeSet<String>>,
+
+    /// Tool-level access control overrides.
+    /// Maps tool names to their specific access configuration.
+    #[serde(default)]
+    pub tools: BTreeMap<String, ToolAccessConfig>,
 }
 
 impl StdioConfig {
@@ -275,6 +315,22 @@ pub struct HttpConfig {
     /// Only supports insert operations - applied at client initialization time.
     #[serde(default)]
     pub headers: Vec<McpHeaderRule>,
+
+    /// Groups allowed to access this server.
+    /// If defined and non-empty, only users with groups in this list can access.
+    /// If undefined or empty when deny_groups is also empty/undefined, all users can access.
+    #[serde(default)]
+    pub allow_groups: Option<BTreeSet<String>>,
+
+    /// Groups explicitly denied access to this server.
+    /// Users with groups in this list are denied even if in allow_groups.
+    #[serde(default)]
+    pub deny_groups: Option<BTreeSet<String>>,
+
+    /// Tool-level access control overrides.
+    /// Maps tool names to their specific access configuration.
+    #[serde(default)]
+    pub tools: BTreeMap<String, ToolAccessConfig>,
 }
 
 impl HttpConfig {
@@ -380,4 +436,206 @@ pub struct McpServerRateLimit {
     /// Optional per-tool rate limit overrides.
     #[serde(default)]
     pub tools: BTreeMap<String, RateLimitQuota>,
+}
+
+/// Access control configuration for individual tools.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolAccessConfig {
+    /// Groups allowed to access this tool.
+    /// Overrides server-level allow_groups.
+    #[serde(default)]
+    pub allow_groups: Option<BTreeSet<String>>,
+
+    /// Groups explicitly denied access to this tool.
+    /// Overrides server-level deny_groups.
+    #[serde(default)]
+    pub deny_groups: Option<BTreeSet<String>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use indoc::indoc;
+    use insta::assert_debug_snapshot;
+
+    #[test]
+    fn stdio_server_with_access_control() {
+        let config_str = indoc! {r#"
+            [servers.premium_tools]
+            cmd = ["node", "premium-server.js"]
+            allow_groups = ["pro", "enterprise"]
+            deny_groups = ["suspended"]
+
+            [servers.premium_tools.tools.advanced_analysis]
+            allow_groups = ["enterprise"]
+
+            [servers.premium_tools.tools.basic_stats]
+            deny_groups = ["trial"]
+        "#};
+
+        let config: McpConfig = toml::from_str(config_str).unwrap();
+        let server = config.servers.get("premium_tools").unwrap();
+
+        assert_debug_snapshot!(server, @r###"
+        Stdio(
+            StdioConfig {
+                cmd: [
+                    "node",
+                    "premium-server.js",
+                ],
+                env: {},
+                cwd: None,
+                stderr: Simple(
+                    Null,
+                ),
+                rate_limits: None,
+                allow_groups: Some(
+                    {
+                        "enterprise",
+                        "pro",
+                    },
+                ),
+                deny_groups: Some(
+                    {
+                        "suspended",
+                    },
+                ),
+                tools: {
+                    "advanced_analysis": ToolAccessConfig {
+                        allow_groups: Some(
+                            {
+                                "enterprise",
+                            },
+                        ),
+                        deny_groups: None,
+                    },
+                    "basic_stats": ToolAccessConfig {
+                        allow_groups: None,
+                        deny_groups: Some(
+                            {
+                                "trial",
+                            },
+                        ),
+                    },
+                },
+            },
+        )
+        "###);
+    }
+
+    #[test]
+    fn http_server_with_access_control() {
+        let config_str = indoc! {r#"
+            [servers.analytics]
+            url = "http://analytics.example.com"
+            allow_groups = ["basic", "pro", "enterprise"]
+
+            [servers.analytics.tools.ml_predict]
+            allow_groups = ["enterprise"]
+            deny_groups = ["beta_testers"]
+        "#};
+
+        let config: McpConfig = toml::from_str(config_str).unwrap();
+        let server = config.servers.get("analytics").unwrap();
+
+        assert_debug_snapshot!(server, @r###"
+        Http(
+            HttpConfig {
+                protocol: None,
+                url: Url {
+                    scheme: "http",
+                    cannot_be_a_base: false,
+                    username: "",
+                    password: None,
+                    host: Some(
+                        Domain(
+                            "analytics.example.com",
+                        ),
+                    ),
+                    port: None,
+                    path: "/",
+                    query: None,
+                    fragment: None,
+                },
+                tls: None,
+                message_url: None,
+                auth: None,
+                rate_limits: None,
+                headers: [],
+                allow_groups: Some(
+                    {
+                        "basic",
+                        "enterprise",
+                        "pro",
+                    },
+                ),
+                deny_groups: None,
+                tools: {
+                    "ml_predict": ToolAccessConfig {
+                        allow_groups: Some(
+                            {
+                                "enterprise",
+                            },
+                        ),
+                        deny_groups: Some(
+                            {
+                                "beta_testers",
+                            },
+                        ),
+                    },
+                },
+            },
+        )
+        "###);
+    }
+
+    #[test]
+    fn server_without_access_control_defaults() {
+        let config_str = indoc! {r#"
+            [servers.public]
+            cmd = ["python", "public_server.py"]
+        "#};
+
+        let config: McpConfig = toml::from_str(config_str).unwrap();
+        let server = config.servers.get("public").unwrap();
+
+        assert_debug_snapshot!(server, @r###"
+        Stdio(
+            StdioConfig {
+                cmd: [
+                    "python",
+                    "public_server.py",
+                ],
+                env: {},
+                cwd: None,
+                stderr: Simple(
+                    Null,
+                ),
+                rate_limits: None,
+                allow_groups: None,
+                deny_groups: None,
+                tools: {},
+            },
+        )
+        "###);
+    }
+
+    #[test]
+    fn empty_allow_groups_denies_all() {
+        let config_str = indoc! {r#"
+            [servers.restricted]
+            cmd = ["node", "server.js"]
+            allow_groups = []
+        "#};
+
+        let config: McpConfig = toml::from_str(config_str).unwrap();
+        let server = config.servers.get("restricted").unwrap();
+
+        assert_debug_snapshot!(server.allow_groups(), @r###"
+        Some(
+            {},
+        )
+        "###);
+    }
 }
