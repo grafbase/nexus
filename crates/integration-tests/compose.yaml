@@ -154,7 +154,7 @@ services:
 
   # OpenTelemetry Collector for metrics, traces, and logs
   otel-collector:
-    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.135.0
+    image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.136.0
     command: ["--config=/etc/otel-collector-config.yml", "--set=service.telemetry.logs.level=INFO"]
     volumes:
       - ./docker/otel/otel-collector-config.yml:/etc/otel-collector-config.yml:ro,z
