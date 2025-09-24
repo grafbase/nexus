@@ -72,24 +72,16 @@ impl From<unified::UnifiedMessage> for anthropic::AnthropicMessage {
     fn from(msg: unified::UnifiedMessage) -> Self {
         let role = anthropic::AnthropicRole::from(msg.role);
 
-        let mut content = match msg.content {
+        let content = match msg.content {
             unified::UnifiedContentContainer::Text(text) => vec![anthropic::AnthropicContent::Text { text }],
             unified::UnifiedContentContainer::Blocks(blocks) => {
                 blocks.into_iter().map(anthropic::AnthropicContent::from).collect()
             }
         };
 
-        // Add tool calls from the unified message
-        if let Some(tool_calls) = msg.tool_calls {
-            for call in tool_calls {
-                let input = Value::from(call.function.arguments);
-                content.push(anthropic::AnthropicContent::ToolUse {
-                    id: call.id,
-                    name: call.function.name,
-                    input,
-                });
-            }
-        }
+        // Note: We don't add tool_calls here to avoid duplication.
+        // For Anthropic, tool calls should already be present as ToolUse blocks in the content.
+        // The tool_calls field is primarily for OpenAI compatibility and should be computed on-demand.
 
         Self { role, content }
     }
@@ -579,6 +571,77 @@ mod tests {
             "input_tokens": 8,
             "output_tokens": 12
           }
+        }
+        "###);
+    }
+
+    #[test]
+    fn no_duplicate_tool_calls_when_both_content_and_tool_calls_present() {
+        // Test that we don't create duplicate tool_use blocks when the unified message
+        // has both ToolUse content blocks AND a tool_calls field with the same tool call.
+        // This was causing "tool_use ids must be unique" errors with Anthropic.
+        let unified_message = unified::UnifiedMessage {
+            role: unified::UnifiedRole::Assistant,
+            content: unified::UnifiedContentContainer::Blocks(vec![
+                unified::UnifiedContent::Text {
+                    text: "I'll calculate that for you.".to_string(),
+                },
+                unified::UnifiedContent::ToolUse {
+                    id: "tool_123".to_string(),
+                    name: "calculator".to_string(),
+                    input: serde_json::json!({"expression": "2+2"}),
+                },
+            ]),
+            tool_calls: Some(vec![unified::UnifiedToolCall {
+                id: "tool_123".to_string(), // Same ID as in content blocks
+                function: unified::UnifiedFunctionCall {
+                    name: "calculator".to_string(),
+                    arguments: unified::UnifiedArguments::Value(serde_json::json!({"expression": "2+2"})),
+                },
+            }]),
+            tool_call_id: None,
+        };
+
+        // Convert to Anthropic format
+        let anthropic_message: anthropic::AnthropicMessage = unified_message.into();
+
+        // Verify we only have one tool_use block, not two
+        let tool_use_blocks: Vec<_> = anthropic_message
+            .content
+            .iter()
+            .filter_map(|block| match block {
+                anthropic::AnthropicContent::ToolUse { id, name, .. } => Some((id, name)),
+                _ => None,
+            })
+            .collect();
+
+        // Should only have one tool_use block with ID "tool_123"
+        assert_eq!(
+            tool_use_blocks.len(),
+            1,
+            "Should only have one tool_use block, not duplicates"
+        );
+        assert_eq!(tool_use_blocks[0].0, "tool_123");
+        assert_eq!(tool_use_blocks[0].1, "calculator");
+
+        // Verify the full structure matches expectations
+        insta::assert_json_snapshot!(anthropic_message, @r###"
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "I'll calculate that for you."
+            },
+            {
+              "type": "tool_use",
+              "id": "tool_123",
+              "name": "calculator",
+              "input": {
+                "expression": "2+2"
+              }
+            }
+          ]
         }
         "###);
     }
