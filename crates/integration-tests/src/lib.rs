@@ -749,6 +749,7 @@ impl TestServer {
             config: config.clone(),
             shutdown_signal: nexus_shutdown_signal_clone,
             log_filter: "server=debug,mcp=debug,telemetry=debug,rate_limit=debug,llm=debug,config=debug,integration_tests=debug,nexus=debug".to_string(),
+            version: "test".to_string(),
         };
 
         // Start the server in a background task

@@ -15,8 +15,6 @@ async fn main() -> anyhow::Result<()> {
 
     // The server crate will handle telemetry and logger initialization
 
-    log::info!("Nexus {}", env!("CARGO_PKG_VERSION"));
-
     // Create a cancellation token for graceful shutdown
     let shutdown_signal = CancellationToken::new();
     let shutdown_signal_clone = shutdown_signal.clone();
@@ -75,5 +73,6 @@ fn serve_config(args: &Args, config: Config, shutdown_signal: CancellationToken)
         config,
         shutdown_signal,
         log_filter,
+        version: env!("CARGO_PKG_VERSION").to_string(),
     }
 }
