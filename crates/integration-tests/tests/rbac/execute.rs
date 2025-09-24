@@ -3,16 +3,16 @@ use indoc::indoc;
 use integration_tests::TestServer;
 use serde_json::json;
 
-/// Test that empty allow_groups denies all access
+/// Test that empty allow denies all access
 #[tokio::test]
-async fn empty_allow_groups_denies_all() {
+async fn empty_allow_denies_all() {
     let config = indoc! {r#"
         [mcp]
         enabled = true
 
         [mcp.servers.restricted]
         cmd = ["python3", "mock-mcp-servers/simple_mcp_server.py"]
-        allow_groups = []
+        allow = []
     "#};
 
     let server = TestServer::builder().build(config).await;
@@ -31,9 +31,9 @@ async fn empty_allow_groups_denies_all() {
     insta::assert_snapshot!(result.to_string(), @"Mcp error: -32601: tools/call");
 }
 
-/// Test that allow_groups restricts access to specific groups
+/// Test that allow restricts access to specific groups
 #[tokio::test]
-async fn allow_groups_restricts_access() {
+async fn allow_restricts_access() {
     let config = indoc! {r#"
         [server.client_identification]
         enabled = true
@@ -48,7 +48,7 @@ async fn allow_groups_restricts_access() {
 
         [mcp.servers.premium_only]
         cmd = ["python3", "mock-mcp-servers/simple_mcp_server.py"]
-        allow_groups = ["premium"]
+        allow = ["premium"]
     "#};
 
     let server = TestServer::builder().build(config).await;
@@ -91,9 +91,9 @@ async fn allow_groups_restricts_access() {
     insta::assert_snapshot!(no_group_result.to_string(), @"Mcp error: -32601: tools/call");
 }
 
-/// Test that deny_groups blocks specific groups
+/// Test that deny blocks specific groups
 #[tokio::test]
-async fn deny_groups_blocks_specific_groups() {
+async fn deny_blocks_specific_groups() {
     let config = indoc! {r#"
         [server.client_identification]
         enabled = true
@@ -108,7 +108,7 @@ async fn deny_groups_blocks_specific_groups() {
 
         [mcp.servers.no_suspended]
         cmd = ["python3", "mock-mcp-servers/simple_mcp_server.py"]
-        deny_groups = ["suspended"]
+        deny = ["suspended"]
     "#};
 
     let server = TestServer::builder().build(config).await;
@@ -156,10 +156,10 @@ async fn tool_level_overrides_server_level() {
 
         [mcp.servers.mixed]
         cmd = ["python3", "mock-mcp-servers/simple_mcp_server.py"]
-        allow_groups = ["basic"]
+        allow = ["basic"]
 
         [mcp.servers.mixed.tools.echo]
-        allow_groups = ["premium"]
+        allow = ["premium"]
     "#};
 
     let server = TestServer::builder().build(config).await;
@@ -202,7 +202,7 @@ async fn tool_level_overrides_server_level() {
 
 /// Test that allow and deny groups work together
 #[tokio::test]
-async fn allow_and_deny_groups_combined() {
+async fn allow_and_deny_combined() {
     let config = indoc! {r#"
         [server.client_identification]
         enabled = true
@@ -217,8 +217,8 @@ async fn allow_and_deny_groups_combined() {
 
         [mcp.servers.premium_not_suspended]
         cmd = ["python3", "mock-mcp-servers/simple_mcp_server.py"]
-        allow_groups = ["premium", "suspended_premium"]
-        deny_groups = ["suspended_premium"]
+        allow = ["premium", "suspended_premium"]
+        deny = ["suspended_premium"]
     "#};
 
     let server = TestServer::builder().build(config).await;

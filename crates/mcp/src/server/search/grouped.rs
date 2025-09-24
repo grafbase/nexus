@@ -24,7 +24,7 @@ pub enum GroupedSearchTool {
     },
     /// When no groups are defined - single index with accessible tools
     NoGroups {
-        /// Search index with all accessible tools (excluding those with empty allow_groups)
+        /// Search index with all accessible tools (excluding those with empty allow)
         all_tools_index: Arc<SearchTool>,
     },
 }
@@ -34,7 +34,7 @@ impl GroupedSearchTool {
     ///
     /// This builds separate search indexes based on whether groups are configured:
     /// - WithGroups: Each group gets its own pre-filtered index
-    /// - NoGroups: Single index excluding tools with empty allow_groups
+    /// - NoGroups: Single index excluding tools with empty allow
     pub fn new(tools: Vec<Tool>, config: &Config) -> anyhow::Result<Self> {
         // Validate that configured tool access rules reference actual tools
         validate_tool_configs(&tools, &config.mcp);
@@ -51,7 +51,7 @@ impl GroupedSearchTool {
         let Some(groups) = defined_groups else {
             log::debug!("No groups defined, creating single search index");
 
-            // Filter out tools with empty allow_groups (which means "deny all")
+            // Filter out tools with empty allow (which means "deny all")
             let accessible_tools = filter_tools_by_access(&tools, &config.mcp, None);
 
             log::debug!(

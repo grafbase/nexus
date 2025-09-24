@@ -27,11 +27,7 @@ use config::McpServer;
 pub fn can_access_tool(user_group: Option<&str>, server_config: &McpServer, tool_name: &str) -> bool {
     // First check tool-level access rules
     if let Some(tool_config) = server_config.tool_access_configs().get(tool_name) {
-        return check_access(
-            user_group,
-            tool_config.allow_groups.as_ref(),
-            tool_config.deny_groups.as_ref(),
-        );
+        return check_access(user_group, tool_config.allow.as_ref(), tool_config.deny.as_ref());
     }
 
     // Fall back to server-level access rules
@@ -51,24 +47,20 @@ pub fn can_access_tool(user_group: Option<&str>, server_config: &McpServer, tool
 ///
 /// `true` if access is allowed, `false` otherwise
 fn can_access_server(user_group: Option<&str>, server_config: &McpServer) -> bool {
-    check_access(user_group, server_config.allow_groups(), server_config.deny_groups())
+    check_access(user_group, server_config.allow(), server_config.deny())
 }
 
 /// Core access check logic implementing the two-phase check.
 ///
 /// # Rules
 ///
-/// 1. If `allow_groups` is defined and non-empty, user's group must be in it
-/// 2. If `allow_groups` is defined but empty, deny all access
-/// 3. If `deny_groups` is defined, user's group must NOT be in it
+/// 1. If `allow` is defined and non-empty, user's group must be in it
+/// 2. If `allow` is defined but empty, deny all access
+/// 3. If `deny` is defined, user's group must NOT be in it
 /// 4. If no rules are defined, allow access
-fn check_access(
-    user_group: Option<&str>,
-    allow_groups: Option<&BTreeSet<String>>,
-    deny_groups: Option<&BTreeSet<String>>,
-) -> bool {
+fn check_access(user_group: Option<&str>, allow: Option<&BTreeSet<String>>, deny: Option<&BTreeSet<String>>) -> bool {
     // Phase 1: Check allow-list
-    if let Some(allow_list) = allow_groups {
+    if let Some(allow_list) = allow {
         // Empty allow list means deny all
         if allow_list.is_empty() {
             return false;
@@ -89,7 +81,7 @@ fn check_access(
     }
 
     // Phase 2: Check deny-list
-    if let Some(deny_list) = deny_groups
+    if let Some(deny_list) = deny
         && let Some(group) = user_group
         && deny_list.contains(group)
     {
@@ -129,8 +121,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     fn create_test_server(
-        allow_groups: Option<BTreeSet<String>>,
-        deny_groups: Option<BTreeSet<String>>,
+        allow: Option<BTreeSet<String>>,
+        deny: Option<BTreeSet<String>>,
         tools: BTreeMap<String, ToolAccessConfig>,
     ) -> McpServer {
         // Create a test STDIO server with the specified access controls
@@ -140,8 +132,8 @@ mod tests {
             cwd: None,
             stderr: config::StdioTarget::Simple(config::StdioTargetType::Null),
             rate_limits: None,
-            allow_groups,
-            deny_groups,
+            allow,
+            deny,
             tools,
         };
         McpServer::Stdio(Box::new(stdio_config))
@@ -157,7 +149,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_allow_groups_denies_all() {
+    fn empty_allow_denies_all() {
         let server_config = create_test_server(Some(BTreeSet::new()), None, BTreeMap::new());
 
         assert!(!can_access_server(None, &server_config));
@@ -166,7 +158,7 @@ mod tests {
     }
 
     #[test]
-    fn allow_groups_restricts_access() {
+    fn allow_restricts_access() {
         let mut allow_list = BTreeSet::new();
         allow_list.insert("premium".to_string());
         allow_list.insert("enterprise".to_string());
@@ -180,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn deny_groups_blocks_specific_groups() {
+    fn deny_blocks_specific_groups() {
         let mut deny_list = BTreeSet::new();
         deny_list.insert("suspended".to_string());
         deny_list.insert("trial_expired".to_string());
@@ -194,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn allow_and_deny_groups_combined() {
+    fn allow_and_deny_combined() {
         let mut allow_list = BTreeSet::new();
         allow_list.insert("premium".to_string());
         allow_list.insert("enterprise".to_string());
@@ -232,8 +224,8 @@ mod tests {
         tools.insert(
             "advanced_tool".to_string(),
             ToolAccessConfig {
-                allow_groups: Some(tool_allow),
-                deny_groups: None,
+                allow: Some(tool_allow),
+                deny: None,
             },
         );
 
@@ -264,8 +256,8 @@ mod tests {
         tools.insert(
             "premium_tool".to_string(),
             ToolAccessConfig {
-                allow_groups: Some(premium_tool_allow),
-                deny_groups: None,
+                allow: Some(premium_tool_allow),
+                deny: None,
             },
         );
 
