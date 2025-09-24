@@ -119,10 +119,16 @@ async fn basic_trace_creation() {
         assert_eq!(span.trace_id, trace_id, "Trace ID should be propagated");
     }
 
-    // The first span should have our parent span ID
+    // Find the root HTTP span (should have the external parent)
+    let root_span = spans
+        .iter()
+        .find(|s| s.span_name.starts_with("POST "))
+        .expect("Should have HTTP span");
+
+    // The root HTTP span should have our parent span ID
     assert_eq!(
-        spans[0].parent_span_id, span_id,
-        "Parent span ID should be propagated to first span"
+        root_span.parent_span_id, span_id,
+        "Parent span ID should be propagated to root HTTP span"
     );
 
     // Filter out dynamic attributes before snapshot
@@ -318,9 +324,15 @@ async fn trace_propagation_with_traceparent() {
         assert_eq!(span.trace_id, trace_id, "Trace ID should be propagated");
     }
 
-    // Verify parent span ID was propagated to at least the first span
+    // Find the root HTTP span (should have the external parent)
+    let root_span = spans
+        .iter()
+        .find(|s| s.span_name.starts_with("POST "))
+        .expect("Should have HTTP span");
+
+    // Verify parent span ID was propagated to the root HTTP span
     assert_eq!(
-        spans[0].parent_span_id, parent_span_id,
+        root_span.parent_span_id, parent_span_id,
         "Parent span ID should be propagated"
     );
 
@@ -614,11 +626,17 @@ async fn aws_xray_trace_propagation() {
         );
     }
 
-    // Verify parent span ID was propagated to at least the first span
+    // Find the root HTTP span (should have the external parent)
+    let root_span = spans
+        .iter()
+        .find(|s| s.span_name.starts_with("POST "))
+        .expect("Should have HTTP span");
+
+    // Verify parent span ID was propagated to the root HTTP span
     assert_eq!(
-        spans[0].parent_span_id.to_lowercase(),
+        root_span.parent_span_id.to_lowercase(),
         parent_span_id.to_lowercase(),
-        "X-Ray parent span ID should be propagated"
+        "X-Ray parent span ID should be propagated to root HTTP span"
     );
 
     // Filter out dynamic attributes
@@ -810,7 +828,7 @@ async fn trace_propagation_priority() {
             ServiceName = '{service_name}'
             AND TraceId = '{w3c_trace_id}'
         ORDER BY Timestamp DESC
-        LIMIT 1
+        LIMIT 10
     "#};
 
     #[derive(Debug, Deserialize, Row)]
@@ -831,8 +849,15 @@ async fn trace_propagation_priority() {
         spans[0].trace_id, w3c_trace_id,
         "W3C trace ID should be used when both headers present"
     );
+
+    // Find the root HTTP span which should have the W3C parent
+    let root_span = spans
+        .iter()
+        .find(|s| s.parent_span_id == w3c_parent_span_id)
+        .expect("Should have span with W3C parent");
+
     assert_eq!(
-        spans[0].parent_span_id, w3c_parent_span_id,
+        root_span.parent_span_id, w3c_parent_span_id,
         "W3C parent span ID should be used"
     );
 }
