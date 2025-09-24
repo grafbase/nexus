@@ -154,11 +154,20 @@ where
         // This will use the trace ID from the parent if it came from a W3C traceparent header
         let root = Span::root(span_name.clone(), parent);
 
-        // Store the trace context in request extensions so downstream services can access it
-        // This is needed because some service layers (like StreamableHttpService) spawn new tasks
-        // which lose the thread-local span context
-        // Unfortunately, MCP spans will be siblings rather than children due to this limitation
-        req.extensions_mut().insert(parent);
+        // Temporarily set this span as local parent to get its context
+        let guard = root.set_local_parent();
+
+        // Now we can get the current span's context (not the parent's)
+        if let Some(current_context) = SpanContext::current_local_parent() {
+            // Store this span's context for downstream services
+            req.extensions_mut().insert(current_context);
+        } else {
+            // Fallback: store the original parent context
+            req.extensions_mut().insert(parent);
+        }
+
+        // Drop the guard to restore previous local parent
+        drop(guard);
 
         // Add span attributes following OpenTelemetry semantic conventions
         root.add_property(|| ("http.request.method", method.clone()));

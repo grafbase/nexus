@@ -392,6 +392,108 @@ async fn mcp_tools_call_with_execute() {
 }
 
 #[tokio::test]
+async fn mcp_span_has_http_parent() {
+    let service_name = unique_service_name("mcp-trace-hierarchy");
+    let config = create_mcp_tracing_config(&service_name);
+
+    let mut builder = TestServer::builder();
+    let mut service = TestService::streamable_http("test_mcp_server".to_string());
+    service.add_tool(AdderTool);
+    builder.spawn_service(service).await;
+
+    let test_server = builder.build(&config).await;
+
+    // Generate trace context
+    let trace_id = format!("{:032x}", uuid::Uuid::new_v4().as_u128());
+    let parent_span_id = format!("{:016x}", rand::random::<u64>());
+    let traceparent = format!("00-{}-{}-01", trace_id, parent_span_id);
+
+    let mut headers = HeaderMap::new();
+    headers.insert("traceparent", traceparent.parse().unwrap());
+    headers.insert("x-client-id", "test-client".parse().unwrap());
+
+    let mcp = test_server.mcp_client_with_headers("/mcp", headers).await;
+
+    // Make an MCP request (search for tools)
+    let _result = mcp.search(&["math"]).await;
+
+    let clickhouse = create_clickhouse_client().await;
+
+    // Simple row structure for hierarchy test
+    #[derive(Debug, Deserialize, Row)]
+    #[allow(dead_code)]
+    struct SimpleSpanRow {
+        #[serde(rename = "TraceId")]
+        trace_id: String,
+        #[serde(rename = "SpanId")]
+        span_id: String,
+        #[serde(rename = "ParentSpanId")]
+        parent_span_id: String,
+        #[serde(rename = "SpanName")]
+        span_name: String,
+        #[serde(rename = "ServiceName")]
+        service_name: String,
+    }
+
+    // Query for all spans in this trace
+    let query = formatdoc! {r#"
+        SELECT
+            TraceId,
+            SpanId,
+            ParentSpanId,
+            SpanName,
+            ServiceName
+        FROM otel_traces
+        WHERE
+            ServiceName = '{service_name}'
+            AND TraceId = '{trace_id}'
+        ORDER BY Timestamp ASC
+        LIMIT 10
+    "#};
+
+    let spans = wait_for_metrics_matching::<SimpleSpanRow, _>(&clickhouse, &query, |rows| {
+        // We need at least 2 spans: HTTP and MCP
+        rows.len() >= 2
+    })
+    .await
+    .expect("Failed to get trace spans");
+
+    // Find the MCP tools/call span
+    let mcp_span = spans
+        .iter()
+        .find(|s| s.span_name == "tools/call")
+        .expect("MCP span not found");
+
+    // Find the HTTP span that is the parent of the MCP span
+    let http_parent = spans
+        .iter()
+        .find(|s| s.span_name.starts_with("POST ") && s.span_id == mcp_span.parent_span_id)
+        .expect("HTTP parent span not found");
+
+    // Find the root HTTP span (the one with external parent)
+    let root_http_span = spans
+        .iter()
+        .find(|s| s.span_name.starts_with("POST ") && s.parent_span_id == parent_span_id)
+        .expect("Root HTTP span not found");
+
+    // Verify trace hierarchy:
+    // 1. All spans should have the same trace ID
+    assert_eq!(root_http_span.trace_id, trace_id);
+    assert_eq!(http_parent.trace_id, trace_id);
+    assert_eq!(mcp_span.trace_id, trace_id);
+
+    // 2. Root HTTP span should have the external parent
+    assert_eq!(root_http_span.parent_span_id, parent_span_id);
+
+    // 3. MCP span should have an HTTP span as parent (verified above by finding http_parent)
+    // The fact that we found http_parent means the parent-child relationship is correct
+    assert_eq!(
+        mcp_span.parent_span_id, http_parent.span_id,
+        "MCP span should be a child of an HTTP span"
+    );
+}
+
+#[tokio::test]
 async fn mcp_downstream_tool_call() {
     let service_name = unique_service_name("mcp-downstream");
     let config = create_mcp_tracing_config(&service_name);

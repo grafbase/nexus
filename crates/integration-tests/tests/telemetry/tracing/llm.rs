@@ -540,6 +540,102 @@ async fn llm_with_tools_adds_tool_attributes() {
 }
 
 #[tokio::test]
+async fn llm_span_has_http_parent() {
+    let service_name = unique_service_name("llm-trace-hierarchy");
+    let config = create_llm_tracing_config(&service_name);
+
+    // Setup mock LLM provider
+    let mut builder = TestServer::builder();
+    builder.spawn_llm(OpenAIMock::new("test_openai")).await;
+    let test_server = builder.build(&config).await;
+
+    // Generate trace context
+    let trace_id = format!("{:032x}", uuid::Uuid::new_v4().as_u128());
+    let parent_span_id = format!("{:016x}", rand::random::<u64>());
+    let traceparent = format!("00-{}-{}-01", trace_id, parent_span_id);
+
+    // Make a chat completion request
+    let (status, _body) = test_server
+        .openai_completions(json!({
+            "model": "test_openai/gpt-4",
+            "messages": [
+                {"role": "user", "content": "Hello"}
+            ]
+        }))
+        .header("traceparent", &traceparent)
+        .header("x-client-id", "test-client")
+        .send_raw()
+        .await;
+
+    assert_eq!(status, 200);
+
+    let clickhouse = create_clickhouse_client().await;
+
+    // Simple row structure for hierarchy test
+    #[derive(Debug, Deserialize, Row)]
+    #[allow(dead_code)]
+    struct SimpleSpanRow {
+        #[serde(rename = "TraceId")]
+        trace_id: String,
+        #[serde(rename = "SpanId")]
+        span_id: String,
+        #[serde(rename = "ParentSpanId")]
+        parent_span_id: String,
+        #[serde(rename = "SpanName")]
+        span_name: String,
+        #[serde(rename = "ServiceName")]
+        service_name: String,
+    }
+
+    // Query for all spans in this trace
+    let query = formatdoc! {r#"
+        SELECT
+            TraceId,
+            SpanId,
+            ParentSpanId,
+            SpanName,
+            ServiceName
+        FROM otel_traces
+        WHERE
+            ServiceName = '{service_name}'
+            AND TraceId = '{trace_id}'
+        ORDER BY Timestamp ASC
+        LIMIT 10
+    "#};
+
+    let spans = wait_for_metrics_matching::<SimpleSpanRow, _>(&clickhouse, &query, |rows| {
+        // We need at least 2 spans: HTTP and LLM
+        rows.len() >= 2
+    })
+    .await
+    .expect("Failed to get trace spans");
+
+    // Find the HTTP span and LLM span
+    let http_span = spans
+        .iter()
+        .find(|s| s.span_name.starts_with("POST "))
+        .expect("HTTP span not found");
+    let llm_span = spans
+        .iter()
+        .find(|s| s.span_name == "llm:chat_completion")
+        .expect("LLM span not found");
+
+    // Verify trace hierarchy:
+    // 1. Both spans should have the same trace ID
+    assert_eq!(http_span.trace_id, trace_id);
+    assert_eq!(llm_span.trace_id, trace_id);
+
+    // 2. HTTP span should have the external parent
+    assert_eq!(http_span.parent_span_id, parent_span_id);
+
+    // 3. LLM span should have HTTP span as parent
+    assert_eq!(
+        llm_span.parent_span_id, http_span.span_id,
+        "LLM span should be a child of the HTTP span"
+    );
+}
+
+#[tokio::test]
 async fn llm_error_creates_span_with_error_attributes() {
     let service_name = unique_service_name("llm-trace-error");
     let config = create_llm_tracing_config(&service_name);
