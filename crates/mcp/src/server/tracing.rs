@@ -245,32 +245,28 @@ fn categorize_tool(tool_name: &str, config: &McpConfig) -> (&'static str, Option
 
 /// Helper to create a span with proper parent context from the HTTP layer
 fn create_span_with_context(context: &RequestContext<RoleServer>, name: &'static str) -> Span {
-    let span = if let Some(parts) = context.extensions.get::<Parts>()
-        && let Some(trace_context) = parts.extensions.get::<SpanContext>()
-    {
-        // Create a root span in the same trace as the HTTP span
-        // Due to task spawning in StreamableHttpService, this will be a sibling, not a child
-        Span::root(name, *trace_context)
-    } else {
-        // Fallback to local parent (likely won't work due to task spawning)
-        Span::enter_with_local_parent(name)
-    };
-
-    // Add client identification if available
-    if let Some(parts) = context.extensions.get::<Parts>() {
-        add_client_identity_to_span(&span, parts);
-    }
-
-    // Add method name
-    span.add_property(|| ("mcp.method", name));
-
-    // Determine if auth is being forwarded
-    let auth_forwarded = context
+    // Extract trace context if available from the HTTP layer
+    // This happens when MCP is spawned in a separate task
+    let trace_context = context
         .extensions
         .get::<Parts>()
-        .and_then(|parts| parts.headers.get("authorization"))
-        .is_some();
-    span.add_property(|| ("mcp.auth_forwarded", auth_forwarded.to_string()));
+        .and_then(|parts| parts.extensions.get::<SpanContext>().copied());
+
+    // Use the common utility to create the span
+    let span = telemetry::tracing::create_child_span(name, trace_context);
+
+    // Add MCP-specific attributes if we have a real span (not noop)
+    if let Some(parts) = context.extensions.get::<Parts>() {
+        // Add client identification
+        add_client_identity_to_span(&span, parts);
+
+        // Add method name
+        span.add_property(|| ("mcp.method", name));
+
+        // Determine if auth is being forwarded
+        let auth_forwarded = parts.headers.get("authorization").is_some();
+        span.add_property(|| ("mcp.auth_forwarded", auth_forwarded.to_string()));
+    }
 
     span
 }

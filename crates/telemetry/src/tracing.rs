@@ -2,7 +2,9 @@
 
 use anyhow::Context;
 use config::TelemetryConfig;
+use fastrace::Span;
 use fastrace::collector::Config as CollectorConfig;
+use fastrace::prelude::SpanContext;
 use fastrace_opentelemetry::OpenTelemetryReporter;
 use opentelemetry::{InstrumentationScope, KeyValue};
 use opentelemetry_otlp::{SpanExporter, WithExportConfig};
@@ -131,4 +133,43 @@ pub async fn init_tracing(config: &TelemetryConfig) -> anyhow::Result<TracingGua
     );
 
     Ok(TracingGuard)
+}
+
+/// Creates a child span if the parent is sampled, otherwise returns a no-op span.
+///
+/// This function ensures proper OpenTelemetry sampling semantics where child spans
+/// are only created when their parent span is sampled.
+///
+/// # Behavior
+/// - If there's an active local parent (direct call), creates a child span
+/// - If there's a trace context provided (async task), creates a root span in the same trace
+/// - Otherwise returns a no-op span that won't be exported
+pub fn create_child_span(name: &'static str, trace_context: Option<SpanContext>) -> Span {
+    // First check if there's an active local parent (for direct calls)
+    // This only exists when the parent span was sampled
+    if fastrace::prelude::SpanContext::current_local_parent().is_some() {
+        // There's an active sampled parent, create a child span
+        Span::enter_with_local_parent(name)
+    } else if let Some(context) = trace_context {
+        // We have a trace context from a parent (e.g., from HTTP layer)
+        // The presence of this context means the parent was sampled
+        // This happens when tasks are spawned and lose the local parent
+        Span::root(name, context)
+    } else {
+        // No parent context available means parent was not sampled
+        // Return a no-op span that won't be exported
+        Span::noop()
+    }
+}
+
+/// Creates a child span only if there's an active local parent.
+///
+/// This is a simpler version for cases where we only have direct calls
+/// and don't need to handle async task boundaries.
+pub fn create_child_span_if_sampled(name: &'static str) -> Span {
+    if fastrace::prelude::SpanContext::current_local_parent().is_some() {
+        Span::enter_with_local_parent(name)
+    } else {
+        Span::noop()
+    }
 }
