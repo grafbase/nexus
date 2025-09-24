@@ -19,11 +19,11 @@ async fn search_returns_group_specific_tools() {
 
         [mcp.servers.premium_only]
         cmd = ["python3", "mock-mcp-servers/simple_mcp_server.py"]
-        allow_groups = ["premium"]
+        allow = ["premium"]
 
         [mcp.servers.basic_only]
         cmd = ["python3", "mock-mcp-servers/simple_mcp_server.py"]
-        allow_groups = ["basic"]
+        allow = ["basic"]
 
         [mcp.servers.unrestricted]
         cmd = ["python3", "mock-mcp-servers/simple_mcp_server.py"]
@@ -157,20 +157,20 @@ async fn search_respects_tool_level_overrides() {
         # Use calculator server - basic group can access all tools
         [mcp.servers.calc]
         cmd = ["python3", "mock-mcp-servers/calculator_server.py"]
-        allow_groups = ["basic"]
+        allow = ["basic"]
 
         # Override: calculator tool is premium only
         [mcp.servers.calc.tools.calculator]
-        allow_groups = ["premium"]
+        allow = ["premium"]
 
         # Use text processor - premium group can access all tools
         [mcp.servers.text]
         cmd = ["python3", "mock-mcp-servers/text_processor_server.py"]
-        allow_groups = ["premium"]
+        allow = ["premium"]
 
         # Override: text_processor tool is basic only
         [mcp.servers.text.tools.text_processor]
-        allow_groups = ["basic"]
+        allow = ["basic"]
     "#};
 
     let server = TestServer::builder().build(config).await;
@@ -284,7 +284,7 @@ async fn empty_search_respects_access_control() {
 
         [mcp.servers.no_suspended]
         cmd = ["python3", "mock-mcp-servers/simple_mcp_server.py"]
-        deny_groups = ["suspended"]
+        deny = ["suspended"]
     "#};
 
     let server = TestServer::builder().build(config).await;
@@ -398,18 +398,18 @@ async fn search_complex_allow_deny_rules() {
         # Server 1: Premium only
         [mcp.servers.premium_features]
         cmd = ["python3", "mock-mcp-servers/simple_mcp_server.py"]
-        allow_groups = ["premium"]
+        allow = ["premium"]
 
         # Server 2: All except suspended
         [mcp.servers.general_features]
         cmd = ["python3", "mock-mcp-servers/simple_mcp_server.py"]
-        deny_groups = ["suspended"]
+        deny = ["suspended"]
 
         # Server 3: Basic and trial, but not suspended
         [mcp.servers.limited_features]
         cmd = ["python3", "mock-mcp-servers/simple_mcp_server.py"]
-        allow_groups = ["basic", "trial"]
-        deny_groups = ["suspended"]
+        allow = ["basic", "trial"]
+        deny = ["suspended"]
     "#};
 
     let server = TestServer::builder().build(config).await;
@@ -539,11 +539,11 @@ async fn search_group_isolation_verified() {
 
         [mcp.servers.group_a_only]
         cmd = ["python3", "mock-mcp-servers/simple_mcp_server.py"]
-        allow_groups = ["group_a"]
+        allow = ["group_a"]
 
         [mcp.servers.group_b_only]
         cmd = ["python3", "mock-mcp-servers/simple_mcp_server.py"]
-        allow_groups = ["group_b"]
+        allow = ["group_b"]
     "#};
 
     let server = TestServer::builder().build(config).await;
@@ -639,17 +639,17 @@ async fn search_mixed_permission_levels() {
         # Use calculator server for basic functionality
         [mcp.servers.calc]
         cmd = ["python3", "mock-mcp-servers/calculator_server.py"]
-        allow_groups = ["basic", "premium", "admin"]
+        allow = ["basic", "premium", "admin"]
 
         # Use text processor for premium features
         [mcp.servers.text]
         cmd = ["python3", "mock-mcp-servers/text_processor_server.py"]
-        allow_groups = ["premium", "admin"]
+        allow = ["premium", "admin"]
 
         # Use filesystem for admin only
         [mcp.servers.fs]
         cmd = ["python3", "mock-mcp-servers/filesystem_server.py"]
-        allow_groups = ["admin"]
+        allow = ["admin"]
     "#};
 
     let server = TestServer::builder().build(config).await;

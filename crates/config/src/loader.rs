@@ -383,7 +383,7 @@ fn provider_has_any_model_with_group_limit(provider: &LlmProviderConfig, group: 
 /// This function ensures that:
 /// - Client identification is enabled when access control is configured
 /// - Group ID extraction is configured when groups are used
-/// - All groups referenced in `allow_groups` and `deny_groups` exist in `client_identification.validation.group_values`
+/// - All groups referenced in `allow` and `deny` exist in `client_identification.validation.group_values`
 ///
 /// # Errors
 ///
@@ -417,13 +417,15 @@ pub(crate) fn validate_mcp_access_control(config: &Config) -> anyhow::Result<()>
 /// Checks if any MCP server has access control configured.
 ///
 /// Returns `true` if any server has:
-/// - `allow_groups` defined
-/// - `deny_groups` defined
+/// - `allow` defined
+/// - `deny` defined
 /// - Tool-level access controls configured
 fn has_any_mcp_access_control(config: &Config) -> bool {
-    config.mcp.servers.values().any(|server| {
-        server.allow_groups().is_some() || server.deny_groups().is_some() || !server.tool_access_configs().is_empty()
-    })
+    config
+        .mcp
+        .servers
+        .values()
+        .any(|server| server.allow().is_some() || server.deny().is_some() || !server.tool_access_configs().is_empty())
 }
 
 /// Ensures client identification is properly configured for MCP access control.
@@ -463,14 +465,15 @@ fn ensure_client_identification_enabled(
 
 /// Determines if any MCP server or tool uses group-based access control.
 ///
-/// Returns `true` if any server or tool has non-empty `allow_groups` or `deny_groups`.
+/// Returns `true` if any server or tool has non-empty `allow` or `deny`.
 fn uses_mcp_groups(config: &Config) -> bool {
     config.mcp.servers.values().any(|server| {
-        has_non_empty_groups(server.allow_groups())
-            || has_non_empty_groups(server.deny_groups())
-            || server.tool_access_configs().values().any(|tool| {
-                has_non_empty_groups(tool.allow_groups.as_ref()) || has_non_empty_groups(tool.deny_groups.as_ref())
-            })
+        has_non_empty_groups(server.allow())
+            || has_non_empty_groups(server.deny())
+            || server
+                .tool_access_configs()
+                .values()
+                .any(|tool| has_non_empty_groups(tool.allow.as_ref()) || has_non_empty_groups(tool.deny.as_ref()))
     })
 }
 
@@ -525,8 +528,8 @@ enum GroupListType {
 impl std::fmt::Display for GroupListType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            GroupListType::Allow => write!(f, "allow_groups"),
-            GroupListType::Deny => write!(f, "deny_groups"),
+            GroupListType::Allow => write!(f, "allow"),
+            GroupListType::Deny => write!(f, "deny"),
         }
     }
 }
@@ -566,7 +569,7 @@ impl std::fmt::Display for GroupValidationContext<'_> {
 
 /// Validates server-level group references.
 ///
-/// Checks that all groups in the server's `allow_groups` and `deny_groups`
+/// Checks that all groups in the server's `allow` and `deny`
 /// exist in the configured `group_values`.
 ///
 /// # Errors
@@ -579,13 +582,13 @@ fn validate_server_groups(
 ) -> anyhow::Result<()> {
     let context = GroupValidationContext::server(server_name);
 
-    // Check allow_groups
-    if let Some(groups) = server.allow_groups() {
+    // Check allow
+    if let Some(groups) = server.allow() {
         validate_groups(groups, valid_groups, &context, GroupListType::Allow)?;
     }
 
-    // Check deny_groups
-    if let Some(groups) = server.deny_groups() {
+    // Check deny
+    if let Some(groups) = server.deny() {
         validate_groups(groups, valid_groups, &context, GroupListType::Deny)?;
     }
 
@@ -594,7 +597,7 @@ fn validate_server_groups(
 
 /// Validates tool-level group references.
 ///
-/// Checks that all groups in each tool's `allow_groups` and `deny_groups`
+/// Checks that all groups in each tool's `allow` and `deny`
 /// exist in the configured `group_values`.
 ///
 /// # Errors
@@ -608,11 +611,11 @@ fn validate_tool_groups(
     for (tool_name, tool_config) in server.tool_access_configs() {
         let context = GroupValidationContext::tool(server_name, tool_name);
 
-        if let Some(groups) = &tool_config.allow_groups {
+        if let Some(groups) = &tool_config.allow {
             validate_groups(groups, valid_groups, &context, GroupListType::Allow)?;
         }
 
-        if let Some(groups) = &tool_config.deny_groups {
+        if let Some(groups) = &tool_config.deny {
             validate_groups(groups, valid_groups, &context, GroupListType::Deny)?;
         }
     }
@@ -671,7 +674,7 @@ mod tests {
 
             [mcp.servers.test]
             cmd = ["test"]
-            allow_groups = ["basic", "invalid_group"]
+            allow = ["basic", "invalid_group"]
         "#};
 
         let config: Config = toml::from_str(config_str).unwrap();
@@ -681,7 +684,7 @@ mod tests {
             result
                 .unwrap_err()
                 .to_string()
-                .contains("Group 'invalid_group' in MCP server 'test' allow_groups is not defined")
+                .contains("Group 'invalid_group' in MCP server 'test' allow is not defined")
         );
     }
 
@@ -690,7 +693,7 @@ mod tests {
         let config_str = indoc! {r#"
             [mcp.servers.test]
             cmd = ["test"]
-            allow_groups = ["premium"]
+            allow = ["premium"]
         "#};
 
         let config: Config = toml::from_str(config_str).unwrap();
@@ -716,7 +719,7 @@ mod tests {
 
             [mcp.servers.test]
             cmd = ["test"]
-            allow_groups = ["basic"]
+            allow = ["basic"]
         "#};
 
         let config: Config = toml::from_str(config_str).unwrap();
@@ -745,7 +748,7 @@ mod tests {
             cmd = ["test"]
 
             [mcp.servers.test.tools.advanced_tool]
-            allow_groups = ["enterprise"]
+            allow = ["enterprise"]
         "#};
 
         let config: Config = toml::from_str(config_str).unwrap();
@@ -755,7 +758,7 @@ mod tests {
             result
                 .unwrap_err()
                 .to_string()
-                .contains("Group 'enterprise' in MCP server 'test' tool 'advanced_tool' allow_groups is not defined")
+                .contains("Group 'enterprise' in MCP server 'test' tool 'advanced_tool' allow is not defined")
         );
     }
 
@@ -772,11 +775,11 @@ mod tests {
 
             [mcp.servers.test]
             cmd = ["test"]
-            allow_groups = ["basic", "premium"]
-            deny_groups = ["enterprise"]
+            allow = ["basic", "premium"]
+            deny = ["enterprise"]
 
             [mcp.servers.test.tools.special_tool]
-            allow_groups = ["premium"]
+            allow = ["premium"]
         "#};
 
         let config: Config = toml::from_str(config_str).unwrap();

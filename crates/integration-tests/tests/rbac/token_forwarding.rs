@@ -26,11 +26,11 @@ async fn search_respects_group_access_static_servers() {
 
         [mcp.servers.premium_tools]
         cmd = ["python3", "mock-mcp-servers/calculator_server.py"]
-        allow_groups = ["premium"]
+        allow = ["premium"]
 
         [mcp.servers.basic_tools]
         cmd = ["python3", "mock-mcp-servers/adder_server.py"]
-        allow_groups = ["basic"]
+        allow = ["basic"]
 
         [mcp.servers.shared_tools]
         cmd = ["python3", "mock-mcp-servers/text_processor_server.py"]
@@ -142,7 +142,7 @@ async fn execute_denies_access_to_restricted_tools_static() {
 
         [mcp.servers.premium_tools]
         cmd = ["python3", "mock-mcp-servers/calculator_server.py"]
-        allow_groups = ["premium"]
+        allow = ["premium"]
     "#};
 
     let server = TestServer::builder().build(config).await;
@@ -180,11 +180,11 @@ async fn search_keywords_filter_by_group_static() {
 
         [mcp.servers.premium_server]
         cmd = ["python3", "mock-mcp-servers/calculator_server.py"]
-        allow_groups = ["premium"]
+        allow = ["premium"]
 
         [mcp.servers.basic_server]
         cmd = ["python3", "mock-mcp-servers/adder_server.py"]
-        allow_groups = ["basic"]
+        allow = ["basic"]
     "#};
 
     let server = TestServer::builder().build(config).await;
@@ -265,11 +265,11 @@ async fn tool_level_overrides_static() {
 
         [mcp.servers.mixed_server]
         cmd = ["python3", "mock-mcp-servers/text_processor_server.py"]
-        allow_groups = ["basic"]
+        allow = ["basic"]
 
         # Override: echo tool requires premium even though server allows basic
         [mcp.servers.mixed_server.tools.echo]
-        allow_groups = ["premium"]
+        allow = ["premium"]
     "#};
 
     let server = TestServer::builder().build(config).await;
@@ -317,11 +317,11 @@ async fn oauth2_token_forwarding_with_groups() {
         # Static servers with group-based access control
         [mcp.servers.premium_tools]
         cmd = ["python3", "mock-mcp-servers/calculator_server.py"]
-        allow_groups = ["premium"]
+        allow = ["premium"]
 
         [mcp.servers.shared_tools]
         cmd = ["python3", "mock-mcp-servers/adder_server.py"]
-        allow_groups = ["basic", "premium"]
+        allow = ["basic", "premium"]
     "#};
 
     // Use the helper to set up OAuth2 with group-based access control
@@ -387,7 +387,7 @@ async fn dynamic_server_cache_is_group_specific() {
         # Tool-level permissions - text_processor tool has different access by group
         # Only group_a can access text_processor tool
         [mcp.servers.shared_server.tools.text_processor]
-        allow_groups = ["group_a"]
+        allow = ["group_a"]
     "#};
 
     // Use the helper to set up OAuth2 with cache-specific config
@@ -505,13 +505,13 @@ async fn mixed_static_and_dynamic_servers_with_groups() {
         # Static server for premium only
         [mcp.servers.static_premium]
         cmd = ["python3", "mock-mcp-servers/calculator_server.py"]
-        allow_groups = ["premium"]
+        allow = ["premium"]
 
         # Another premium server that simulates dynamic behavior
         # (In reality would be dynamic servers requiring OAuth2 tokens)
         [mcp.servers.auth_required_premium]
         cmd = ["python3", "mock-mcp-servers/filesystem_server.py"]
-        allow_groups = ["premium"]
+        allow = ["premium"]
     "#};
 
     // Use the helper to set up OAuth2 with mixed server config
@@ -771,11 +771,11 @@ async fn search_with_dynamic_servers_respects_groups() {
         # Server accessible only to premium users (simulates dynamic behavior)
         [mcp.servers.premium_server]
         cmd = ["python3", "mock-mcp-servers/calculator_server.py"]
-        allow_groups = ["premium"]
+        allow = ["premium"]
 
         # Tool-level override: basic users can access this specific tool
         [mcp.servers.premium_server.tools.environment]
-        allow_groups = ["basic", "premium"]
+        allow = ["basic", "premium"]
     "#};
 
     // Use the helper to set up OAuth2 with search-specific config
