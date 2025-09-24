@@ -289,11 +289,25 @@ fn convert_tool_content(
             // When the unified content does not materialize a tool_result block we
             // synthesize one so Anthropic sees the tool output directly after the
             // tool_use chunk that triggered it.
+
+            // Quick scan to check if any explicit tool_result blocks exist
+            let has_explicit_tool_results = blocks
+                .iter()
+                .any(|b| matches!(b, unified::UnifiedContent::ToolResult { .. }));
+
+            // Convert blocks - only apply default_tool_id if NO explicit tool_results exist
             let mut anthropic_blocks = Vec::with_capacity(blocks.len());
             let mut has_tool_result = false;
 
             for block in blocks {
-                let converted = convert_content_block(block, tool_call_id.as_deref());
+                let converted = convert_content_block(
+                    block,
+                    if has_explicit_tool_results {
+                        None
+                    } else {
+                        tool_call_id.as_deref()
+                    },
+                );
 
                 if matches!(converted, AnthropicContentBlock::ToolResult { .. }) {
                     has_tool_result = true;
