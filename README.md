@@ -255,6 +255,32 @@ value = "my-service"
 - **HTTP Servers Only**: Headers only apply to HTTP-based MCP servers (not STDIO servers)
 - **Insert Rule**: Currently only the `insert` rule is supported for MCP
 
+#### MCP Access Control
+
+Restrict access to MCP servers and tools based on user groups:
+
+```toml
+# Server-level access control
+[mcp.servers.premium_tools]
+cmd = ["premium-server"]
+allow = ["premium", "enterprise"]  # Only these groups can access
+deny = ["suspended"]                # Block specific groups
+
+# Tool-level override (more specific than server-level)
+[mcp.servers.premium_tools.tools.expensive_feature]
+allow = ["enterprise"]  # Only enterprise can use this tool
+
+[mcp.servers.premium_tools.tools.deprecated_tool]
+allow = []  # Empty allow list blocks all access (no client ID needed)
+```
+
+Access control rules:
+- If `allow` is set, only listed groups can access (requires client identification)
+- If `deny` is set, listed groups are blocked (requires client identification)
+- Empty `allow = []` blocks all access without requiring client identification
+- Tool-level rules override server-level rules
+- Deny takes priority over allow
+
 #### OAuth2 Authentication
 
 Configure OAuth2 authentication to protect your Nexus endpoints:
