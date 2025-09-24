@@ -43,6 +43,8 @@ pub struct ServeConfig {
     pub shutdown_signal: CancellationToken,
     /// Log filter string (e.g., "info" or "server=debug,mcp=debug")
     pub log_filter: String,
+    /// The version string to log on startup
+    pub version: String,
 }
 
 /// Starts and runs the Nexus server with the provided configuration.
@@ -52,9 +54,13 @@ pub async fn serve(
         config,
         shutdown_signal,
         log_filter,
+        version,
     }: ServeConfig,
 ) -> anyhow::Result<()> {
     let _telemetry_guard = init_otel(&config, log_filter).await;
+
+    // Log the version as the first message after logger initialization
+    log::info!("Nexus {version}");
     let mut app = Router::new();
 
     // Create CORS layer first, like Grafbase does
