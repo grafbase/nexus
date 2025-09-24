@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use fastrace::{Span, future::FutureExt, prelude::LocalSpan};
+use fastrace::{future::FutureExt, prelude::LocalSpan};
 
 use super::super::{RateLimitContext, RateLimitResult, RateLimitStorage, StorageError, TokenRateLimitContext};
 use super::RedisStorage;
@@ -31,7 +31,7 @@ impl RateLimitStorage for TracedRedisStorage {
             RateLimitContext::PerTool { .. } => ("redis:check_and_consume:tool", "tool"),
         };
 
-        let span = Span::enter_with_local_parent(span_name);
+        let span = telemetry::tracing::create_child_span_if_sampled(span_name);
 
         // Add context attributes
         span.add_property(|| ("redis.operation", "check_and_consume"));
@@ -105,7 +105,7 @@ impl RateLimitStorage for TracedRedisStorage {
         limit: u32,
         interval: Duration,
     ) -> Result<RateLimitResult, StorageError> {
-        let span = Span::enter_with_local_parent("redis:check_and_consume_tokens");
+        let span = telemetry::tracing::create_child_span_if_sampled("redis:check_and_consume_tokens");
 
         // Add context attributes
         span.add_property(|| ("redis.operation", "check_and_consume_tokens"));

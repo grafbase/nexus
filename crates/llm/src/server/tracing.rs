@@ -1,7 +1,8 @@
 mod stream;
 
-use fastrace::{Span, future::FutureExt, prelude::LocalSpan};
+use fastrace::{future::FutureExt, prelude::LocalSpan};
 use fastrace_futures::StreamExt as FastraceStreamExt;
+use telemetry::tracing;
 
 use crate::{
     messages::{
@@ -32,13 +33,13 @@ where
     S: LlmService,
 {
     fn models(&self) -> ModelsResponse {
-        let span = Span::enter_with_local_parent("llm:list_models");
+        let span = tracing::create_child_span_if_sampled("llm:list_models");
         let _guard = span.set_local_parent();
         self.inner.models()
     }
 
     async fn completions(&self, request: UnifiedRequest, context: &RequestContext) -> crate::Result<UnifiedResponse> {
-        let span = context.new_span("llm:chat_completion");
+        let span = tracing::create_child_span_if_sampled("llm:chat_completion");
 
         // Add request attributes
         span.add_property(|| ("gen_ai.request.model", request.model.clone()));
@@ -110,7 +111,7 @@ where
         match result {
             Ok(stream) => {
                 // Create span for the stream with all request attributes
-                let span = context.new_span("llm:chat_completion_stream");
+                let span = tracing::create_child_span_if_sampled("llm:chat_completion_stream");
 
                 // Add request attributes
                 span.add_property(|| ("gen_ai.request.model", request.model.clone()));
@@ -151,7 +152,8 @@ where
             }
             Err(e) => {
                 // Create error span
-                let span = context.new_span("llm:chat_completion_stream");
+                let span = tracing::create_child_span_if_sampled("llm:chat_completion_stream");
+
                 span.add_property(|| ("gen_ai.request.model", request.model.clone()));
                 span.add_property(|| ("error", "true"));
                 span.add_property(|| ("error.type", e.error_type().to_string()));

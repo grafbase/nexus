@@ -64,19 +64,14 @@ async fn chat_completions(
     State(server): State<Arc<LlmHandler>>,
     headers: HeaderMap,
     client_identity: Option<Extension<config::ClientIdentity>>,
-    span_context: Option<Extension<fastrace::collector::SpanContext>>,
     Sonic(request): Sonic<openai::ChatCompletionRequest>,
 ) -> Result<impl IntoResponse> {
     log::debug!("OpenAI chat completions handler called for model: {}", request.model);
     log::debug!("Request has {} messages", request.messages.len());
     log::debug!("Streaming: {}", request.stream.unwrap_or(false));
 
-    // Extract request context including clien it identity and span context
-    let context = request::extract_context(
-        &headers,
-        client_identity.map(|ext| ext.0),
-        span_context.as_ref().map(|ext| ext.0),
-    );
+    // Extract request context including client identity
+    let context = request::extract_context(&headers, client_identity.map(|ext| ext.0));
 
     // Check if streaming is requested
     if request.stream.unwrap_or(false) {
@@ -146,19 +141,14 @@ async fn anthropic_messages(
     State(server): State<Arc<LlmHandler>>,
     headers: HeaderMap,
     client_identity: Option<Extension<config::ClientIdentity>>,
-    span_context: Option<Extension<fastrace::collector::SpanContext>>,
     Sonic(request): Sonic<anthropic::AnthropicChatRequest>,
 ) -> AnthropicResult<impl IntoResponse> {
     log::debug!("Anthropic messages handler called for model: {}", request.model);
     log::debug!("Request has {} messages", request.messages.len());
     log::debug!("Streaming: {}", request.stream.unwrap_or(false));
 
-    // Extract request context including client identity and span context
-    let context = request::extract_context(
-        &headers,
-        client_identity.map(|ext| ext.0),
-        span_context.as_ref().map(|ext| ext.0),
-    );
+    // Extract request context including client identity
+    let context = request::extract_context(&headers, client_identity.map(|ext| ext.0));
 
     // Convert Anthropic request to unified format
     let unified_request = unified::UnifiedRequest::from(request);
