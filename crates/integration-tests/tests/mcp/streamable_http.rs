@@ -1,7 +1,7 @@
 mod output_schema;
 
-use crate::tools::{AdderTool, CalculatorTool, FailingTool, FileSystemTool, TextProcessorTool};
 use indoc::indoc;
+use integration_tests::tools::{AdderTool, CalculatorTool, FailingTool, FileSystemTool, TextProcessorTool};
 use integration_tests::{TestServer, TestService, get_test_cert_paths};
 use serde_json::json;
 

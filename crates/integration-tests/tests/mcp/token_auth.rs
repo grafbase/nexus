@@ -2,7 +2,7 @@ use indoc::indoc;
 use integration_tests::{TestServer, TestService};
 use serde_json::json;
 
-use crate::tools::{AdderTool, CalculatorTool};
+use integration_tests::tools::{AdderTool, CalculatorTool};
 
 #[tokio::test]
 async fn successful_token_auth() {

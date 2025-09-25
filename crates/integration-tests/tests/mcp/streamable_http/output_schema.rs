@@ -1,5 +1,5 @@
-use crate::tools::AdderTool;
 use indoc::indoc;
+use integration_tests::tools::AdderTool;
 use integration_tests::{TestServer, TestService};
 
 #[tokio::test]

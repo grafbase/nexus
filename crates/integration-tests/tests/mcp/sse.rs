@@ -2,7 +2,7 @@ use indoc::indoc;
 use integration_tests::{TestServer, TestService, get_test_cert_paths};
 use serde_json::json;
 
-use crate::tools::{AdderTool, FailingTool};
+use integration_tests::tools::{AdderTool, FailingTool};
 
 #[tokio::test]
 async fn list_single_tool() {
