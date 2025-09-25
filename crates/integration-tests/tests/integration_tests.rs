@@ -2,17 +2,10 @@ mod cors;
 mod csrf;
 mod header_rules;
 mod llm;
+mod mcp;
 mod oauth2;
-mod prompts_resources;
 mod rate_limiting;
-mod rbac;
-mod resilience;
-mod sse;
-mod stdio;
-mod streamable_http;
 mod telemetry;
-mod token_auth;
-mod tools;
 
 use indoc::indoc;
 use integration_tests::TestServer;
@@ -342,7 +335,7 @@ async fn no_tools_by_default() {
 #[tokio::test]
 async fn server_info_with_downstream_servers() {
     use integration_tests::TestService;
-    use tools::{AdderTool, CalculatorTool, FileSystemTool, TextProcessorTool};
+    use integration_tests::tools::{AdderTool, CalculatorTool, FileSystemTool, TextProcessorTool};
 
     let config = indoc! {r#"
         [mcp]
