@@ -47,9 +47,9 @@ where
     S: LlmService + Clone + Send + Sync,
 {
     /// List all available models from all providers.
-    fn models(&self) -> ModelsResponse {
+    async fn models(&self) -> ModelsResponse {
         // No metrics for model listing
-        self.inner.models()
+        self.inner.models().await
     }
 
     /// Process a chat completion request with metrics.

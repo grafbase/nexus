@@ -25,12 +25,12 @@ pub(crate) enum LlmHandler {
 
 impl LlmHandler {
     /// List all available models from all providers.
-    pub fn models(&self) -> ModelsResponse {
+    pub async fn models(&self) -> ModelsResponse {
         match self {
-            LlmHandler::WithMetricsAndTracing(server) => server.models(),
-            LlmHandler::WithMetrics(server) => server.models(),
-            LlmHandler::WithTracing(server) => server.models(),
-            LlmHandler::Direct(server) => server.models(),
+            LlmHandler::WithMetricsAndTracing(server) => server.models().await,
+            LlmHandler::WithMetrics(server) => server.models().await,
+            LlmHandler::WithTracing(server) => server.models().await,
+            LlmHandler::Direct(server) => server.models().await,
         }
     }
 

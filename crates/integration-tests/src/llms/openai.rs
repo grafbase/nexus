@@ -46,14 +46,42 @@ pub struct OpenAIMock {
     name: String,
     models: Vec<String>,
     model_configs: Option<Vec<ModelConfig>>,
+    model_pattern: Option<String>,
     custom_responses: HashMap<String, String>,
-    error_type: Option<ErrorType>,
+    error_type: Arc<Mutex<Option<ErrorType>>>,
     streaming_enabled: bool,
     streaming_chunks: Option<Vec<String>>,
     streaming_error: Option<String>,
     tool_response: Option<ToolCallResponse>,
     parallel_tool_calls: Option<Vec<(String, String)>>,
     captured_headers: Arc<Mutex<Vec<(String, String)>>>,
+}
+
+#[derive(Clone)]
+pub struct OpenAIMockController {
+    error_type: Arc<Mutex<Option<ErrorType>>>,
+}
+
+impl OpenAIMockController {
+    pub fn clear_error(&self) {
+        *self.error_type.lock().unwrap() = None;
+    }
+
+    pub fn set_service_unavailable(&self, message: impl Into<String>) {
+        *self.error_type.lock().unwrap() = Some(ErrorType::ServiceUnavailable(message.into()));
+    }
+
+    pub fn set_internal_error(&self, message: impl Into<String>) {
+        *self.error_type.lock().unwrap() = Some(ErrorType::InternalError(message.into()));
+    }
+
+    pub fn set_rate_limit(&self, message: impl Into<String>) {
+        *self.error_type.lock().unwrap() = Some(ErrorType::RateLimit(message.into()));
+    }
+
+    pub fn set_auth_error(&self, message: impl Into<String>) {
+        *self.error_type.lock().unwrap() = Some(ErrorType::AuthError(message.into()));
+    }
 }
 
 /// Tool call response configuration for testing
@@ -85,8 +113,9 @@ impl OpenAIMock {
                 "gpt-4-turbo".to_string(),
             ],
             model_configs: None,
+            model_pattern: None,
             custom_responses: HashMap::new(),
-            error_type: None,
+            error_type: Arc::new(Mutex::new(None)),
             streaming_enabled: false,
             streaming_chunks: None,
             streaming_error: None,
@@ -111,43 +140,48 @@ impl OpenAIMock {
         self
     }
 
+    pub fn with_model_pattern(mut self, pattern: impl Into<String>) -> Self {
+        self.model_pattern = Some(pattern.into());
+        self
+    }
+
     pub fn with_response(mut self, trigger: impl Into<String>, response: impl Into<String>) -> Self {
         self.custom_responses.insert(trigger.into(), response.into());
         self
     }
 
-    pub fn with_auth_error(mut self, message: impl Into<String>) -> Self {
-        self.error_type = Some(ErrorType::AuthError(message.into()));
+    pub fn with_auth_error(self, message: impl Into<String>) -> Self {
+        *self.error_type.lock().unwrap() = Some(ErrorType::AuthError(message.into()));
         self
     }
 
-    pub fn with_model_not_found(mut self, model: impl Into<String>) -> Self {
-        self.error_type = Some(ErrorType::ModelNotFound(model.into()));
+    pub fn with_model_not_found(self, model: impl Into<String>) -> Self {
+        *self.error_type.lock().unwrap() = Some(ErrorType::ModelNotFound(model.into()));
         self
     }
 
-    pub fn with_rate_limit(mut self, message: impl Into<String>) -> Self {
-        self.error_type = Some(ErrorType::RateLimit(message.into()));
+    pub fn with_rate_limit(self, message: impl Into<String>) -> Self {
+        *self.error_type.lock().unwrap() = Some(ErrorType::RateLimit(message.into()));
         self
     }
 
-    pub fn with_quota_exceeded(mut self, message: impl Into<String>) -> Self {
-        self.error_type = Some(ErrorType::QuotaExceeded(message.into()));
+    pub fn with_quota_exceeded(self, message: impl Into<String>) -> Self {
+        *self.error_type.lock().unwrap() = Some(ErrorType::QuotaExceeded(message.into()));
         self
     }
 
-    pub fn with_bad_request(mut self, message: impl Into<String>) -> Self {
-        self.error_type = Some(ErrorType::BadRequest(message.into()));
+    pub fn with_bad_request(self, message: impl Into<String>) -> Self {
+        *self.error_type.lock().unwrap() = Some(ErrorType::BadRequest(message.into()));
         self
     }
 
-    pub fn with_internal_error(mut self, message: impl Into<String>) -> Self {
-        self.error_type = Some(ErrorType::InternalError(message.into()));
+    pub fn with_internal_error(self, message: impl Into<String>) -> Self {
+        *self.error_type.lock().unwrap() = Some(ErrorType::InternalError(message.into()));
         self
     }
 
-    pub fn with_service_unavailable(mut self, message: impl Into<String>) -> Self {
-        self.error_type = Some(ErrorType::ServiceUnavailable(message.into()));
+    pub fn with_service_unavailable(self, message: impl Into<String>) -> Self {
+        *self.error_type.lock().unwrap() = Some(ErrorType::ServiceUnavailable(message.into()));
         self
     }
 
@@ -209,6 +243,12 @@ impl OpenAIMock {
         self
     }
 
+    pub fn controller(&self) -> OpenAIMockController {
+        OpenAIMockController {
+            error_type: self.error_type.clone(),
+        }
+    }
+
     pub fn with_streaming_tool_call(mut self, tool_name: impl Into<String>, arguments: impl Into<String>) -> Self {
         self.streaming_enabled = true;
         self.tool_response = Some(ToolCallResponse {
@@ -238,16 +278,32 @@ impl TestLlmProvider for OpenAIMock {
 
     async fn spawn(self: Box<Self>) -> anyhow::Result<LlmProviderConfig> {
         let model_configs = self.model_configs();
+
+        let OpenAIMock {
+            name,
+            models,
+            model_configs: _,
+            model_pattern,
+            custom_responses,
+            error_type,
+            streaming_enabled,
+            streaming_chunks,
+            streaming_error,
+            tool_response,
+            parallel_tool_calls,
+            captured_headers,
+        } = *self;
+
         let state = Arc::new(TestLlmState {
-            models: self.models,
-            custom_responses: self.custom_responses,
-            error_type: self.error_type,
-            streaming_enabled: self.streaming_enabled,
-            streaming_chunks: self.streaming_chunks,
-            streaming_error: self.streaming_error,
-            tool_response: self.tool_response,
-            parallel_tool_calls: self.parallel_tool_calls,
-            captured_headers: self.captured_headers.clone(),
+            models,
+            custom_responses,
+            error_type: error_type.clone(),
+            streaming_enabled,
+            streaming_chunks,
+            streaming_error,
+            tool_response,
+            parallel_tool_calls,
+            captured_headers: captured_headers.clone(),
         });
 
         let app = Router::new()
@@ -266,10 +322,11 @@ impl TestLlmProvider for OpenAIMock {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         Ok(LlmProviderConfig {
-            name: self.name.clone(),
+            name,
             address,
             provider_type: super::provider::ProviderType::OpenAI,
             model_configs,
+            model_pattern,
         })
     }
 }
@@ -303,7 +360,7 @@ impl TestOpenAIServer {
 struct TestLlmState {
     models: Vec<String>,
     custom_responses: HashMap<String, String>,
-    error_type: Option<ErrorType>,
+    error_type: Arc<Mutex<Option<ErrorType>>>,
     streaming_enabled: bool,
     streaming_chunks: Option<Vec<String>>,
     streaming_error: Option<String>,
@@ -321,7 +378,7 @@ impl Default for TestLlmState {
                 "gpt-4-turbo".to_string(),
             ],
             custom_responses: HashMap::new(),
-            error_type: None,
+            error_type: Arc::new(Mutex::new(None)),
             streaming_enabled: false,
             streaming_chunks: None,
             streaming_error: None,
@@ -359,42 +416,41 @@ async fn chat_completions(
     }
     *state.captured_headers.lock().unwrap() = captured;
     // Check for configured error responses
-    if let Some(error_type) = &state.error_type {
+    if let Some(error_type) = state.error_type.lock().unwrap().clone() {
+        if let ErrorType::ModelNotFound(model) = &error_type
+            && !request.model.contains(model)
+        {
+            return Ok(Json(generate_success_response(request, &state)).into_response());
+        }
+
         return Err(match error_type {
             ErrorType::AuthError(msg) => ErrorResponse {
                 status: StatusCode::UNAUTHORIZED,
-                message: msg.clone(),
+                message: msg,
             },
-            ErrorType::ModelNotFound(model) => {
-                if request.model.contains(model) {
-                    ErrorResponse {
-                        status: StatusCode::NOT_FOUND,
-                        message: format!("The model '{model}' does not exist"),
-                    }
-                } else {
-                    // Don't return error if this isn't the problematic model
-                    return Ok(Json(generate_success_response(request, &state)).into_response());
-                }
-            }
+            ErrorType::ModelNotFound(model) => ErrorResponse {
+                status: StatusCode::NOT_FOUND,
+                message: format!("The model '{model}' does not exist"),
+            },
             ErrorType::RateLimit(msg) => ErrorResponse {
                 status: StatusCode::TOO_MANY_REQUESTS,
-                message: msg.clone(),
+                message: msg,
             },
             ErrorType::QuotaExceeded(msg) => ErrorResponse {
                 status: StatusCode::FORBIDDEN,
-                message: msg.clone(),
+                message: msg,
             },
             ErrorType::BadRequest(msg) => ErrorResponse {
                 status: StatusCode::BAD_REQUEST,
-                message: msg.clone(),
+                message: msg,
             },
             ErrorType::InternalError(msg) => ErrorResponse {
                 status: StatusCode::INTERNAL_SERVER_ERROR,
-                message: msg.clone(),
+                message: msg,
             },
             ErrorType::ServiceUnavailable(msg) => ErrorResponse {
                 status: StatusCode::SERVICE_UNAVAILABLE,
-                message: msg.clone(),
+                message: msg,
             },
         });
     }
@@ -688,27 +744,27 @@ fn generate_success_response(request: ChatCompletionRequest, state: &TestLlmStat
 /// Handle list models requests
 async fn list_models(State(state): State<Arc<TestLlmState>>) -> Result<Json<ModelsResponse>, ErrorResponse> {
     // Check for configured error responses
-    if let Some(error_type) = &state.error_type {
+    if let Some(error_type) = state.error_type.lock().unwrap().clone() {
         return Err(match error_type {
             ErrorType::AuthError(msg) => ErrorResponse {
                 status: StatusCode::UNAUTHORIZED,
-                message: msg.clone(),
+                message: msg,
             },
             ErrorType::RateLimit(msg) => ErrorResponse {
                 status: StatusCode::TOO_MANY_REQUESTS,
-                message: msg.clone(),
+                message: msg,
             },
             ErrorType::QuotaExceeded(msg) => ErrorResponse {
                 status: StatusCode::FORBIDDEN,
-                message: msg.clone(),
+                message: msg,
             },
             ErrorType::InternalError(msg) => ErrorResponse {
                 status: StatusCode::INTERNAL_SERVER_ERROR,
-                message: msg.clone(),
+                message: msg,
             },
             ErrorType::ServiceUnavailable(msg) => ErrorResponse {
                 status: StatusCode::SERVICE_UNAVAILABLE,
-                message: msg.clone(),
+                message: msg,
             },
             _ => ErrorResponse {
                 status: StatusCode::INTERNAL_SERVER_ERROR,

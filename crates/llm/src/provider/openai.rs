@@ -20,7 +20,8 @@ use crate::{
         unified::{UnifiedRequest, UnifiedResponse},
     },
     provider::{
-        ChatCompletionStream, HttpProvider, ModelManager, Provider, http_client::default_http_client_builder, token,
+        ChatCompletionStream, HttpProvider, ModelManager, Provider, http_client::default_http_client_builder,
+        resolve_model, token,
     },
     request::RequestContext,
 };
@@ -72,25 +73,21 @@ impl OpenAIProvider {
 impl Provider for OpenAIProvider {
     async fn chat_completion(
         &self,
-        request: UnifiedRequest,
+        mut request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<UnifiedResponse> {
         let url = format!("{}/chat/completions", self.base_url);
 
-        let model_name = extract_model_from_full_name(&request.model);
+        // request.model already contains the extracted model name from server.rs
         let original_model = request.model.clone();
 
-        // Check if the model is configured and get the actual model name to use
-        let actual_model = self
-            .model_manager
-            .resolve_model(&model_name)
-            .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", model_name)))?;
+        // Get the model config BEFORE resolving, so we lookup by the original alias
+        let model_config = self.model_manager.get_model_config(&request.model);
 
-        // Get the model config to access headers
-        let model_config = self.model_manager.get_model_config(&model_name);
+        // Resolve model if needed (pattern doesn't match or no pattern)
+        resolve_model(&mut request, self.config.model_pattern.as_ref(), &self.model_manager)?;
 
         let mut openai_request = OpenAIRequest::from(request);
-        openai_request.model = actual_model;
         openai_request.stream = false; // Always false for now
 
         // Use create_post_request to ensure headers are applied
@@ -151,30 +148,82 @@ impl Provider for OpenAIProvider {
         Ok(response)
     }
 
-    fn list_models(&self) -> Vec<Model> {
-        // Phase 3: Return only explicitly configured models, error if none
-        self.model_manager.get_configured_models()
+    async fn list_models(&self) -> anyhow::Result<Vec<Model>> {
+        let mut models = Vec::new();
+
+        // If model_pattern is configured, fetch from API and filter
+        if let Some(ref pattern) = self.config.model_pattern {
+            // Try to fetch models from OpenAI API
+            if let Some(api_key) = self.config.api_key.as_ref() {
+                match self
+                    .client
+                    .get(format!("{}/models", self.base_url))
+                    .bearer_auth(api_key.expose_secret())
+                    .send()
+                    .await
+                {
+                    Ok(response) if response.status().is_success() => {
+                        #[derive(serde::Deserialize)]
+                        struct ModelsResponse {
+                            data: Vec<ApiModel>,
+                        }
+
+                        #[derive(serde::Deserialize)]
+                        struct ApiModel {
+                            id: String,
+                            created: Option<u64>,
+                            owned_by: Option<String>,
+                        }
+
+                        if let Ok(api_response) = response.json::<ModelsResponse>().await {
+                            let filtered_models = api_response
+                                .data
+                                .into_iter()
+                                .filter(|m| pattern.is_match(&m.id))
+                                .map(|m| Model {
+                                    id: m.id,
+                                    object: crate::messages::openai::ObjectType::Model,
+                                    created: m.created.unwrap_or(0),
+                                    owned_by: m.owned_by.unwrap_or_else(|| "openai".to_string()),
+                                });
+
+                            models.extend(filtered_models);
+                        }
+                    }
+                    Ok(response) => {
+                        log::debug!("Failed to fetch OpenAI models: status {}", response.status());
+                    }
+                    Err(e) => {
+                        log::debug!("Failed to fetch OpenAI models: {}", e);
+                    }
+                }
+            }
+        }
+
+        // Always include explicitly configured models with provider prefix
+        models.extend(self.model_manager.get_configured_models().into_iter().map(|mut model| {
+            model.id = format!("{}/{}", self.name, model.id);
+            model
+        }));
+
+        Ok(models)
     }
 
     async fn chat_completion_stream(
         &self,
-        request: UnifiedRequest,
+        mut request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
         let url = format!("{}/chat/completions", self.base_url);
 
-        // Check if the model is configured and get the actual model name to use
-        let model_name = extract_model_from_full_name(&request.model);
-        let actual_model = self
-            .model_manager
-            .resolve_model(&model_name)
-            .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", model_name)))?;
+        // request.model already contains the extracted model name from server.rs
+        // Get the model config BEFORE resolving, so we lookup by the original alias
+        let model_config = self.model_manager.get_model_config(&request.model);
 
-        // Get the model config to access headers
-        let model_config = self.model_manager.get_model_config(&model_name);
+        // Resolve model if needed (pattern doesn't match or no pattern)
+        resolve_model(&mut request, self.config.model_pattern.as_ref(), &self.model_manager)?;
 
         let mut openai_request = OpenAIRequest::from(request);
-        openai_request.model = actual_model;
         openai_request.stream = true;
 
         let key = token::get(self.config.forward_token, &self.config.api_key, context)?;
@@ -269,9 +318,4 @@ impl HttpProvider for OpenAIProvider {
     fn get_http_client(&self) -> &Client {
         &self.client
     }
-}
-
-/// Extract the model name from a full provider/model string.
-pub(super) fn extract_model_from_full_name(full_name: &str) -> String {
-    full_name.split('/').next_back().unwrap_or(full_name).to_string()
 }

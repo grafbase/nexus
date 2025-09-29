@@ -21,7 +21,8 @@ use crate::{
         unified::{UnifiedRequest, UnifiedResponse},
     },
     provider::{
-        ChatCompletionStream, HttpProvider, ModelManager, Provider, http_client::default_http_client_builder, token,
+        ChatCompletionStream, HttpProvider, ModelManager, Provider, http_client::default_http_client_builder,
+        resolve_model, token,
     },
     request::RequestContext,
 };
@@ -99,16 +100,12 @@ impl Provider for AnthropicProvider {
 
         let original_model = request.model.clone();
 
-        // Check if the model is configured and get the actual model name to use
-        let actual_model = self
-            .model_manager
-            .resolve_model(&request.model)
-            .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", request.model)))?;
-
-        // Get the model config to access headers
+        // Get the model config BEFORE resolving, so we lookup by the original alias
         let model_config = self.model_manager.get_model_config(&request.model);
 
-        request.model = actual_model;
+        // Resolve model if needed (pattern doesn't match or no pattern)
+        resolve_model(&mut request, self.config.model_pattern.as_ref(), &self.model_manager)?;
+
         let anthropic_request = AnthropicRequest::from(request);
 
         // Use create_post_request to ensure headers are applied
@@ -168,9 +165,65 @@ impl Provider for AnthropicProvider {
         Ok(response)
     }
 
-    fn list_models(&self) -> Vec<Model> {
-        // Phase 3: Return only explicitly configured models, error if none
-        self.model_manager.get_configured_models()
+    async fn list_models(&self) -> anyhow::Result<Vec<Model>> {
+        let mut models = Vec::new();
+
+        // If model_pattern is configured, fetch from API and filter
+        if let Some(ref pattern) = self.config.model_pattern {
+            // Try to fetch models from Anthropic API
+            if let Some(api_key) = self.config.api_key.as_ref() {
+                match self
+                    .client
+                    .get(format!("{}/models", self.base_url))
+                    .header("x-api-key", api_key.expose_secret())
+                    .header("anthropic-version", "2023-06-01")
+                    .send()
+                    .await
+                {
+                    Ok(response) if response.status().is_success() => {
+                        #[derive(serde::Deserialize)]
+                        struct ModelsResponse {
+                            data: Vec<ApiModel>,
+                        }
+
+                        #[derive(serde::Deserialize)]
+                        struct ApiModel {
+                            id: String,
+                        }
+
+                        if let Ok(api_response) = response.json::<ModelsResponse>().await {
+                            // Filter by pattern and convert to Model
+                            models.extend(
+                                api_response
+                                    .data
+                                    .into_iter()
+                                    .filter(|m| pattern.is_match(&m.id))
+                                    .map(|m| Model {
+                                        id: m.id,
+                                        object: crate::messages::openai::ObjectType::Model,
+                                        created: 0, // Anthropic uses created_at string, not unix timestamp
+                                        owned_by: "anthropic".to_string(),
+                                    }),
+                            );
+                        }
+                    }
+                    Ok(response) => {
+                        log::debug!("Failed to fetch Anthropic models: status {}", response.status());
+                    }
+                    Err(e) => {
+                        log::debug!("Failed to fetch Anthropic models: {}", e);
+                    }
+                }
+            }
+        }
+
+        // Always include explicitly configured models with provider prefix
+        models.extend(self.model_manager.get_configured_models().into_iter().map(|mut model| {
+            model.id = format!("{}/{}", self.name, model.id);
+            model
+        }));
+
+        Ok(models)
     }
 
     async fn chat_completion_stream(
@@ -180,16 +233,12 @@ impl Provider for AnthropicProvider {
     ) -> crate::Result<ChatCompletionStream> {
         let url = format!("{}/messages", self.base_url);
 
-        // Check if the model is configured and get the actual model name to use
-        let actual_model = self
-            .model_manager
-            .resolve_model(&request.model)
-            .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", request.model)))?;
-
-        // Get the model config to access headers
+        // Get the model config BEFORE resolving, so we lookup by the original alias
         let model_config = self.model_manager.get_model_config(&request.model);
 
-        request.model = actual_model;
+        // Resolve model if needed (pattern doesn't match or no pattern)
+        resolve_model(&mut request, self.config.model_pattern.as_ref(), &self.model_manager)?;
+
         let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         let mut anthropic_request = AnthropicRequest::from(request);

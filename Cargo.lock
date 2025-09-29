@@ -471,6 +471,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-sdk-bedrock"
+version = "1.114.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0735a05499fdcda742151029e6123e4ce81c6a31a1ecb4626d6d11c6940ce88"
+dependencies = [
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-http",
+ "aws-smithy-json",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-types",
+ "bytes",
+ "fastrand 2.3.0",
+ "http 0.2.12",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
 name = "aws-sdk-bedrockruntime"
 version = "1.106.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3828,6 +3850,7 @@ dependencies = [
  "async-trait",
  "aws-config",
  "aws-credential-types",
+ "aws-sdk-bedrock",
  "aws-sdk-bedrockruntime",
  "aws-smithy-runtime-api",
  "aws-smithy-types",
@@ -3840,11 +3863,13 @@ dependencies = [
  "fastrace-utils",
  "futures",
  "header-rules",
+ "indoc",
  "insta",
  "itertools 0.14.0",
  "log",
  "opentelemetry",
  "rate-limit",
+ "regex",
  "reqwest",
  "secrecy",
  "serde",
@@ -3854,6 +3879,7 @@ dependencies = [
  "thiserror 2.0.16",
  "tiktoken-rs",
  "tokio",
+ "toml",
  "uuid",
 ]
 

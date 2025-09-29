@@ -18,6 +18,7 @@ pub struct LlmProviderConfig {
     pub address: SocketAddr,
     pub provider_type: ProviderType,
     pub model_configs: Vec<ModelConfig>,
+    pub model_pattern: Option<String>,
 }
 
 /// Trait for test LLM providers
@@ -64,16 +65,36 @@ pub fn generate_config_for_type(provider_type: ProviderType, config: &LlmProvide
                 _ => unreachable!(),
             };
 
+            let pattern_line = config
+                .model_pattern
+                .as_ref()
+                .map(|pattern| {
+                    // Escape backslashes for TOML
+                    let escaped_pattern = pattern.replace('\\', "\\\\");
+                    format!("\n                model_pattern = \"{}\"", escaped_pattern)
+                })
+                .unwrap_or_default();
+
             formatdoc! {r#"
 
                 [llm.providers.{}]
                 type = "{}"
                 api_key = "test-key"
-                base_url = "http://{}{}"
+                base_url = "http://{}{}"{}
                 {}
-            "#, config.name, provider_type_str, config.address, base_url_path, models_section}
+            "#, config.name, provider_type_str, config.address, base_url_path, pattern_line, models_section}
         }
         ProviderType::Bedrock => {
+            let pattern_line = config
+                .model_pattern
+                .as_ref()
+                .map(|pattern| {
+                    // Escape backslashes for TOML
+                    let escaped_pattern = pattern.replace('\\', "\\\\");
+                    format!("\n                model_pattern = \"{}\"", escaped_pattern)
+                })
+                .unwrap_or_default();
+
             // Bedrock uses different configuration
             formatdoc! {r#"
 
@@ -82,9 +103,9 @@ pub fn generate_config_for_type(provider_type: ProviderType, config: &LlmProvide
                 region = "us-east-1"
                 access_key_id = "test-access-key"
                 secret_access_key = "test-secret-key"
-                base_url = "http://{}"
+                base_url = "http://{}"{}
                 {}
-            "#, config.name, config.address, models_section}
+            "#, config.name, config.address, pattern_line, models_section}
         }
     }
 }

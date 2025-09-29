@@ -20,10 +20,7 @@ use crate::{
         openai::Model,
         unified::{UnifiedChunk, UnifiedRequest, UnifiedResponse},
     },
-    provider::{
-        HttpProvider, ModelManager, Provider, http_client::default_http_client_builder,
-        openai::extract_model_from_full_name, token,
-    },
+    provider::{HttpProvider, ModelManager, Provider, http_client::default_http_client_builder, resolve_model, token},
     request::RequestContext,
 };
 use config::HeaderRule;
@@ -73,25 +70,22 @@ impl GoogleProvider {
 impl Provider for GoogleProvider {
     async fn chat_completion(
         &self,
-        request: UnifiedRequest,
+        mut request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<UnifiedResponse> {
-        let model_name = extract_model_from_full_name(&request.model);
+        // request.model already contains the extracted model name from server.rs
+        // Get the model config BEFORE resolving, so we lookup by the original alias
+        let model_config = self.model_manager.get_model_config(&request.model);
 
-        // Check if the model is configured and get the actual model name to use
-        let actual_model = self
-            .model_manager
-            .resolve_model(&model_name)
-            .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", model_name)))?;
-
-        // Get the model config to access headers
-        let model_config = self.model_manager.get_model_config(&model_name);
+        // Resolve model if needed (pattern doesn't match or no pattern)
+        resolve_model(&mut request, self.config.model_pattern.as_ref(), &self.model_manager)?;
 
         let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         let url = format!(
-            "{}/models/{actual_model}:generateContent?key={}",
+            "{}/models/{}:generateContent?key={}",
             self.base_url,
+            request.model,
             api_key.expose_secret()
         );
 
@@ -175,32 +169,88 @@ impl Provider for GoogleProvider {
         Ok(response)
     }
 
-    fn list_models(&self) -> Vec<Model> {
-        // Phase 3: Return only explicitly configured models, error if none
-        self.model_manager.get_configured_models()
+    async fn list_models(&self) -> anyhow::Result<Vec<Model>> {
+        let mut models = Vec::new();
+
+        // If model_pattern is configured, fetch from API and filter
+        if let Some(ref pattern) = self.config.model_pattern {
+            // Try to fetch models from Google AI API
+            if let Some(api_key) = self.config.api_key.as_ref() {
+                match self
+                    .client
+                    .get(format!("{}/models?key={}", self.base_url, api_key.expose_secret()))
+                    .send()
+                    .await
+                {
+                    Ok(response) if response.status().is_success() => {
+                        #[derive(serde::Deserialize)]
+                        struct ModelsResponse {
+                            models: Vec<ApiModel>,
+                        }
+
+                        #[derive(serde::Deserialize)]
+                        struct ApiModel {
+                            name: String,
+                        }
+
+                        if let Ok(api_response) = response.json::<ModelsResponse>().await {
+                            let filtered_models = api_response
+                                .models
+                                .into_iter()
+                                .map(|m| {
+                                    // Extract model ID from name (format: "models/gemini-pro")
+                                    m.name.strip_prefix("models/").unwrap_or(&m.name).to_string()
+                                })
+                                .filter(|id| pattern.is_match(id))
+                                .map(|id| Model {
+                                    id,
+                                    object: crate::messages::openai::ObjectType::Model,
+                                    created: 0,
+                                    owned_by: "google".to_string(),
+                                });
+
+                            models.extend(filtered_models);
+                        }
+                    }
+                    Ok(response) => {
+                        log::debug!("Failed to fetch Google models: status {}", response.status());
+                    }
+                    Err(e) => {
+                        log::debug!("Failed to fetch Google models: {}", e);
+                    }
+                }
+            }
+        }
+
+        // Always include explicitly configured models with provider prefix
+        models.extend(self.model_manager.get_configured_models().into_iter().map(|mut model| {
+            model.id = format!("{}/{}", self.name, model.id);
+            model
+        }));
+
+        Ok(models)
     }
 
     async fn chat_completion_stream(
         &self,
-        request: UnifiedRequest,
+        mut request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<crate::provider::ChatCompletionStream> {
-        let model_name = extract_model_from_full_name(&request.model);
+        // request.model already contains the extracted model name from server.rs
+        let model_name = request.model.clone(); // Keep for closure later
 
-        // Check if the model is configured and get the actual model name to use
-        let actual_model = self
-            .model_manager
-            .resolve_model(&model_name)
-            .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", model_name)))?;
+        // Get the model config BEFORE resolving, so we lookup by the original alias
+        let model_config = self.model_manager.get_model_config(&request.model);
 
-        // Get the model config to access headers
-        let model_config = self.model_manager.get_model_config(&model_name);
+        // Resolve model if needed (pattern doesn't match or no pattern)
+        resolve_model(&mut request, self.config.model_pattern.as_ref(), &self.model_manager)?;
 
         let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         let url = format!(
-            "{}/models/{actual_model}:streamGenerateContent?alt=sse&key={}",
+            "{}/models/{}:streamGenerateContent?alt=sse&key={}",
             self.base_url,
+            request.model,
             api_key.expose_secret()
         );
 

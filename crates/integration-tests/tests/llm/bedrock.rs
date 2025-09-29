@@ -35,19 +35,19 @@ async fn bedrock_list_models() {
           "id": "bedrock/claude-3-sonnet",
           "object": "model",
           "created": "[created]",
-          "owned_by": "aws-bedrock"
+          "owned_by": "bedrock"
         },
         {
           "id": "bedrock/r1",
           "object": "model",
           "created": "[created]",
-          "owned_by": "aws-bedrock"
+          "owned_by": "bedrock"
         },
         {
           "id": "bedrock/titan-express",
           "object": "model",
           "created": "[created]",
-          "owned_by": "aws-bedrock"
+          "owned_by": "bedrock"
         }
       ]
     }

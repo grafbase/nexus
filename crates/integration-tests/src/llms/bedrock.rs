@@ -104,6 +104,7 @@ impl TestLlmProvider for BedrockMock {
             address,
             provider_type: ProviderType::Bedrock,
             model_configs: self.model_configs.clone(),
+            model_pattern: None,
         })
     }
 }
