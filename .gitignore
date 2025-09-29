@@ -32,3 +32,6 @@ devenv.local.nix
 
 # pre-commit
 .pre-commit-config.yaml
+
+# Keep this to save agent plan to the working directory while working.
+PLAN.md
