@@ -50,7 +50,7 @@ impl Recorder {
     pub fn new(name: &'static str) -> Self {
         Self {
             start: Instant::now(),
-            histogram: super::meter().f64_histogram(name).build(),
+            histogram: super::meter().f64_histogram(name).with_unit("s").build(),
             attributes: Vec::new(),
         }
     }
@@ -83,7 +83,7 @@ impl Recorder {
 
     /// Records the elapsed time to the histogram.
     pub fn record(self) {
-        let duration = self.start.elapsed().as_secs_f64() * 1000.0;
-        self.histogram.record(duration, &self.attributes);
+        self.histogram
+            .record(self.start.elapsed().as_secs_f64(), &self.attributes);
     }
 }
