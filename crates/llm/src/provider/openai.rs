@@ -2,7 +2,6 @@ mod input;
 mod output;
 
 use async_trait::async_trait;
-use axum::http::HeaderMap;
 use config::ApiProviderConfig;
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
@@ -20,7 +19,9 @@ use crate::{
         openai::Model,
         unified::{UnifiedRequest, UnifiedResponse},
     },
-    provider::{ChatCompletionStream, HttpProvider, ModelManager, Provider, token},
+    provider::{
+        ChatCompletionStream, HttpProvider, ModelManager, Provider, http_client::default_http_client_builder, token,
+    },
     request::RequestContext,
 };
 use config::HeaderRule;
@@ -37,16 +38,10 @@ pub(crate) struct OpenAIProvider {
 
 impl OpenAIProvider {
     pub fn new(name: String, config: ApiProviderConfig) -> crate::Result<Self> {
-        let headers = HeaderMap::new();
-
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(60))
-            .default_headers(headers)
-            .build()
-            .map_err(|e| {
-                log::error!("Failed to create HTTP client for OpenAI provider: {e}");
-                LlmError::InternalError(None)
-            })?;
+        let client = default_http_client_builder(Default::default()).build().map_err(|e| {
+            log::error!("Failed to create HTTP client for OpenAI provider: {e}");
+            LlmError::InternalError(None)
+        })?;
 
         // Use custom base URL if provided, otherwise use default
         let base_url = config
