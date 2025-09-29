@@ -325,8 +325,7 @@ async fn multiple_providers_with_different_models() {
 
 #[tokio::test]
 async fn provider_with_no_models_returns_error() {
-    // This test verifies that Phase 3 enforcement works
-    // The config parsing itself will fail due to the custom deserializer
+    // This test verifies that configuration validation enforces Phase 3 rules
 
     use config::Config;
 
@@ -337,10 +336,9 @@ async fn provider_with_no_models_returns_error() {
         # No models configured - should fail to parse
     "#};
 
-    // Try to parse the config
+    // Parsing should fail because neither models nor model_pattern is configured
     let result: Result<Config, _> = toml::from_str(config_str);
 
-    // Should fail because models are required
     assert!(result.is_err());
     let error_msg = result.unwrap_err().to_string();
     insta::assert_snapshot!(error_msg, @r"
@@ -348,7 +346,7 @@ async fn provider_with_no_models_returns_error() {
       |
     1 | [llm.providers.openai]
       | ^^^^^^^^^^^^^^^^^^^^^^
-    missing field `models`
+    model_pattern or at least one model must be configured
     ");
 }
 
