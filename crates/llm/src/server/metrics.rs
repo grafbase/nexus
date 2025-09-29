@@ -103,8 +103,6 @@ where
         let operation_recorder = create_recorder(GEN_AI_CLIENT_OPERATION_DURATION, &request.model, context);
         let ttft_recorder = create_recorder(GEN_AI_CLIENT_TIME_TO_FIRST_TOKEN, &request.model, context);
 
-        let stream = self.inner.completions_stream(request.clone(), context).await?;
-
         let token_config = stream::TokenMetricsConfig {
             input_token_counter: self.input_token_counter.clone(),
             output_token_counter: self.output_token_counter.clone(),
@@ -112,6 +110,8 @@ where
             model: request.model.clone(),
             client_identity: context.client_identity.clone(),
         };
+
+        let stream = self.inner.completions_stream(request, context).await?;
 
         let metrics_stream = MetricsStream::new(stream, operation_recorder, ttft_recorder, token_config);
 

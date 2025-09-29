@@ -2,6 +2,7 @@ mod stream;
 
 use fastrace::{future::FutureExt, prelude::LocalSpan};
 use fastrace_futures::StreamExt as FastraceStreamExt;
+use fastrace_utils::FutureExt as _;
 use telemetry::tracing;
 
 use crate::{
@@ -106,40 +107,44 @@ where
         request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
-        let result = self.inner.completions_stream(request.clone(), context).await;
+        // Create span for the stream with all request attributes
+        let span = tracing::create_child_span_if_sampled("llm:chat_completion_stream");
+
+        // Add request attributes
+        span.add_property(|| ("gen_ai.request.model", request.model.clone()));
+        if let Some(max_tokens) = request.max_tokens {
+            span.add_property(|| ("gen_ai.request.max_tokens", max_tokens.to_string()));
+        }
+        if let Some(temperature) = request.temperature {
+            span.add_property(|| ("gen_ai.request.temperature", temperature.to_string()));
+        }
+        if let Some(tools) = &request.tools {
+            span.add_property(|| ("gen_ai.request.has_tools", "true"));
+            span.add_property(|| ("gen_ai.request.tool_count", tools.len().to_string()));
+        }
+
+        // Add client identification
+        if let Some(ref client_identity) = context.client_identity {
+            span.add_property(|| ("client.id", client_identity.client_id.clone()));
+
+            if let Some(ref group) = client_identity.group {
+                span.add_property(|| ("client.group", group.clone()));
+            }
+        }
+
+        // Track auth forwarding and stream flag
+        let auth_forwarded = context.api_key.is_some();
+        span.add_property(|| ("llm.auth_forwarded", auth_forwarded.to_string()));
+        span.add_property(|| ("llm.stream", "true"));
+
+        let (result, span) = self
+            .inner
+            .completions_stream(request, context)
+            .in_span_and_out(span)
+            .await;
 
         match result {
             Ok(stream) => {
-                // Create span for the stream with all request attributes
-                let span = tracing::create_child_span_if_sampled("llm:chat_completion_stream");
-
-                // Add request attributes
-                span.add_property(|| ("gen_ai.request.model", request.model.clone()));
-                if let Some(max_tokens) = request.max_tokens {
-                    span.add_property(|| ("gen_ai.request.max_tokens", max_tokens.to_string()));
-                }
-                if let Some(temperature) = request.temperature {
-                    span.add_property(|| ("gen_ai.request.temperature", temperature.to_string()));
-                }
-                if let Some(tools) = &request.tools {
-                    span.add_property(|| ("gen_ai.request.has_tools", "true"));
-                    span.add_property(|| ("gen_ai.request.tool_count", tools.len().to_string()));
-                }
-
-                // Add client identification
-                if let Some(ref client_identity) = context.client_identity {
-                    span.add_property(|| ("client.id", client_identity.client_id.clone()));
-
-                    if let Some(ref group) = client_identity.group {
-                        span.add_property(|| ("client.group", group.clone()));
-                    }
-                }
-
-                // Track auth forwarding and stream flag
-                let auth_forwarded = context.api_key.is_some();
-                span.add_property(|| ("llm.auth_forwarded", auth_forwarded.to_string()));
-                span.add_property(|| ("llm.stream", "true"));
-
                 // Wrap the stream with tracing instrumentation
                 // The TracingStream will add response attributes as chunks flow through
                 let tracing_stream = TracingStream::new(stream);
@@ -151,10 +156,6 @@ where
                 Ok(Box::pin(instrumented_stream) as ChatCompletionStream)
             }
             Err(e) => {
-                // Create error span
-                let span = tracing::create_child_span_if_sampled("llm:chat_completion_stream");
-
-                span.add_property(|| ("gen_ai.request.model", request.model.clone()));
                 span.add_property(|| ("error", "true"));
                 span.add_property(|| ("error.type", e.error_type().to_string()));
 
