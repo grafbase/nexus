@@ -20,7 +20,10 @@ use crate::{
         openai::Model,
         unified::{UnifiedChunk, UnifiedRequest, UnifiedResponse},
     },
-    provider::{HttpProvider, ModelManager, Provider, openai::extract_model_from_full_name, token},
+    provider::{
+        HttpProvider, ModelManager, Provider, http_client::default_http_client_builder,
+        openai::extract_model_from_full_name, token,
+    },
     request::RequestContext,
 };
 use config::HeaderRule;
@@ -37,13 +40,10 @@ pub(crate) struct GoogleProvider {
 
 impl GoogleProvider {
     pub fn new(name: String, config: ApiProviderConfig) -> crate::Result<Self> {
-        let client = Client::builder()
-            .timeout(std::time::Duration::from_secs(60))
-            .build()
-            .map_err(|e| {
-                log::error!("Failed to create HTTP client for Google provider: {e}");
-                LlmError::InternalError(None)
-            })?;
+        let client = default_http_client_builder(Default::default()).build().map_err(|e| {
+            log::error!("Failed to create HTTP client for Google provider: {e}");
+            LlmError::InternalError(None)
+        })?;
 
         let base_url = config
             .base_url
