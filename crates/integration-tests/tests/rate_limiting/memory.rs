@@ -78,6 +78,9 @@ async fn per_ip_rate_limit_basic() {
         limit = 2
         interval = "10s"
 
+        [server.client_ip]
+        x_real_ip = true
+
         [mcp]
         enabled = true
         path = "/mcp"
@@ -97,7 +100,7 @@ async fn per_ip_rate_limit_basic() {
         let response = server
             .client
             .request(reqwest::Method::POST, "/mcp")
-            .header("X-Forwarded-For", "192.168.1.1")
+            .header("X-Real-Ip", "192.168.1.1")
             .header("Content-Type", "application/json")
             .header("Accept", "application/json, text/event-stream")
             .json(&json!({
@@ -122,7 +125,7 @@ async fn per_ip_rate_limit_basic() {
         let response = server
             .client
             .request(reqwest::Method::POST, "/mcp")
-            .header("X-Forwarded-For", "192.168.1.2")
+            .header("X-Real-Ip", "192.168.1.2")
             .header("Content-Type", "application/json")
             .json(&json!({
                 "jsonrpc": "2.0",

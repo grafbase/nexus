@@ -132,7 +132,7 @@ async fn redis_global_rate_limit_creates_span() {
         })
         .collect();
 
-    insta::assert_json_snapshot!(redis_spans, @r###"
+    insta::assert_json_snapshot!(redis_spans, @r#"
     [
       {
         "span_name": "redis:check_and_consume:global",
@@ -169,9 +169,45 @@ async fn redis_global_rate_limit_creates_span() {
           "redis.operation": "check_and_consume",
           "redis.pool.size": "1"
         }
+      },
+      {
+        "span_name": "redis:check_and_consume:ip",
+        "status": "Unset",
+        "attributes": {
+          "rate_limit.allowed": "true",
+          "rate_limit.interval_ms": "60000",
+          "rate_limit.limit": "5",
+          "rate_limit.scope": "ip",
+          "redis.operation": "check_and_consume",
+          "redis.pool.size": "1"
+        }
+      },
+      {
+        "span_name": "redis:check_and_consume:ip",
+        "status": "Unset",
+        "attributes": {
+          "rate_limit.allowed": "true",
+          "rate_limit.interval_ms": "60000",
+          "rate_limit.limit": "5",
+          "rate_limit.scope": "ip",
+          "redis.operation": "check_and_consume",
+          "redis.pool.size": "1"
+        }
+      },
+      {
+        "span_name": "redis:check_and_consume:ip",
+        "status": "Unset",
+        "attributes": {
+          "rate_limit.allowed": "true",
+          "rate_limit.interval_ms": "60000",
+          "rate_limit.limit": "5",
+          "rate_limit.scope": "ip",
+          "redis.operation": "check_and_consume",
+          "redis.pool.size": "1"
+        }
       }
     ]
-    "###);
+    "#);
 }
 
 #[tokio::test]

@@ -4,6 +4,7 @@
 
 mod client_identification;
 mod client_identity;
+mod client_ip;
 mod cors;
 mod csrf;
 mod headers;
@@ -20,8 +21,9 @@ mod tls;
 
 use std::path::Path;
 
-pub use client_identification::{ClientIdentificationConfig, ClientIdentificationValidation, IdentificationSource};
+pub use client_identification::*;
 pub use client_identity::ClientIdentity;
+pub use client_ip::*;
 pub use cors::*;
 pub use csrf::CsrfConfig;
 pub use headers::{
@@ -113,6 +115,10 @@ mod tests {
                     per_ip: None,
                 },
                 client_identification: None,
+                client_ip: ClientIpConfig {
+                    x_real_ip: false,
+                    x_forwarded_for_trusted_hops: None,
+                },
             },
             mcp: McpConfig {
                 enabled: true,
