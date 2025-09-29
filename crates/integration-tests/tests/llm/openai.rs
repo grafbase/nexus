@@ -1,7 +1,10 @@
 mod tools;
 
 use indoc::indoc;
-use integration_tests::{TestServer, llms::OpenAIMock};
+use integration_tests::{
+    TestServer,
+    llms::{OpenAIMock, openai::ModelConfig},
+};
 use serde_json::json;
 
 // Helper function to extract content from streaming chunks
@@ -445,4 +448,62 @@ path = "/llm"
     let chunks = server.openai_completions_stream(request).send().await;
     let content = extract_content_from_chunks(&chunks);
     insta::assert_snapshot!(content, @"Hello world! How are you?");
+}
+
+#[tokio::test]
+async fn pattern_routing_respects_config_order() {
+    let mut builder = TestServer::builder();
+
+    builder
+        .spawn_llm(
+            OpenAIMock::new("alpha")
+                .with_model_pattern("gpt-4.*")
+                .with_model_configs(vec![ModelConfig::new("gpt-4-super").with_rename("gpt-4")])
+                .with_response("route probe", "alpha handled"),
+        )
+        .await;
+
+    builder
+        .spawn_llm(
+            OpenAIMock::new("omega")
+                .with_model_pattern("gpt-4-super.*")
+                .with_model_configs(vec![ModelConfig::new("gpt-4-super").with_rename("gpt-4")])
+                .with_response("route probe", "omega handled"),
+        )
+        .await;
+
+    let server = builder.build("").await;
+
+    let request = json!({
+        "model": "gpt-4-super",
+        "messages": [{"role": "user", "content": "route probe"}]
+    });
+
+    let body = server.openai_completions(request).send().await;
+
+    insta::assert_json_snapshot!(body, {
+        ".id" => "chatcmpl-test-[uuid]",
+    }, @r#"
+    {
+      "id": "chatcmpl-test-[uuid]",
+      "object": "chat.completion",
+      "created": 1677651200,
+      "model": "gpt-4-super",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "alpha handled"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 10,
+        "completion_tokens": 15,
+        "total_tokens": 25
+      }
+    }
+    "#);
 }

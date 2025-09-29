@@ -12,7 +12,7 @@ use crate::{
 /// Trait for LLM service operations that can be composed with middleware
 pub(crate) trait LlmService: Send + Sync {
     /// List all available models from all providers.
-    fn models(&self) -> ModelsResponse;
+    fn models(&self) -> impl std::future::Future<Output = ModelsResponse> + Send;
 
     /// Process a unified chat completion request (protocol-agnostic).
     fn completions(

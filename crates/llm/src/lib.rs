@@ -126,7 +126,7 @@ async fn chat_completions(
 
 /// Handle list models requests.
 async fn list_models(State(server): State<Arc<LlmHandler>>) -> Result<impl IntoResponse> {
-    let response = server.models();
+    let response = server.models().await;
 
     log::debug!("Returning {} models", response.data.len());
     Ok(Json(response))
@@ -205,7 +205,7 @@ async fn anthropic_messages(
 
 /// Handle Anthropic list models requests.
 async fn anthropic_list_models(State(server): State<Arc<LlmHandler>>) -> AnthropicResult<impl IntoResponse> {
-    let openai_response = server.models();
+    let openai_response = server.models().await;
 
     // Convert OpenAI models response to Anthropic format
     let anthropic_response = anthropic::AnthropicModelsResponse::from(openai_response);

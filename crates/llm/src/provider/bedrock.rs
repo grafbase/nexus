@@ -9,6 +9,7 @@ mod output;
 use async_trait::async_trait;
 use aws_config::Region;
 use aws_credential_types::Credentials;
+use aws_sdk_bedrock::Client as BedrockClient;
 use aws_sdk_bedrockruntime::{
     Client as BedrockRuntimeClient, error::ProvideErrorMetadata, operation::converse_stream::ConverseStreamInput,
 };
@@ -23,7 +24,7 @@ use crate::{
         openai::{Model, ObjectType},
         unified::{UnifiedChunk, UnifiedRequest, UnifiedResponse},
     },
-    provider::{ChatCompletionStream, ModelManager, Provider},
+    provider::{ChatCompletionStream, ModelManager, Provider, resolve_model},
     request::RequestContext,
 };
 
@@ -36,11 +37,15 @@ use config::BedrockProviderConfig;
 pub(crate) struct BedrockProvider {
     /// AWS Bedrock Runtime client for making API calls
     client: BedrockRuntimeClient,
+    /// AWS Bedrock client for listing models
+    bedrock_client: BedrockClient,
     /// AWS region for this provider instance
     #[allow(dead_code)] // Might be used for diagnostics or logging
     region: String,
     /// Provider instance name
     name: String,
+    /// Provider configuration
+    config: BedrockProviderConfig,
     /// Model manager for resolving and validating configured models
     model_manager: ModelManager,
 }
@@ -50,6 +55,7 @@ impl BedrockProvider {
     pub async fn new(name: String, config: BedrockProviderConfig) -> crate::Result<Self> {
         let sdk_config = create_aws_config(&config).await?;
         let client = BedrockRuntimeClient::new(&sdk_config);
+        let bedrock_client = BedrockClient::new(&sdk_config);
         // Convert BedrockModelConfig to unified ModelConfig for ModelManager
         let models = config
             .models
@@ -61,8 +67,10 @@ impl BedrockProvider {
 
         Ok(Self {
             client,
+            bedrock_client,
             region: config.region.clone(),
             name,
+            config,
             model_manager,
         })
     }
@@ -70,20 +78,16 @@ impl BedrockProvider {
 
 #[async_trait]
 impl Provider for BedrockProvider {
-    async fn chat_completion(&self, request: UnifiedRequest, _: &RequestContext) -> crate::Result<UnifiedResponse> {
+    async fn chat_completion(&self, mut request: UnifiedRequest, _: &RequestContext) -> crate::Result<UnifiedResponse> {
         log::debug!("Processing Bedrock chat completion for model: {}", request.model);
-
-        // Resolve the configured model to the actual Bedrock model ID
-        let actual_model_id = self
-            .model_manager
-            .resolve_model(&request.model)
-            .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", request.model)))?;
 
         let original_model = request.model.clone();
 
+        // Resolve model if needed (pattern doesn't match or no pattern)
+        resolve_model(&mut request, self.config.model_pattern.as_ref(), &self.model_manager)?;
+
         // Convert request to Bedrock format - moves request
-        let mut converse_input = aws_sdk_bedrockruntime::operation::converse::ConverseInput::from(request);
-        converse_input.model_id = Some(actual_model_id);
+        let converse_input = aws_sdk_bedrockruntime::operation::converse::ConverseInput::from(request);
 
         let output = self
             .client
@@ -109,22 +113,18 @@ impl Provider for BedrockProvider {
 
     async fn chat_completion_stream(
         &self,
-        request: UnifiedRequest,
+        mut request: UnifiedRequest,
         _: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
         log::debug!("Processing Bedrock streaming for model: {}", request.model);
 
-        // Resolve the configured model to the actual Bedrock model ID
-        let actual_model_id = self
-            .model_manager
-            .resolve_model(&request.model)
-            .ok_or_else(|| LlmError::ModelNotFound(format!("Model '{}' is not configured", request.model)))?;
-
         let original_model = request.model.clone();
 
+        // Resolve model if needed (pattern doesn't match or no pattern)
+        resolve_model(&mut request, self.config.model_pattern.as_ref(), &self.model_manager)?;
+
         // Convert request to Bedrock streaming format - moves request
-        let mut converse_input = ConverseStreamInput::from(request);
-        converse_input.model_id = Some(actual_model_id);
+        let converse_input = ConverseStreamInput::from(request);
 
         let stream_output = self
             .client
@@ -142,7 +142,7 @@ impl Provider for BedrockProvider {
             })?;
 
         // Simple stream conversion like other providers
-        let stream = Box::pin(stream::unfold(
+        let stream = stream::unfold(
             (stream_output.stream, original_model),
             move |(mut event_receiver, model)| async move {
                 loop {
@@ -164,24 +164,88 @@ impl Provider for BedrockProvider {
                     }
                 }
             },
-        ));
+        );
 
-        Ok(stream)
+        Ok(Box::pin(stream))
     }
 
-    fn list_models(&self) -> Vec<Model> {
-        // Bedrock doesn't have a convenient list models API that returns available models
-        // We return the configured models instead
-        self.model_manager
-            .get_configured_models()
-            .into_iter()
-            .map(|model| Model {
-                id: model.id,
-                object: ObjectType::Model,
-                created: 0,
-                owned_by: "aws-bedrock".to_string(),
-            })
-            .collect()
+    async fn list_models(&self) -> anyhow::Result<Vec<Model>> {
+        let mut models = Vec::new();
+
+        // If model_pattern is configured, use ListInferenceProfiles API for newer models
+        // that require inference profiles (like Claude 3.7)
+        if let Some(ref pattern) = self.config.model_pattern {
+            // Try inference profiles first (for newer models)
+            match self.bedrock_client.list_inference_profiles().send().await {
+                Ok(response) => {
+                    let inference_profiles = response.inference_profile_summaries();
+
+                    let filtered_models = inference_profiles
+                        .iter()
+                        .filter(|p| {
+                            // Filter by inference profile ID
+                            pattern.is_match(p.inference_profile_id())
+                        })
+                        .map(|p| {
+                            // Extract provider name from model ARN if available
+                            let owned_by = p
+                                .models()
+                                .first()
+                                .and_then(|m| m.model_arn())
+                                .and_then(|arn| {
+                                    // ARN format: arn:aws:bedrock:region::foundation-model/provider.model
+                                    arn.rsplit('/').next()
+                                })
+                                .and_then(|model_id| model_id.split('.').next())
+                                .unwrap_or(&self.name)
+                                .to_string();
+
+                            Model {
+                                id: p.inference_profile_id().to_string(),
+                                object: ObjectType::Model,
+                                created: 0,
+                                owned_by,
+                            }
+                        });
+
+                    models.extend(filtered_models);
+                }
+                Err(e) => {
+                    log::debug!("Failed to fetch Bedrock inference profiles: {e}");
+
+                    // Fall back to foundation models if inference profiles not available
+                    match self.bedrock_client.list_foundation_models().send().await {
+                        Ok(response) => {
+                            let model_summaries = response.model_summaries();
+
+                            let filtered_models = model_summaries
+                                .iter()
+                                .filter(|m| pattern.is_match(m.model_id()))
+                                .map(|m| Model {
+                                    id: m.model_id().to_string(),
+                                    object: ObjectType::Model,
+                                    created: 0,
+                                    owned_by: m.provider_name().unwrap_or(&self.name).to_string(),
+                                });
+
+                            models.extend(filtered_models);
+                        }
+                        Err(e) => {
+                            log::debug!("Failed to fetch Bedrock foundation models: {e}");
+                        }
+                    }
+                }
+            }
+        }
+
+        let configured_models = self.model_manager.get_configured_models().into_iter().map(|mut model| {
+            model.id = format!("{}/{}", self.name, model.id);
+            model
+        });
+
+        models.extend(configured_models);
+
+        Ok(models)
     }
 
     fn name(&self) -> &str {

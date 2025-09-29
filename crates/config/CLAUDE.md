@@ -4,13 +4,13 @@ Type-safe TOML configuration with validation for Nexus.
 
 ## Module Structure
 - `lib.rs` - Main `Config` struct, basic tests
-- `loader.rs` - Loading, validation, validation tests  
+- `loader.rs` - Loading, validation, validation tests
 - `server.rs` - HTTP server config
 - `oauth.rs` - OAuth2 authentication
 - `cors.rs` - CORS with comprehensive tests
 - `client_identification.rs` - Rate limiting identity
 - `mcp.rs` - Model Context Protocol
-- `llm.rs` - LLM providers
+- `llm.rs` - LLM providers (includes model pattern routing)
 - `rate_limit.rs` - Rate limiting
 - `telemetry.rs` - Observability
 
@@ -93,8 +93,44 @@ fn config_test() {
 - `loader.rs`: Validation tests
 - Each module: Own specific tests
 
+## LLM Provider Configuration
+
+### Model Pattern Routing
+
+The `llm.rs` module supports dynamic model routing via regex patterns:
+
+```rust
+pub struct ModelPattern {
+    regex: Regex,  // Case-insensitive regex
+}
+```
+
+**Validation Rules:**
+- Pattern cannot be empty
+- Pattern cannot contain `/` characters
+- Must be valid regex syntax
+- Case-insensitive by default
+
+**Configuration:**
+```toml
+[llm.providers.openai]
+type = "openai"
+api_key = "sk-..."
+model_pattern = "^gpt-.*"  # Optional: matches all GPT models
+
+# Can mix pattern with explicit models
+[llm.providers.openai.models.gpt-4]
+```
+
+**Provider Requirements:**
+- Each provider must have either:
+  - At least one explicit model configured, OR
+  - A `model_pattern` field
+- Both can coexist for mixed routing
+
 ## Update This Doc When:
 - Adding modules or config sections
 - Changing validation rules
 - Modifying test patterns
 - Changing defaults
+- Adding new LLM configuration features

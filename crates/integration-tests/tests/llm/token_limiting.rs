@@ -447,8 +447,12 @@ async fn missing_client_id_rejected_when_required() {
     let (status, body) = server.openai_completions(request.clone()).send_raw().await;
 
     assert_eq!(status, 400);
-    assert_eq!(body["error"], "missing_client_id");
-    assert_eq!(body["error_description"], "Client identification is required");
+    insta::assert_json_snapshot!(body, @r#"
+    {
+      "error": "missing_client_id",
+      "error_description": "Client identification is required"
+    }
+    "#);
 }
 
 /// Test that invalid group names are rejected with 400 Bad Request.

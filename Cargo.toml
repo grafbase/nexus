@@ -15,6 +15,7 @@ ascii = { version = "1.1.0", features = ["serde"] }
 async-trait = "0.1.83"
 aws-config = { version = "1.5", features = ["behavior-version-latest"] }
 aws-credential-types = "1.2"
+aws-sdk-bedrock = { version = "1.72", features = ["behavior-version-latest"] }
 aws-sdk-bedrockruntime = { version = "1.72", features = ["behavior-version-latest"] }
 aws-smithy-runtime-api = "1.7"
 aws-smithy-types = "1.2"

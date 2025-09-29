@@ -10,6 +10,7 @@ mod error_handling;
 mod forward_token;
 mod google;
 mod model_configuration;
+mod model_pattern;
 mod openai;
 mod token_limiting;
 

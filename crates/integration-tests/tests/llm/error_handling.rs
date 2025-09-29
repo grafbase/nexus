@@ -3,7 +3,7 @@ use integration_tests::{TestServer, llms::OpenAIMock};
 use serde_json::json;
 
 #[tokio::test]
-async fn invalid_model_format_returns_400() {
+async fn model_without_provider_prefix_returns_404() {
     let mut builder = TestServer::builder();
     builder.spawn_llm(OpenAIMock::new("openai")).await;
 
@@ -16,13 +16,13 @@ async fn invalid_model_format_returns_400() {
     });
 
     let (status, body) = server.openai_completions(request).send_raw().await;
-    assert_eq!(status, 400);
+    assert_eq!(status, 404);
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
-        "message": "Invalid model format: expected 'provider/model', got 'gpt-4'",
-        "type": "invalid_request_error",
-        "code": 400
+        "message": "Model 'gpt-4' not found",
+        "type": "not_found_error",
+        "code": 404
       }
     }
     "#);

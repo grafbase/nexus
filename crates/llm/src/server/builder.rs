@@ -82,11 +82,16 @@ impl<'a> LlmServerBuilder<'a> {
             None
         };
 
+        let pattern_routes = super::build_pattern_routes(&self.config.llm, &providers);
+        let model_discovery = super::ModelDiscovery::new();
+
         let server = LlmServer {
             shared: Arc::new(LlmServerInner {
                 providers,
                 config: self.config.llm.clone(),
                 token_rate_limiter,
+                pattern_routes,
+                model_discovery,
             }),
         };
 

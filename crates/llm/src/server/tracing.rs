@@ -32,10 +32,12 @@ impl<S> LlmService for LlmServerWithTracing<S>
 where
     S: LlmService,
 {
-    fn models(&self) -> ModelsResponse {
+    async fn models(&self) -> ModelsResponse {
         let span = tracing::create_child_span_if_sampled("llm:list_models");
-        let _guard = span.set_local_parent();
-        self.inner.models()
+
+        let fut = async move { self.inner.models().await };
+
+        fut.in_span(span).await
     }
 
     async fn completions(&self, request: UnifiedRequest, context: &RequestContext) -> crate::Result<UnifiedResponse> {

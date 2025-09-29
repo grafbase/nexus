@@ -12,6 +12,7 @@ anyhow.workspace = true
 async-trait.workspace = true
 aws-config.workspace = true
 aws-credential-types.workspace = true
+aws-sdk-bedrock.workspace = true
 aws-sdk-bedrockruntime.workspace = true
 aws-smithy-runtime-api.workspace = true
 aws-smithy-types.workspace = true
@@ -27,6 +28,7 @@ itertools.workspace = true
 log.workspace = true
 opentelemetry.workspace = true
 rate-limit.workspace = true
+regex.workspace = true
 reqwest = { workspace = true, features = ["json", "stream"] }
 secrecy.workspace = true
 serde.workspace = true
@@ -35,11 +37,14 @@ sonic-rs.workspace = true
 telemetry.workspace = true
 thiserror.workspace = true
 tiktoken-rs.workspace = true
+tokio = { workspace = true, features = ["sync"] }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
+indoc.workspace = true
 insta.workspace = true
 tokio = { workspace = true, features = ["rt", "macros"] }
+toml.workspace = true
 
 [lints]
 workspace = true
