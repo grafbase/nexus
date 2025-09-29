@@ -134,7 +134,7 @@ pub async fn serve(
         && let Some(manager) = rate_limit_manager
     {
         log::debug!("Applying HTTP rate limiting middleware to protected routes");
-        protected_router = protected_router.layer(RateLimitLayer::new(manager));
+        protected_router = protected_router.layer(RateLimitLayer::new(config.server.client_ip.clone(), manager));
     }
 
     // Apply tracing middleware (runs after client identification, before rate limiting)
@@ -242,8 +242,8 @@ pub async fn serve(
                 }
             }
 
-            let server =
-                axum_server::from_tcp_rustls(listener.into_std()?, rustls_config).serve(app.into_make_service());
+            let server = axum_server::from_tcp_rustls(listener.into_std()?, rustls_config)
+                .serve(app.into_make_service_with_connect_info::<SocketAddr>());
 
             // Run with graceful shutdown
             tokio::select! {
@@ -278,7 +278,7 @@ pub async fn serve(
 
             // Run with graceful shutdown
             tokio::select! {
-                result = axum::serve(listener, app) => {
+                result = axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()) => {
                     result.map_err(|e| anyhow!("Failed to start HTTP server: {}", e))?;
                 }
                 _ = shutdown_signal.cancelled() => {

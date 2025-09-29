@@ -14,14 +14,20 @@ use http::{Request, Response, StatusCode};
 use rate_limit::{RateLimitError, RateLimitManager, RateLimitRequest};
 use tower::Layer;
 
-use config::ClientIdentity;
+use config::{ClientIdentity, ClientIpConfig};
 
 #[derive(Clone)]
-pub struct RateLimitLayer(Arc<RateLimitManager>);
+pub struct RateLimitLayer {
+    client_ip_config: ClientIpConfig,
+    manager: Arc<RateLimitManager>,
+}
 
 impl RateLimitLayer {
-    pub fn new(manager: Arc<RateLimitManager>) -> Self {
-        Self(manager)
+    pub fn new(client_ip_config: ClientIpConfig, manager: Arc<RateLimitManager>) -> Self {
+        Self {
+            client_ip_config,
+            manager,
+        }
     }
 }
 
@@ -34,7 +40,7 @@ where
     fn layer(&self, next: Service) -> Self::Service {
         RateLimitService {
             next,
-            manager: self.0.clone(),
+            layer: self.clone(),
         }
     }
 }
@@ -42,7 +48,7 @@ where
 #[derive(Clone)]
 pub struct RateLimitService<Service> {
     next: Service,
-    manager: Arc<RateLimitManager>,
+    layer: RateLimitLayer,
 }
 
 impl<Service, ReqBody> tower::Service<Request<ReqBody>> for RateLimitService<Service>
@@ -62,21 +68,16 @@ where
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         let mut next = self.next.clone();
-        let manager = self.manager.clone();
+        // Extract client IP for IP-based rate limiting
+        let ip = extract_client_ip(&self.layer.client_ip_config, &req);
+        let manager = self.layer.manager.clone();
 
         Box::pin(async move {
-            // Extract client IP for IP-based rate limiting
-            let ip = extract_client_ip(&req);
-
             // Get client identity from request extensions (already validated by ClientIdentificationLayer)
             let identity = req.extensions().get::<ClientIdentity>().cloned();
 
             // Build rate limit request with IP and client identity
-            let mut builder = RateLimitRequest::builder();
-
-            if let Some(ip) = ip {
-                builder = builder.ip(ip);
-            }
+            let rate_limit_request = RateLimitRequest::builder().ip(ip).build();
 
             // Log client identity if present
             if let Some(ref identity) = identity {
@@ -86,8 +87,6 @@ where
                     identity.group
                 );
             }
-
-            let rate_limit_request = builder.build();
 
             // Check rate limits
             let err = match manager.check_request(&rate_limit_request).await {
@@ -119,25 +118,30 @@ where
     }
 }
 
-/// Extract client IP address from request.
-fn extract_client_ip<B>(req: &Request<B>) -> Option<IpAddr> {
-    // First try to get from ConnectInfo (direct connection)
-    if let Some(connect_info) = req.extensions().get::<ConnectInfo<SocketAddr>>() {
-        return Some(connect_info.0.ip());
+fn extract_client_ip<B>(config: &ClientIpConfig, req: &Request<B>) -> IpAddr {
+    if config.x_real_ip
+        && let Some(ip) = req
+            .headers()
+            .get("x-real-ip")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.trim().parse().ok())
+    {
+        return ip;
     }
 
-    // Try X-Forwarded-For header (for proxied requests)
-    if let Some(forwarded_for) = req.headers().get("x-forwarded-for") {
-        let value = forwarded_for.to_str().ok()?;
-
-        // Take the first IP in the chain
-        let ip_str = value.split(',').next()?;
-
-        return ip_str.trim().parse::<IpAddr>().ok();
+    if let Some(hops) = config.x_forwarded_for_trusted_hops
+        && let Some(ip) = req
+            .headers()
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.split(',').rev().nth(hops))
+            .and_then(|s| s.trim().parse().ok())
+    {
+        return ip;
     }
 
-    // Try X-Real-IP header
-    let ip_str = req.headers().get("x-real-ip")?.to_str().ok()?;
-
-    ip_str.parse::<IpAddr>().ok()
+    req.extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|info| info.0.ip())
+        .expect("Axum always provides the client SocketAddr info if properly configured.")
 }
