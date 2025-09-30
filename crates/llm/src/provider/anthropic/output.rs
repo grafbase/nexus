@@ -3,6 +3,8 @@ use std::borrow::Cow;
 use serde::Deserialize;
 use serde_json::Value;
 
+#[cfg(test)]
+use crate::messages::anthropic::{CountTokensResponse, CountTokensResponseType};
 use crate::messages::unified;
 
 /// Describes the type of content in an Anthropic message.
@@ -706,5 +708,30 @@ impl AnthropicStreamProcessor {
 
             _ => None, // Ignore other events (Ping, ContentBlockStop, MessageStop)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deserialize_count_tokens_response() {
+        let json = r#"{
+            "type": "message_count_tokens_result",
+            "input_tokens": 823,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0
+        }"#;
+
+        let response: CountTokensResponse = sonic_rs::from_str(json).expect("valid count tokens response");
+
+        assert!(matches!(
+            response.r#type,
+            CountTokensResponseType::MessageCountTokensResult
+        ));
+        assert_eq!(response.input_tokens, 823);
+        assert_eq!(response.cache_creation_input_tokens, 0);
+        assert_eq!(response.cache_read_input_tokens, 0);
     }
 }

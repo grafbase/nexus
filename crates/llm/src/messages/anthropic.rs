@@ -289,6 +289,34 @@ pub struct AnthropicUsage {
     pub output_tokens: i32,
 }
 
+/// Describes the type of content in an Anthropic count tokens response.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum CountTokensResponseType {
+    /// Standard message token count result.
+    #[serde(rename = "message_count_tokens_result")]
+    MessageCountTokensResult,
+    /// Any other response type not yet known.
+    /// Captures the actual string value for forward compatibility.
+    #[serde(untagged)]
+    Other(String),
+}
+
+/// Response body from the `/v1/messages/count_tokens` endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CountTokensResponse {
+    /// The type of count tokens response.
+    #[serde(rename = "type")]
+    pub r#type: CountTokensResponseType,
+    /// Number of regular input tokens accounted for the request.
+    pub input_tokens: i32,
+    /// Tokens used for cache creation entries.
+    #[serde(default)]
+    pub cache_creation_input_tokens: i32,
+    /// Tokens satisfied from cache hits in Anthropic's prompt caching.
+    #[serde(default)]
+    pub cache_read_input_tokens: i32,
+}
+
 /// Error response in Anthropic format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnthropicError {

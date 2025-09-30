@@ -6,7 +6,7 @@ use anyhow;
 use axum::{
     Router,
     extract::{Json, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response, Sse, sse::Event},
     routing::{get, post},
 };
@@ -136,6 +136,7 @@ impl TestLlmProvider for AnthropicMock {
 
         let app = Router::new()
             .route("/v1/messages", post(create_message))
+            .route("/v1/messages/count_tokens", post(count_tokens))
             .route("/v1/models", get(list_models))
             .with_state(state);
 
@@ -168,6 +169,18 @@ struct TestAnthropicState {
     captured_headers: Arc<Mutex<Vec<(String, String)>>>,
 }
 
+impl TestAnthropicState {
+    fn record_headers(&self, headers: &HeaderMap) {
+        let mut captured = Vec::new();
+        for (name, value) in headers {
+            if let Ok(value_str) = value.to_str() {
+                captured.push((name.to_string(), value_str.to_string()));
+            }
+        }
+        *self.captured_headers.lock().unwrap() = captured;
+    }
+}
+
 /// Spawn a test Anthropic server on a random port (legacy compatibility)
 pub struct TestAnthropicServer {
     pub address: SocketAddr,
@@ -191,17 +204,10 @@ impl TestAnthropicServer {
 /// Handle Anthropic message creation requests
 async fn create_message(
     State(state): State<Arc<TestAnthropicState>>,
-    headers: axum::http::HeaderMap,
+    headers: HeaderMap,
     Json(request): Json<AnthropicMessageRequest>,
 ) -> Response {
-    // Capture headers
-    let mut captured = Vec::new();
-    for (name, value) in &headers {
-        if let Ok(value_str) = value.to_str() {
-            captured.push((name.to_string(), value_str.to_string()));
-        }
-    }
-    *state.captured_headers.lock().unwrap() = captured;
+    state.record_headers(&headers);
 
     // Validate required headers
     if !headers.contains_key("x-api-key") {
@@ -358,6 +364,49 @@ async fn create_message(
             output_tokens: 15,
         },
     };
+
+    (StatusCode::OK, Json(response)).into_response()
+}
+
+async fn count_tokens(
+    State(state): State<Arc<TestAnthropicState>>,
+    headers: HeaderMap,
+    Json(request): Json<AnthropicMessageRequest>,
+) -> Response {
+    state.record_headers(&headers);
+
+    if !headers.contains_key("x-api-key") {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+                "error": {
+                    "type": "authentication_error",
+                    "message": "Missing x-api-key header"
+                }
+            })),
+        )
+            .into_response();
+    }
+
+    if !headers.contains_key("anthropic-version") {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": {
+                    "type": "invalid_request_error",
+                    "message": "Missing anthropic-version header"
+                }
+            })),
+        )
+            .into_response();
+    }
+
+    let response = serde_json::json!({
+        "type": "message_count_tokens_result",
+        "input_tokens": approximate_token_count(&request),
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+    });
 
     (StatusCode::OK, Json(response)).into_response()
 }
@@ -644,6 +693,23 @@ impl AnthropicMessageContent {
             }
         }
     }
+}
+
+fn approximate_token_count(request: &AnthropicMessageRequest) -> i32 {
+    let mut total_chars: usize = request
+        .messages
+        .iter()
+        .map(|message| message.content.as_text().chars().count())
+        .sum();
+
+    if let Some(system) = &request.system {
+        total_chars += system.chars().count();
+    }
+
+    total_chars += request.model.chars().count();
+
+    let tokens = (total_chars as f32 / 4.0).ceil() as i32;
+    tokens.max(1)
 }
 
 fn validate_tool_use_sequence(messages: &[AnthropicMessage]) -> Result<(), (StatusCode, Json<serde_json::Value>)> {

@@ -18,6 +18,7 @@ use self::{
 use crate::{
     error::LlmError,
     messages::{
+        anthropic::CountTokensResponse,
         openai::Model,
         unified::{UnifiedRequest, UnifiedResponse},
     },
@@ -224,18 +225,80 @@ impl Provider for AnthropicProvider {
             models.extend(api_response.data.into_iter().map(|model| Model {
                 id: model.id,
                 object: crate::messages::openai::ObjectType::Model,
-                created: 0, // Anthropic only returns an ISO timestamp which we ignore here
+                created: 0,
                 owned_by: "anthropic".to_string(),
             }));
         }
 
-        // Always include explicitly configured models with provider prefix
         models.extend(self.model_manager.get_configured_models().into_iter().map(|mut model| {
             model.id = format!("{}/{}", self.name, model.id);
             model
         }));
 
         Ok(models)
+    }
+
+    async fn count_tokens(
+        &self,
+        mut request: UnifiedRequest,
+        context: &RequestContext,
+    ) -> crate::Result<CountTokensResponse> {
+        let url = format!("{}/messages/count_tokens", self.base_url);
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
+
+        let model_config = self.model_manager.get_model_config(&request.model);
+
+        self.resolve_request_model(&mut request)?;
+
+        request.stream = Some(false);
+
+        let anthropic_request = AnthropicRequest::from(request);
+
+        let mut request_builder = self.request_builder(Method::POST, &url, context, model_config);
+        request_builder = request_builder.header("x-api-key", api_key.expose_secret());
+
+        let body = sonic_rs::to_vec(&anthropic_request).map_err(|e| {
+            log::error!("Failed to serialize Anthropic count tokens request: {e}");
+            LlmError::InternalError(None)
+        })?;
+
+        let response = request_builder
+            .header(CONTENT_TYPE, "application/json")
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| LlmError::ConnectionError(format!("Failed to send request to Anthropic: {e}")))?;
+
+        let status = response.status();
+
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            log::error!("Anthropic count tokens API error ({status}): {error_text}");
+
+            return Err(match status.as_u16() {
+                401 => LlmError::AuthenticationFailed(error_text),
+                403 => LlmError::InsufficientQuota(error_text),
+                404 => LlmError::ModelNotFound(error_text),
+                429 => LlmError::RateLimitExceeded { message: error_text },
+                400 => LlmError::InvalidRequest(error_text),
+                500 => LlmError::InternalError(Some(error_text)),
+                _ => LlmError::ProviderApiError {
+                    status: status.as_u16(),
+                    message: error_text,
+                },
+            });
+        }
+
+        let response_text = response.text().await.map_err(|e| {
+            log::error!("Failed to read Anthropic count tokens response body: {e}");
+            LlmError::InternalError(None)
+        })?;
+
+        sonic_rs::from_str(&response_text).map_err(|e| {
+            log::error!("Failed to parse Anthropic count tokens response: {e}");
+            log::error!("Raw response that failed to parse: {response_text}");
+            LlmError::InternalError(None)
+        })
     }
 
     async fn chat_completion_stream(
@@ -347,5 +410,209 @@ impl HttpProvider for AnthropicProvider {
 
     fn get_http_client(&self) -> &Client {
         &self.client
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::messages::unified::{UnifiedContentContainer, UnifiedMessage, UnifiedRequest, UnifiedRole};
+    use axum::{
+        Json, Router,
+        extract::State,
+        http::{HeaderMap, StatusCode},
+        response::IntoResponse,
+        routing::post,
+    };
+    use config::ApiModelConfig;
+    use secrecy::SecretString;
+    use serde_json::{Value, json};
+    use std::{
+        collections::BTreeMap,
+        sync::{Arc, Mutex},
+    };
+    use tokio::net::TcpListener;
+
+    #[derive(Clone)]
+    struct CaptureState {
+        captured: Arc<Mutex<Option<(HeaderMap, Value)>>>,
+    }
+
+    async fn handle_count_tokens(
+        State(state): State<CaptureState>,
+        headers: HeaderMap,
+        Json(body): Json<Value>,
+    ) -> impl IntoResponse {
+        *state.captured.lock().unwrap() = Some((headers.clone(), body.clone()));
+
+        (
+            StatusCode::OK,
+            Json(json!({
+                "type": "message_count_tokens_result",
+                "input_tokens": 42,
+                "cache_creation_input_tokens": 1,
+                "cache_read_input_tokens": 2
+            })),
+        )
+    }
+
+    #[tokio::test]
+    async fn count_tokens_raw_calls_endpoint_and_parses_response() {
+        let state = CaptureState {
+            captured: Arc::new(Mutex::new(None)),
+        };
+
+        let app = Router::new()
+            .route("/v1/messages/count_tokens", post(handle_count_tokens))
+            .with_state(state.clone());
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let mut models = BTreeMap::new();
+        models.insert(
+            "claude-3-sonnet-20240229".to_string(),
+            ApiModelConfig {
+                rename: None,
+                rate_limits: None,
+                headers: Vec::new(),
+            },
+        );
+
+        let config = ApiProviderConfig {
+            api_key: Some(SecretString::from("test-key".to_string())),
+            base_url: Some(format!("http://{address}/v1")),
+            forward_token: false,
+            models,
+            rate_limits: None,
+            headers: Vec::new(),
+            model_filter: None,
+        };
+
+        let provider = AnthropicProvider::new("anthropic".to_string(), config).unwrap();
+
+        let request = UnifiedRequest {
+            model: "claude-3-sonnet-20240229".to_string(),
+            messages: vec![UnifiedMessage {
+                role: UnifiedRole::User,
+                content: UnifiedContentContainer::Text("Hello".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            system: None,
+            max_tokens: Some(128),
+            temperature: None,
+            top_p: None,
+            top_k: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            stop_sequences: None,
+            stream: None,
+            tools: None,
+            tool_choice: None,
+            parallel_tool_calls: None,
+            metadata: None,
+        };
+
+        let response = provider
+            .count_tokens(request, &RequestContext::default())
+            .await
+            .unwrap();
+
+        assert_eq!(response.input_tokens, 42);
+        assert_eq!(response.cache_creation_input_tokens, 1);
+        assert_eq!(response.cache_read_input_tokens, 2);
+
+        let captured = state.captured.lock().unwrap().clone().expect("captured request");
+        let (headers, body) = captured;
+
+        assert_eq!(headers.get("x-api-key").unwrap(), "test-key");
+        assert_eq!(headers.get("anthropic-version").unwrap(), "2023-06-01");
+
+        assert_eq!(
+            body.get("model").and_then(Value::as_str),
+            Some("claude-3-sonnet-20240229")
+        );
+        if let Some(value) = body.get("stream") {
+            assert_eq!(value, &Value::Bool(false));
+        }
+    }
+
+    #[tokio::test]
+    async fn count_tokens_resolves_model_aliases() {
+        let state = CaptureState {
+            captured: Arc::new(Mutex::new(None)),
+        };
+
+        let app = Router::new()
+            .route("/v1/messages/count_tokens", post(handle_count_tokens))
+            .with_state(state.clone());
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let mut models = BTreeMap::new();
+        models.insert(
+            "workspace-sonnet".to_string(),
+            ApiModelConfig {
+                rename: Some("claude-3-sonnet-20240229".to_string()),
+                rate_limits: None,
+                headers: Vec::new(),
+            },
+        );
+
+        let config = ApiProviderConfig {
+            api_key: Some(SecretString::from("test-key".to_string())),
+            base_url: Some(format!("http://{address}/v1")),
+            forward_token: false,
+            models,
+            rate_limits: None,
+            headers: Vec::new(),
+            model_filter: None,
+        };
+
+        let provider = AnthropicProvider::new("anthropic".to_string(), config).unwrap();
+
+        let request = UnifiedRequest {
+            model: "workspace-sonnet".to_string(),
+            messages: vec![UnifiedMessage {
+                role: UnifiedRole::User,
+                content: UnifiedContentContainer::Text("Alias route".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+            }],
+            system: None,
+            max_tokens: Some(64),
+            temperature: None,
+            top_p: None,
+            top_k: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            stop_sequences: None,
+            stream: None,
+            tools: None,
+            tool_choice: None,
+            parallel_tool_calls: None,
+            metadata: None,
+        };
+
+        provider
+            .count_tokens(request, &RequestContext::default())
+            .await
+            .unwrap();
+
+        let captured = state.captured.lock().unwrap().clone().expect("captured request");
+        let (_headers, body) = captured;
+
+        assert_eq!(
+            body.get("model").and_then(Value::as_str),
+            Some("claude-3-sonnet-20240229")
+        );
     }
 }

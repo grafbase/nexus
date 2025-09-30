@@ -17,7 +17,7 @@ pub const MCP_TOOLS_LIST_DURATION: &str = "mcp.tools.list.duration";
 /// Tracks the duration of prompt-related operations (list/get)
 pub const MCP_PROMPT_REQUEST_DURATION: &str = "mcp.prompt.request.duration";
 
-/// MCP resource request duration in milliseconds  
+/// MCP resource request duration in milliseconds
 /// Tracks the duration of resource-related operations (list/read)
 pub const MCP_RESOURCE_REQUEST_DURATION: &str = "mcp.resource.request.duration";
 
@@ -30,7 +30,7 @@ pub const GEN_AI_CLIENT_OPERATION_DURATION: &str = "gen_ai.client.operation.dura
 /// Tracks cumulative input token consumption for LLM operations
 pub const GEN_AI_CLIENT_INPUT_TOKEN_USAGE: &str = "gen_ai.client.input.token.usage";
 
-/// LLM output token usage counter  
+/// LLM output token usage counter
 /// Tracks cumulative output token consumption for LLM operations
 pub const GEN_AI_CLIENT_OUTPUT_TOKEN_USAGE: &str = "gen_ai.client.output.token.usage";
 
@@ -38,9 +38,12 @@ pub const GEN_AI_CLIENT_OUTPUT_TOKEN_USAGE: &str = "gen_ai.client.output.token.u
 /// Tracks cumulative total token consumption for LLM operations (input + output)
 pub const GEN_AI_CLIENT_TOTAL_TOKEN_USAGE: &str = "gen_ai.client.total.token.usage";
 
-/// Time to first token in milliseconds (streaming only)
+/// Time to first token
 /// Tracks the duration until the first token is received in a streaming response
 pub const GEN_AI_CLIENT_TIME_TO_FIRST_TOKEN: &str = "gen_ai.client.time_to_first_token";
+
+/// Token count request duration
+pub const GEN_AI_TOKEN_COUNT_DURATION: &str = "gen_ai.client.count_tokens.duration";
 
 /// Redis command execution duration in milliseconds
 /// Tracks the duration of Redis operations (Lua scripts)

@@ -13,7 +13,9 @@ use futures::Stream;
 use std::pin::Pin;
 
 use crate::{
+    LlmError,
     messages::{
+        anthropic::CountTokensResponse,
         openai::Model,
         unified::{UnifiedChunk, UnifiedRequest, UnifiedResponse},
     },
@@ -59,6 +61,25 @@ pub(crate) trait Provider: Send + Sync {
     ) -> crate::Result<ChatCompletionStream> {
         // Default implementation returns an error for providers that don't support streaming
         Err(crate::error::LlmError::StreamingNotSupported)
+    }
+
+    /// Count tokens in a request.
+    ///
+    /// Returns the number of tokens that would be consumed by the given request.
+    /// This is useful for estimating costs and ensuring requests don't exceed
+    /// model token limits.
+    ///
+    /// # Errors
+    ///
+    /// Returns `LlmError::InternalError` if the provider doesn't implement
+    /// token counting functionality.
+    async fn count_tokens(&self, _: UnifiedRequest, _: &RequestContext) -> crate::Result<CountTokensResponse> {
+        log::warn!("Provider '{}' does not implement token counting", self.name());
+
+        return Err(LlmError::InternalError(Some(format!(
+            "Provider '{}' does not implement token counting",
+            self.name()
+        ))));
     }
 
     /// Check if this provider supports streaming completions.

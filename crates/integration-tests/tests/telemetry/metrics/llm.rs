@@ -1,10 +1,17 @@
 //! LLM endpoint metrics tests
 
+#![allow(clippy::panic)]
+
 use std::collections::BTreeMap;
 
 use indoc::formatdoc;
-use integration_tests::{TestServer, llms::OpenAIMock, telemetry::*};
-use reqwest::header::HeaderMap;
+use integration_tests::{
+    TestServer,
+    llms::{AnthropicMock, OpenAIMock},
+    telemetry::*,
+};
+use reqwest::{Method, StatusCode, header::HeaderMap};
+use serde_json::json;
 
 use crate::telemetry::metrics::{HistogramMetricRow, SumMetricRow};
 
@@ -40,8 +47,42 @@ fn create_test_config_with_metrics(service_name: &str) -> String {
         enabled = true
 
         [llm.protocols.openai]
-enabled = true
-path = "/llm"
+        enabled = true
+        path = "/llm"
+    "#}
+}
+
+fn create_anthropic_config_with_metrics(service_name: &str) -> String {
+    formatdoc! {r#"
+        [server]
+        listen_address = "127.0.0.1:0"
+
+        [server.client_identification]
+        enabled = true
+        client_id = {{ source = "http_header", http_header = "x-client-id" }}
+        group_id = {{ source = "http_header", http_header = "x-client-group" }}
+
+        [telemetry]
+        service_name = "{service_name}"
+
+        [telemetry.resource_attributes]
+        environment = "test"
+
+        [telemetry.exporters.otlp]
+        enabled = true
+        endpoint = "http://localhost:4317"
+        protocol = "grpc"
+
+        [telemetry.exporters.otlp.batch_export]
+        scheduled_delay = "1s"
+        max_export_batch_size = 100
+
+        [llm]
+        enabled = true
+
+        [llm.protocols.anthropic]
+        enabled = true
+        path = "/llm/anthropic"
     "#}
 }
 
@@ -124,6 +165,109 @@ async fn llm_endpoint_metrics() {
         "http.route": "/llm/v1/chat/completions",
     }
     "###);
+}
+
+#[tokio::test]
+async fn count_tokens_metrics_record_histogram() {
+    let service_name = unique_service_name("anthropic-count-tokens-metrics");
+    let config = create_anthropic_config_with_metrics(&service_name);
+
+    let mut builder = TestServer::builder();
+    builder.spawn_llm(AnthropicMock::new("anthropic")).await;
+    let test_server = builder.build(&config).await;
+
+    let client_id = format!("count-tokens-client-{}", uuid::Uuid::new_v4());
+    let request = json!({
+        "model": "anthropic/claude-3-sonnet-20240229",
+        "messages": [
+            {
+                "role": "user",
+                "content": "Hello"
+            }
+        ],
+        "max_tokens": 256
+    });
+
+    let anthropic_path = &test_server.config.llm.protocols.anthropic.path;
+    let path = format!("{anthropic_path}/v1/messages/count_tokens");
+    let body_string = sonic_rs::to_string(&request).unwrap();
+
+    let response = test_server
+        .client
+        .request(Method::POST, &path)
+        .header("content-type", "application/json")
+        .header("x-client-id", &client_id)
+        .header("x-client-group", "count-tokens")
+        .body(body_string)
+        .send()
+        .await
+        .unwrap();
+
+    let status = response.status();
+    let raw_body = response.text().await.unwrap();
+
+    assert!(
+        status == StatusCode::OK,
+        "Expected 200 OK from count_tokens, got {}: {}",
+        status,
+        raw_body
+    );
+
+    let body: serde_json::Value = sonic_rs::from_str(&raw_body)
+        .unwrap_or_else(|error| panic!("Failed to parse count_tokens body as JSON: {error}; raw={raw_body}"));
+
+    insta::assert_json_snapshot!(body, @r###"
+    {
+      "type": "message_count_tokens_result",
+      "input_tokens": 8,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    }
+    "###);
+
+    let clickhouse = create_clickhouse_client().await;
+
+    let histogram_query = formatdoc! {r#"
+        SELECT
+            MetricName,
+            Attributes,
+            Count
+        FROM otel_metrics_histogram
+        WHERE
+            MetricName = 'gen_ai.client.count_tokens.duration'
+            AND ServiceName = '{service_name}'
+            AND Attributes['client.id'] = '{client_id}'
+        ORDER BY TimeUnix DESC
+    "#};
+
+    let rows = wait_for_metrics_matching::<HistogramMetricRow, _>(&clickhouse, &histogram_query, |rows| {
+        rows.iter().map(|row| row.count).sum::<u64>() == 1
+    })
+    .await
+    .expect("Failed to get count tokens histogram metrics");
+
+    let row = &rows[0];
+    assert_eq!(row.metric_name, "gen_ai.client.count_tokens.duration");
+
+    let attributes: BTreeMap<_, _> = row
+        .attributes
+        .iter()
+        .filter(|(key, _)| key != "client.id")
+        .cloned()
+        .collect();
+
+    insta::assert_debug_snapshot!(attributes, @r#"
+    {
+        "client.group": "count-tokens",
+        "gen_ai.operation.name": "chat.completions",
+        "gen_ai.request.model": "anthropic/claude-3-sonnet-20240229",
+        "gen_ai.response": "success",
+        "gen_ai.system": "nexus.llm",
+    }
+    "#);
+
+    let full_attrs: BTreeMap<_, _> = row.attributes.iter().cloned().collect();
+    assert_eq!(full_attrs.get("client.id"), Some(&client_id));
 }
 
 #[tokio::test]

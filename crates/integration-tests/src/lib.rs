@@ -689,6 +689,65 @@ impl<'a> AnthropicCompletionsStreamRequest<'a> {
     }
 }
 
+/// Builder for Anthropic count tokens requests.
+pub struct AnthropicCountTokensRequest<'a> {
+    test_server: &'a TestServer,
+    request: serde_json::Value,
+    headers: HeaderMap,
+}
+
+impl<'a> AnthropicCountTokensRequest<'a> {
+    /// Add a header to the request.
+    pub fn header(mut self, key: &str, value: &str) -> Self {
+        let header_name = HeaderName::from_bytes(key.as_bytes()).unwrap();
+        let header_value = HeaderValue::from_str(value).unwrap();
+        self.headers.insert(header_name, header_value);
+        self
+    }
+
+    /// Send the request and return status code and body (for error testing).
+    pub async fn send_raw(self) -> (u16, serde_json::Value) {
+        let anthropic_path = &self.test_server.config.llm.protocols.anthropic.path;
+        let url = format!(
+            "http://{}{}/v1/messages/count_tokens",
+            self.test_server.address, anthropic_path
+        );
+
+        let json_string = sonic_rs::to_string(&self.request).unwrap();
+        let mut request_builder = self
+            .test_server
+            .client
+            .client
+            .post(&url)
+            .header("content-type", "application/json")
+            .body(json_string);
+
+        for (key, value) in &self.headers {
+            if let Ok(value) = value.to_str() {
+                request_builder = request_builder.header(key.as_str(), value);
+            }
+        }
+
+        let response = request_builder.send().await.unwrap();
+        let status = response.status().as_u16();
+        let body = response.json().await.unwrap();
+
+        (status, body)
+    }
+
+    /// Send the request and expect a successful response.
+    pub async fn send(self) -> serde_json::Value {
+        let (status, body) = self.send_raw().await;
+
+        #[allow(clippy::panic)]
+        if status != 200 {
+            panic!("Expected 200 from Anthropic count_tokens, got {status}: {body}");
+        }
+
+        body
+    }
+}
+
 /// Test server that manages the lifecycle of a server instance
 pub struct TestServer {
     pub client: TestClient,
@@ -890,6 +949,15 @@ impl TestServer {
     /// Create an Anthropic streaming completions request builder
     pub fn anthropic_completions_stream(&self, request: serde_json::Value) -> AnthropicCompletionsStreamRequest<'_> {
         AnthropicCompletionsStreamRequest {
+            test_server: self,
+            request,
+            headers: HeaderMap::new(),
+        }
+    }
+
+    /// Create an Anthropic count tokens request builder
+    pub fn count_tokens(&self, request: serde_json::Value) -> AnthropicCountTokensRequest<'_> {
+        AnthropicCountTokensRequest {
             test_server: self,
             request,
             headers: HeaderMap::new(),
