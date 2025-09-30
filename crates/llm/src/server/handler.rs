@@ -2,6 +2,7 @@
 
 use crate::{
     messages::{
+        anthropic::CountTokensResponse,
         openai::ModelsResponse,
         unified::{UnifiedRequest, UnifiedResponse},
     },
@@ -44,7 +45,7 @@ impl LlmHandler {
             LlmHandler::WithMetricsAndTracing(server) => server.completions(request, context).await,
             LlmHandler::WithMetrics(server) => server.completions(request, context).await,
             LlmHandler::WithTracing(server) => server.completions(request, context).await,
-            LlmHandler::Direct(server) => server.unified_completions(request, context).await,
+            LlmHandler::Direct(server) => server.completions(request, context).await,
         }
     }
 
@@ -58,7 +59,21 @@ impl LlmHandler {
             LlmHandler::WithMetricsAndTracing(server) => server.completions_stream(request, context).await,
             LlmHandler::WithMetrics(server) => server.completions_stream(request, context).await,
             LlmHandler::WithTracing(server) => server.completions_stream(request, context).await,
-            LlmHandler::Direct(server) => server.unified_completions_stream(request, context).await,
+            LlmHandler::Direct(server) => server.completions_stream(request, context).await,
+        }
+    }
+
+    /// Forward an Anthropic count tokens request to the appropriate provider.
+    pub async fn count_tokens(
+        &self,
+        request: UnifiedRequest,
+        context: &RequestContext,
+    ) -> crate::Result<CountTokensResponse> {
+        match self {
+            LlmHandler::WithMetricsAndTracing(server) => server.count_tokens(request, context).await,
+            LlmHandler::WithMetrics(server) => server.count_tokens(request, context).await,
+            LlmHandler::WithTracing(server) => server.count_tokens(request, context).await,
+            LlmHandler::Direct(server) => server.count_tokens(request, context).await,
         }
     }
 }

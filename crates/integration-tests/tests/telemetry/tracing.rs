@@ -10,6 +10,7 @@ use indoc::formatdoc;
 use integration_tests::{TestServer, TestService, telemetry::*, tools::AdderTool};
 use reqwest::header::HeaderMap;
 use serde::{Deserialize, Serialize};
+
 /// Row structure for trace spans in ClickHouse
 #[derive(Debug, Deserialize, Serialize, Row)]
 struct TraceSpanRow {
@@ -141,12 +142,12 @@ async fn basic_trace_creation() {
     // Use insta with field redactions for dynamic values
     insta::assert_json_snapshot!(filtered_spans, {
         "[].TraceId" => "[TRACE_ID]",
-        "[].SpanId" => "[SPAN_ID]",  
+        "[].SpanId" => "[SPAN_ID]",
         "[].ParentSpanId" => "[PARENT_SPAN_ID]",
         "[].ServiceName" => "[SERVICE_NAME]",
         "[0].SpanAttributes[0][1]" => "[CLIENT_ID]",  // Redact the client_id in MCP span
         "[1].SpanAttributes[0][1]" => "[CLIENT_ID]",  // Redact the client_id in first HTTP span
-        "[2].SpanAttributes[0][1]" => "[CLIENT_ID]",  // Redact the client_id in second HTTP span  
+        "[2].SpanAttributes[0][1]" => "[CLIENT_ID]",  // Redact the client_id in second HTTP span
         "[3].SpanAttributes[0][1]" => "[CLIENT_ID]"   // Redact the client_id in third HTTP span
     }, @r#"
     [
@@ -879,7 +880,7 @@ async fn tracing_disabled() {
 
         [telemetry.tracing]
         sampling = 1.0
-        
+
         # Tracing is disabled because no exporters are configured
         # (telemetry.exporters.otlp.enabled = false by default)
 

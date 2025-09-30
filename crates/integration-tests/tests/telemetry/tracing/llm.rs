@@ -2,7 +2,11 @@
 
 use clickhouse::Row;
 use indoc::formatdoc;
-use integration_tests::{TestServer, llms::OpenAIMock, telemetry::*};
+use integration_tests::{
+    TestServer,
+    llms::{AnthropicMock, OpenAIMock},
+    telemetry::*,
+};
 use reqwest::header::HeaderMap;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -62,9 +66,13 @@ fn create_llm_tracing_config(service_name: &str) -> String {
         [llm]
         enabled = true
 
+        [llm.protocols.anthropic]
+        enabled = true
+        path = "/llm/anthropic"
+
         [llm.protocols.openai]
-enabled = true
-path = "/llm"
+        enabled = true
+        path = "/llm"
     "#}
 }
 
@@ -404,6 +412,140 @@ async fn llm_streaming_completion_creates_span() {
 }
 
 #[tokio::test]
+async fn count_tokens_creates_span() {
+    let service_name = unique_service_name("anthropic-trace-count");
+    let config = create_llm_tracing_config(&service_name);
+
+    let mut builder = TestServer::builder();
+    builder.spawn_llm(AnthropicMock::new("anthropic")).await;
+    let test_server = builder.build(&config).await;
+
+    let trace_id = format!("{:032x}", uuid::Uuid::new_v4().as_u128());
+    let span_id = format!("{:016x}", rand::random::<u64>());
+    let traceparent = format!("00-{}-{}-01", trace_id, span_id);
+
+    let client_id = format!("anthropic-client-{}", uuid::Uuid::new_v4());
+
+    let request = json!({
+        "model": "anthropic/claude-3-sonnet-20240229",
+        "messages": [
+            {"role": "user", "content": "Hello"}
+        ],
+        "max_tokens": 256
+    });
+
+    let (status, _body) = test_server
+        .count_tokens(request)
+        .header("traceparent", &traceparent)
+        .header("x-client-id", &client_id)
+        .header("x-client-group", "premium")
+        .send_raw()
+        .await;
+
+    assert_eq!(status, 200);
+
+    let clickhouse = create_clickhouse_client().await;
+
+    let query = formatdoc! {r#"
+        SELECT
+            TraceId,
+            SpanId,
+            ParentSpanId,
+            SpanName,
+            ServiceName,
+            SpanAttributes,
+            StatusCode
+        FROM otel_traces
+        WHERE
+            ServiceName = '{service_name}'
+            AND SpanName = 'llm:count_tokens'
+        ORDER BY Timestamp DESC
+        LIMIT 10
+    "#};
+
+    let spans = wait_for_metrics_matching::<TraceSpanRow, _>(&clickhouse, &query, |rows| {
+        rows.iter().any(|row| row.span_name == "llm:count_tokens")
+    })
+    .await
+    .expect("Failed to fetch anthropic count tokens span");
+
+    let mut count_spans: Vec<_> = spans
+        .into_iter()
+        .filter(|span| span.span_name == "llm:count_tokens")
+        .collect();
+
+    for span in &mut count_spans {
+        span.span_attributes.retain(|(k, _)| {
+            k.starts_with("gen_ai.")
+                || k.starts_with("client.")
+                || k == "llm.auth_forwarded"
+                || k.starts_with("llm.count_tokens")
+        });
+        span.span_attributes.sort_by(|a, b| a.0.cmp(&b.0));
+        for attribute in &mut span.span_attributes {
+            match attribute.0.as_str() {
+                "client.group" => attribute.1 = "[CLIENT_GROUP]".to_string(),
+                "client.id" => attribute.1 = "[CLIENT_ID]".to_string(),
+                "llm.count_tokens.cache_creation" => attribute.1 = "[CACHE_CREATION]".to_string(),
+                "llm.count_tokens.cache_read" => attribute.1 = "[CACHE_READ]".to_string(),
+                "llm.count_tokens.input" => attribute.1 = "[INPUT_TOKENS]".to_string(),
+                _ => {}
+            }
+        }
+    }
+
+    for span in &mut count_spans {
+        span.trace_id = "[TRACE_ID]".to_string();
+        span.span_id = "[SPAN_ID]".to_string();
+        span.parent_span_id = "[PARENT_SPAN_ID]".to_string();
+        span.service_name = "[SERVICE_NAME]".to_string();
+    }
+
+    insta::assert_json_snapshot!(count_spans, @r#"
+    [
+      {
+        "TraceId": "[TRACE_ID]",
+        "SpanId": "[SPAN_ID]",
+        "ParentSpanId": "[PARENT_SPAN_ID]",
+        "SpanName": "llm:count_tokens",
+        "ServiceName": "[SERVICE_NAME]",
+        "SpanAttributes": [
+          [
+            "client.group",
+            "[CLIENT_GROUP]"
+          ],
+          [
+            "client.id",
+            "[CLIENT_ID]"
+          ],
+          [
+            "gen_ai.request.model",
+            "anthropic/claude-3-sonnet-20240229"
+          ],
+          [
+            "llm.auth_forwarded",
+            "false"
+          ],
+          [
+            "llm.count_tokens.cache_creation",
+            "[CACHE_CREATION]"
+          ],
+          [
+            "llm.count_tokens.cache_read",
+            "[CACHE_READ]"
+          ],
+          [
+            "llm.count_tokens.input",
+            "[INPUT_TOKENS]"
+          ]
+        ],
+        "StatusCode": "Unset"
+      }
+    ]
+    "#);
+}
+
+#[tokio::test]
 async fn llm_with_tools_adds_tool_attributes() {
     let service_name = unique_service_name("llm-trace-tools");
     let config = create_llm_tracing_config(&service_name);
@@ -730,6 +872,88 @@ async fn llm_span_has_http_parent_stream() {
     assert_eq!(
         llm_span.parent_span_id, http_span.span_id,
         "LLM streaming span should be a child of the HTTP span"
+    );
+}
+
+#[tokio::test]
+async fn count_tokens_span_has_http_parent() {
+    let service_name = unique_service_name("anthropic-trace-hierarchy");
+    let config = create_llm_tracing_config(&service_name);
+
+    let mut builder = TestServer::builder();
+    builder.spawn_llm(AnthropicMock::new("anthropic")).await;
+    let test_server = builder.build(&config).await;
+
+    let trace_id = format!("{:032x}", uuid::Uuid::new_v4().as_u128());
+    let parent_span_id = format!("{:016x}", rand::random::<u64>());
+    let traceparent = format!("00-{}-{}-01", trace_id, parent_span_id);
+
+    let request = json!({
+        "model": "anthropic/claude-3-sonnet-20240229",
+        "messages": [
+            {"role": "user", "content": "Trace hierarchy"}
+        ],
+        "max_tokens": 128
+    });
+
+    let (status, _body) = test_server
+        .count_tokens(request)
+        .header("traceparent", &traceparent)
+        .header("x-client-id", "hierarchy-client")
+        .header("x-client-group", "premium")
+        .send_raw()
+        .await;
+
+    assert_eq!(status, 200);
+
+    let clickhouse = create_clickhouse_client().await;
+
+    #[derive(Debug, Deserialize, Row)]
+    #[allow(dead_code)]
+    struct SimpleSpanRow {
+        #[serde(rename = "TraceId")]
+        trace_id: String,
+        #[serde(rename = "SpanId")]
+        span_id: String,
+        #[serde(rename = "ParentSpanId")]
+        parent_span_id: String,
+        #[serde(rename = "SpanName")]
+        span_name: String,
+    }
+
+    let query = formatdoc! {r#"
+        SELECT
+            TraceId,
+            SpanId,
+            ParentSpanId,
+            SpanName
+        FROM otel_traces
+        WHERE
+            ServiceName = '{service_name}'
+            AND TraceId = '{trace_id}'
+        ORDER BY Timestamp ASC
+        LIMIT 10
+    "#};
+
+    let spans = wait_for_metrics_matching::<SimpleSpanRow, _>(&clickhouse, &query, |rows| rows.len() >= 2)
+        .await
+        .expect("Failed to fetch hierarchy spans");
+
+    let http_span = spans
+        .iter()
+        .find(|span| span.span_name.starts_with("POST "))
+        .expect("HTTP span not found");
+    let count_span = spans
+        .iter()
+        .find(|span| span.span_name == "llm:count_tokens")
+        .expect("Count tokens span not found");
+
+    assert_eq!(http_span.trace_id, trace_id);
+    assert_eq!(count_span.trace_id, trace_id);
+    assert_eq!(http_span.parent_span_id, parent_span_id);
+    assert_eq!(
+        count_span.parent_span_id, http_span.span_id,
+        "Count tokens span should be child of HTTP span"
     );
 }
 

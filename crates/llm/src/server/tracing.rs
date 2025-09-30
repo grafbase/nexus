@@ -7,6 +7,7 @@ use telemetry::tracing;
 
 use crate::{
     messages::{
+        anthropic::CountTokensResponse,
         openai::ModelsResponse,
         unified::{UnifiedRequest, UnifiedResponse},
     },
@@ -167,5 +168,56 @@ where
                 Err(e)
             }
         }
+    }
+
+    async fn count_tokens(
+        &self,
+        request: UnifiedRequest,
+        context: &RequestContext,
+    ) -> crate::Result<CountTokensResponse> {
+        let span = tracing::create_child_span_if_sampled("llm:count_tokens");
+
+        span.add_property(|| ("gen_ai.request.model", request.model.clone()));
+
+        if let Some(ref client_identity) = context.client_identity {
+            span.add_property(|| ("client.id", client_identity.client_id.clone()));
+
+            if let Some(ref group) = client_identity.group {
+                span.add_property(|| ("client.group", group.clone()));
+            }
+        }
+
+        let auth_forwarded = context.api_key.is_some();
+        span.add_property(|| ("llm.auth_forwarded", auth_forwarded.to_string()));
+
+        let fut = async move {
+            let result = self.inner.count_tokens(request, context).await;
+
+            match &result {
+                Ok(response) => {
+                    LocalSpan::add_property(|| ("llm.count_tokens.input", response.input_tokens.to_string()));
+                    LocalSpan::add_property(|| {
+                        (
+                            "llm.count_tokens.cache_creation",
+                            response.cache_creation_input_tokens.to_string(),
+                        )
+                    });
+                    LocalSpan::add_property(|| {
+                        (
+                            "llm.count_tokens.cache_read",
+                            response.cache_read_input_tokens.to_string(),
+                        )
+                    });
+                }
+                Err(error) => {
+                    LocalSpan::add_property(|| ("error", "true"));
+                    LocalSpan::add_property(|| ("error.type", error.error_type().to_string()));
+                }
+            }
+
+            result
+        };
+
+        fut.in_span(span).await
     }
 }

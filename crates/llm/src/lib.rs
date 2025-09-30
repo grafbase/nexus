@@ -3,7 +3,7 @@ use std::{convert::Infallible, sync::Arc};
 use axum::{
     Router,
     extract::{Extension, Json, State},
-    http::HeaderMap,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Sse, sse::Event},
     routing::{get, post},
 };
@@ -21,7 +21,7 @@ pub mod token_counter;
 pub use error::{AnthropicResult, LlmError, LlmResult as Result};
 use server::{LlmHandler, LlmServerBuilder};
 
-use crate::messages::unified;
+use crate::{error::AnthropicErrorResponse, messages::unified};
 
 /// Creates an axum router for LLM endpoints.
 pub async fn router(config: &config::Config) -> anyhow::Result<Router> {
@@ -46,6 +46,7 @@ pub async fn router(config: &config::Config) -> anyhow::Result<Router> {
     if config.llm.protocols.anthropic.enabled {
         let anthropic_routes = Router::new()
             .route("/v1/messages", post(anthropic_messages))
+            .route("/v1/messages/count_tokens", post(count_tokens))
             .route("/v1/models", get(anthropic_list_models))
             .with_state(server.clone());
 
@@ -201,6 +202,27 @@ async fn anthropic_messages(
 
         Ok(Json(anthropic_response).into_response())
     }
+}
+
+/// Handle Anthropic count tokens requests.
+async fn count_tokens(
+    State(server): State<Arc<LlmHandler>>,
+    headers: HeaderMap,
+    client_identity: Option<Extension<config::ClientIdentity>>,
+    Sonic(request): Sonic<anthropic::AnthropicChatRequest>,
+) -> AnthropicResult<impl IntoResponse> {
+    // Maintain consistent context extraction even while the endpoint is unimplemented.
+    let context = request::extract_context(&headers, client_identity.map(|ext| ext.0));
+
+    let mut unified_request = unified::UnifiedRequest::from(request);
+    unified_request.stream = Some(false);
+
+    let response = server
+        .count_tokens(unified_request, &context)
+        .await
+        .map_err(AnthropicErrorResponse::from)?;
+
+    Ok((StatusCode::OK, Json(response)).into_response())
 }
 
 /// Handle Anthropic list models requests.

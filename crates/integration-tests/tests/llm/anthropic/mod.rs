@@ -1,5 +1,6 @@
 pub mod basic;
 pub mod claude_code_compatibility;
+pub mod count_tokens;
 pub mod duplicate_tool_ids;
 pub mod edge_cases;
 pub mod mixed_tool_result_text;

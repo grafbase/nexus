@@ -36,3 +36,4 @@ devenv.local.nix
 # Keep this to save agent plan to the working directory while working.
 PLAN.md
 .claude/settings.local.json
+.claude/settings.json

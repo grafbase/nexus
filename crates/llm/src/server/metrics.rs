@@ -5,6 +5,7 @@ mod stream;
 use crate::{
     error::LlmError,
     messages::{
+        anthropic::CountTokensResponse,
         openai::ModelsResponse,
         unified::{UnifiedRequest, UnifiedResponse},
     },
@@ -16,7 +17,7 @@ use opentelemetry::metrics::Counter;
 use stream::MetricsStream;
 use telemetry::metrics::{
     GEN_AI_CLIENT_INPUT_TOKEN_USAGE, GEN_AI_CLIENT_OPERATION_DURATION, GEN_AI_CLIENT_OUTPUT_TOKEN_USAGE,
-    GEN_AI_CLIENT_TIME_TO_FIRST_TOKEN, GEN_AI_CLIENT_TOTAL_TOKEN_USAGE, Recorder,
+    GEN_AI_CLIENT_TIME_TO_FIRST_TOKEN, GEN_AI_CLIENT_TOTAL_TOKEN_USAGE, GEN_AI_TOKEN_COUNT_DURATION, Recorder,
 };
 
 /// Wrapper that adds metrics recording to the LLM server
@@ -116,6 +117,29 @@ where
         let metrics_stream = MetricsStream::new(stream, operation_recorder, ttft_recorder, token_config);
 
         Ok(Box::pin(metrics_stream))
+    }
+
+    async fn count_tokens(
+        &self,
+        request: UnifiedRequest,
+        context: &RequestContext,
+    ) -> crate::Result<CountTokensResponse> {
+        let mut recorder = create_recorder(GEN_AI_TOKEN_COUNT_DURATION, &request.model, context);
+        let result = self.inner.count_tokens(request.clone(), context).await;
+
+        match &result {
+            Ok(_) => {
+                recorder.push_attribute("gen_ai.response", "success");
+            }
+            Err(error) => {
+                recorder.push_attribute("gen_ai.response", "error");
+                recorder.push_attribute("error.type", error_type(error));
+            }
+        }
+
+        recorder.record();
+
+        result
     }
 }
 

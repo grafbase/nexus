@@ -21,6 +21,7 @@ use tokio::sync::watch;
 use crate::{
     error::LlmError,
     messages::{
+        anthropic::CountTokensResponse,
         openai::{Model, ModelsResponse, ObjectType},
         unified::{UnifiedRequest, UnifiedResponse},
     },
@@ -78,76 +79,6 @@ impl fmt::Debug for ResolvedModelRoute<'_, '_> {
 }
 
 impl LlmServer {
-    /// Process a unified chat completion request (protocol-agnostic).
-    pub async fn unified_completions(
-        &self,
-        request: UnifiedRequest,
-        context: &RequestContext,
-    ) -> crate::Result<UnifiedResponse> {
-        // Resolve routing for the requested model
-        let original_model = request.model.clone();
-        let route = self.resolve_model_route(&original_model)?;
-
-        // Check token rate limits first
-        self.check_and_enforce_rate_limit(&request, context, &route).await?;
-
-        let provider = self.shared.providers[route.provider_index].as_ref();
-
-        // Create a modified request with the routed model name
-        let mut modified_request = request;
-        modified_request.model = route.model_name.to_string();
-
-        // Call provider with unified types directly
-        let unified_response = provider.chat_completion(modified_request, context).await?;
-
-        // Restore the full model name with provider prefix in the response
-        let mut final_response = unified_response;
-        final_response.model = original_model;
-
-        Ok(final_response)
-    }
-
-    /// Process a unified streaming chat completion request (protocol-agnostic).
-    pub async fn unified_completions_stream(
-        &self,
-        request: UnifiedRequest,
-        context: &RequestContext,
-    ) -> crate::Result<ChatCompletionStream> {
-        // Resolve routing for the requested model
-        let original_model = request.model.clone();
-        let route = self.resolve_model_route(&original_model)?;
-
-        // Check token rate limits first
-        self.check_and_enforce_rate_limit(&request, context, &route).await?;
-
-        let provider = self.shared.providers[route.provider_index].as_ref();
-
-        // Check if provider supports streaming
-        if !provider.supports_streaming() {
-            let provider_name = route.provider_name();
-            log::debug!("Provider '{provider_name}' does not support streaming");
-            return Err(LlmError::StreamingNotSupported);
-        }
-
-        // Create a modified request with the stripped model name
-        let mut modified_request = request;
-        modified_request.model = route.model_name.to_string();
-
-        // Get the stream from the provider
-        let stream = provider.chat_completion_stream(modified_request, context).await?;
-
-        // Transform the stream to restore the full model name with prefix
-        let transformed_stream = stream.map(move |chunk_result| {
-            chunk_result.map(|mut chunk| {
-                // Restore the full model name with provider prefix
-                chunk.model = original_model.clone().into();
-                chunk
-            })
-        });
-
-        Ok(Box::pin(transformed_stream))
-    }
-
     /// Check token rate limits for a request.
     ///
     /// Returns the duration to wait before retrying if rate limited, or None if the request can proceed.
@@ -346,7 +277,27 @@ impl LlmService for LlmServer {
     }
 
     async fn completions(&self, request: UnifiedRequest, context: &RequestContext) -> crate::Result<UnifiedResponse> {
-        self.unified_completions(request, context).await
+        // Resolve routing for the requested model
+        let original_model = request.model.clone();
+        let route = self.resolve_model_route(&original_model)?;
+
+        // Check token rate limits first
+        self.check_and_enforce_rate_limit(&request, context, &route).await?;
+
+        let provider = self.shared.providers[route.provider_index].as_ref();
+
+        // Create a modified request with the routed model name
+        let mut modified_request = request;
+        modified_request.model = route.model_name.to_string();
+
+        // Call provider with unified types directly
+        let unified_response = provider.chat_completion(modified_request, context).await?;
+
+        // Restore the full model name with provider prefix in the response
+        let mut final_response = unified_response;
+        final_response.model = original_model;
+
+        Ok(final_response)
     }
 
     async fn completions_stream(
@@ -354,7 +305,53 @@ impl LlmService for LlmServer {
         request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
-        self.unified_completions_stream(request, context).await
+        // Resolve routing for the requested model
+        let original_model = request.model.clone();
+        let route = self.resolve_model_route(&original_model)?;
+
+        // Check token rate limits first
+        self.check_and_enforce_rate_limit(&request, context, &route).await?;
+
+        let provider = self.shared.providers[route.provider_index].as_ref();
+
+        // Check if provider supports streaming
+        if !provider.supports_streaming() {
+            let provider_name = route.provider_name();
+            log::debug!("Provider '{provider_name}' does not support streaming");
+            return Err(LlmError::StreamingNotSupported);
+        }
+
+        // Create a modified request with the stripped model name
+        let mut modified_request = request;
+        modified_request.model = route.model_name.to_string();
+
+        // Get the stream from the provider
+        let stream = provider.chat_completion_stream(modified_request, context).await?;
+
+        // Transform the stream to restore the full model name with prefix
+        let transformed_stream = stream.map(move |chunk_result| {
+            chunk_result.map(|mut chunk| {
+                // Restore the full model name with provider prefix
+                chunk.model = original_model.clone().into();
+                chunk
+            })
+        });
+
+        Ok(Box::pin(transformed_stream))
+    }
+
+    async fn count_tokens(
+        &self,
+        request: UnifiedRequest,
+        context: &RequestContext,
+    ) -> crate::Result<CountTokensResponse> {
+        let original_model = request.model.clone();
+        let route = self.resolve_model_route(&original_model)?;
+
+        let mut modified_request = request;
+        modified_request.model = route.model_name.to_string();
+
+        route.provider().count_tokens(modified_request, context).await
     }
 }
 
