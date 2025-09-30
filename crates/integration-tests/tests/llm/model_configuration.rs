@@ -21,7 +21,7 @@ async fn model_rename_works() {
 
     let server = builder.build("").await;
 
-    // List models should show user-facing names
+    // List models should show discovered identifiers alongside user-facing names
     let models = server.openai_list_models().await;
     insta::assert_json_snapshot!(models, {
         ".data[].created" => "[created]"
@@ -29,6 +29,18 @@ async fn model_rename_works() {
     {
       "object": "list",
       "data": [
+        {
+          "id": "gpt-3.5-turbo",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "openai"
+        },
+        {
+          "id": "gpt-4",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "openai"
+        },
         {
           "id": "openai/fast-model",
           "object": "model",
@@ -96,7 +108,7 @@ async fn unconfigured_model_returns_404() {
 
     let server = builder.build("").await;
 
-    // List models should only show configured model
+    // List models should include discovered models plus configured entries
     let models = server.openai_list_models().await;
     insta::assert_json_snapshot!(models, {
         ".data[].created" => "[created]"
@@ -104,6 +116,18 @@ async fn unconfigured_model_returns_404() {
     {
       "object": "list",
       "data": [
+        {
+          "id": "gpt-3.5-turbo",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "openai"
+        },
+        {
+          "id": "gpt-4",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "openai"
+        },
         {
           "id": "openai/gpt-4",
           "object": "model",
@@ -147,20 +171,36 @@ async fn unconfigured_model_returns_404() {
     }
     "#);
 
-    // Unconfigured model should return 404
+    // Discovered model without explicit config should still resolve
     let request = json!({
         "model": "openai/gpt-3.5-turbo",
         "messages": [{"role": "user", "content": "Hello"}]
     });
-    let (status, body) = server.openai_completions(request).send_raw().await;
+    let response = server.openai_completions(request).send().await;
 
-    assert_eq!(status, 404);
-    insta::assert_json_snapshot!(body, @r#"
+    insta::assert_json_snapshot!(response, {
+        ".id" => "[id]",
+        ".created" => "[created]"
+    }, @r#"
     {
-      "error": {
-        "message": "Model 'Model 'gpt-3.5-turbo' is not configured' not found",
-        "type": "not_found_error",
-        "code": 404
+      "id": "[id]",
+      "object": "chat.completion",
+      "created": "[created]",
+      "model": "openai/gpt-3.5-turbo",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "Hello! I'm a test LLM assistant. How can I help you today?"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 10,
+        "completion_tokens": 15,
+        "total_tokens": 25
       }
     }
     "#);
@@ -197,6 +237,30 @@ async fn multiple_providers_with_different_models() {
     {
       "object": "list",
       "data": [
+        {
+          "id": "claude-3-opus-20240229",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "anthropic"
+        },
+        {
+          "id": "gemini-pro",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "google"
+        },
+        {
+          "id": "gpt-3.5-turbo",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "openai"
+        },
+        {
+          "id": "gpt-4",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "openai"
+        },
         {
           "id": "anthropic/claude-3-opus-20240229",
           "object": "model",
@@ -324,30 +388,24 @@ async fn multiple_providers_with_different_models() {
 }
 
 #[tokio::test]
-async fn provider_with_no_models_returns_error() {
-    // This test verifies that configuration validation enforces Phase 3 rules
-
+async fn provider_with_no_models_relies_on_discovery() {
     use config::Config;
 
     let config_str = indoc! {r#"
+        [llm.protocols.openai]
+        enabled = true
+
         [llm.providers.openai]
         type = "openai"
         api_key = "test-key"
-        # No models configured - should fail to parse
+        # No models configured – discovery should list everything
     "#};
 
-    // Parsing should fail because neither models nor model_pattern is configured
-    let result: Result<Config, _> = toml::from_str(config_str);
+    let config: Config = toml::from_str(config_str).expect("config should parse without models or filter");
+    let provider = config.llm.providers.get("openai").expect("provider should exist");
 
-    assert!(result.is_err());
-    let error_msg = result.unwrap_err().to_string();
-    insta::assert_snapshot!(error_msg, @r"
-    TOML parse error at line 1, column 1
-      |
-    1 | [llm.providers.openai]
-      | ^^^^^^^^^^^^^^^^^^^^^^
-    model_pattern or at least one model must be configured
-    ");
+    assert!(provider.model_filter().is_none());
+    assert!(provider.models().is_empty());
 }
 
 #[tokio::test]

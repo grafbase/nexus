@@ -1,17 +1,17 @@
-//! Tests for rate limiting with pattern-based model routing
+//! Tests for rate limiting with filter-based model routing
 
 use indoc::indoc;
 use integration_tests::TestServer;
 use serde_json::json;
 
 #[tokio::test]
-async fn rate_limiting_works_with_pattern_routing() {
+async fn rate_limiting_works_with_filter_routing() {
     use integration_tests::llms::OpenAIMock;
 
     // Set up a mock that will handle the requests
     let mock = OpenAIMock::new("openai")
         .with_models(vec!["gpt-4o-mini".to_string()])
-        .with_model_pattern("^gpt-4.*")
+        .with_model_filter("^gpt-4.*")
         .with_response("Hello", "Response");
 
     let mut builder = TestServer::builder();
@@ -29,9 +29,9 @@ async fn rate_limiting_works_with_pattern_routing() {
 
     let server = builder.build(config).await;
 
-    // First request with pattern-matched model should succeed
+    // First request with filter-matched model should succeed
     let request = json!({
-        "model": "gpt-4o-mini",  // Matches pattern ^gpt-4.*
+        "model": "gpt-4o-mini",  // Matches filter ^gpt-4.*
         "messages": [{"role": "user", "content": "Hello"}]
     });
 
@@ -69,8 +69,8 @@ async fn rate_limiting_works_with_pattern_routing() {
     }
     "###);
 
-    // Repeated pattern requests should eventually exhaust the provider-level bucket
-    let mut pattern_rate_limited_body = None;
+    // Repeated filter requests should eventually exhaust the provider-level bucket
+    let mut filter_rate_limited_body = None;
     for _ in 0..20 {
         let (status, body) = server
             .openai_completions(request.clone())
@@ -79,15 +79,15 @@ async fn rate_limiting_works_with_pattern_routing() {
             .await;
 
         if status == 429 {
-            pattern_rate_limited_body = Some(body);
+            filter_rate_limited_body = Some(body);
             break;
         }
     }
 
-    let pattern_rate_limited_body =
-        pattern_rate_limited_body.expect("expected pattern-based routing to hit the provider token limit");
+    let filter_rate_limited_body =
+        filter_rate_limited_body.expect("expected filter-based routing to hit the provider token limit");
 
-    insta::assert_json_snapshot!(pattern_rate_limited_body, @r###"
+    insta::assert_json_snapshot!(filter_rate_limited_body, @r###"
     {
       "error": {
         "message": "Rate limit exceeded: Token rate limit exceeded. Please try again later.",
@@ -168,7 +168,7 @@ async fn rate_limiting_with_model_specific_limits() {
     // Set up a mock with multiple models
     let mock = OpenAIMock::new("openai")
         .with_models(vec!["gpt-4o".to_string(), "gpt-3.5-turbo".to_string()])
-        .with_model_pattern("^gpt-.*")
+        .with_model_filter("^gpt-.*")
         .with_response("Hello", "Response");
 
     let mut builder = TestServer::builder();
@@ -194,7 +194,7 @@ async fn rate_limiting_with_model_specific_limits() {
 
     let server = builder.build(config).await;
 
-    // Test that gpt-4o has stricter limit (50 tokens) even when accessed via pattern
+    // Test that gpt-4o has stricter limit (50 tokens) even when accessed via filter
     let limited_request = json!({
         "model": "gpt-4o",
         "messages": [{"role": "user", "content": "Hello"}]
@@ -227,10 +227,10 @@ async fn rate_limiting_with_model_specific_limits() {
     }
     "###);
 
-    // Test that other pattern-matched models use provider default (1000 tokens)
+    // Test that other filter-matched models use provider default (1000 tokens)
     let small_content = "Hello, world!";
     let request = json!({
-        "model": "gpt-3.5-turbo",  // Matches pattern, uses provider default
+        "model": "gpt-3.5-turbo",  // Matches filter, uses provider default
         "messages": [{"role": "user", "content": small_content}]
     });
 

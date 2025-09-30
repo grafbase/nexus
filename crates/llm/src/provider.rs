@@ -9,22 +9,6 @@ mod token;
 pub(crate) use model_manager::ModelManager;
 
 use async_trait::async_trait;
-use config::ModelPattern;
-
-/// Resolves the model name if it's not a pattern match.
-/// Mutates the request.model in place if resolution is needed.
-pub(crate) fn resolve_model(
-    request: &mut crate::messages::unified::UnifiedRequest,
-    pattern: Option<&ModelPattern>,
-    model_manager: &ModelManager,
-) -> crate::Result<()> {
-    if !matches!(pattern, Some(p) if p.is_match(&request.model)) {
-        request.model = model_manager.resolve_model(&request.model).ok_or_else(|| {
-            crate::error::LlmError::ModelNotFound(format!("Model '{}' is not configured", request.model))
-        })?;
-    }
-    Ok(())
-}
 use futures::Stream;
 use std::pin::Pin;
 
@@ -87,10 +71,6 @@ pub(crate) trait Provider: Send + Sync {
     }
 
     /// List available models for this provider.
-    ///
-    /// If model_pattern is configured: fetches models from the provider's API,
-    /// filters by the pattern, AND includes explicitly configured models.
-    /// If no model_pattern: returns only explicitly configured models.
     async fn list_models(&self) -> anyhow::Result<Vec<Model>>;
 
     /// Get the provider name.

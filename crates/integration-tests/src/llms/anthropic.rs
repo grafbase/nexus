@@ -23,7 +23,7 @@ pub struct AnthropicMock {
     name: String,
     models: Vec<String>,
     model_configs: Option<Vec<ModelConfig>>,
-    model_pattern: Option<String>,
+    model_filter: Option<String>,
     custom_responses: HashMap<String, String>,
     streaming_enabled: bool,
     tool_response: Option<ToolCallResponse>,
@@ -49,7 +49,7 @@ impl AnthropicMock {
                 "claude-3-haiku-20240307".to_string(),
             ],
             model_configs: None,
-            model_pattern: None,
+            model_filter: None,
             custom_responses: HashMap::new(),
             streaming_enabled: false,
             tool_response: None,
@@ -72,8 +72,8 @@ impl AnthropicMock {
         self
     }
 
-    pub fn with_model_pattern(mut self, pattern: impl Into<String>) -> Self {
-        self.model_pattern = Some(pattern.into());
+    pub fn with_model_filter(mut self, pattern: impl Into<String>) -> Self {
+        self.model_filter = Some(pattern.into());
         self
     }
 
@@ -154,7 +154,7 @@ impl TestLlmProvider for AnthropicMock {
             address,
             provider_type: super::provider::ProviderType::Anthropic,
             model_configs,
-            model_pattern: self.model_pattern.clone(),
+            model_filter: self.model_filter.clone(),
         })
     }
 }

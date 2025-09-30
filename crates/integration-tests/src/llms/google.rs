@@ -22,8 +22,9 @@ use crate::headers::HeaderRecorder;
 pub struct GoogleMock {
     name: String,
     models: Vec<String>,
-    model_configs: Option<Vec<ModelConfig>>,
-    model_pattern: Option<String>,
+    model_configs: Vec<ModelConfig>,
+    custom_model_configs: bool,
+    model_filter: Option<String>,
     custom_responses: HashMap<String, String>,
     streaming_enabled: bool,
     streaming_chunks: Option<Vec<String>>,
@@ -43,8 +44,14 @@ impl GoogleMock {
                 "gemini-pro".to_string(),
                 "text-embedding-004".to_string(),
             ],
-            model_configs: None,
-            model_pattern: None,
+            model_configs: vec![
+                ModelConfig::new("gemini-1.5-flash"),
+                ModelConfig::new("gemini-1.5-pro"),
+                ModelConfig::new("gemini-pro"),
+                ModelConfig::new("text-embedding-004"),
+            ],
+            custom_model_configs: false,
+            model_filter: None,
             custom_responses: HashMap::new(),
             streaming_enabled: false,
             streaming_chunks: None,
@@ -61,17 +68,21 @@ impl GoogleMock {
     }
 
     pub fn with_models(mut self, models: Vec<String>) -> Self {
-        self.models = models;
+        self.models = models.clone();
+        if !self.custom_model_configs {
+            self.model_configs = models.into_iter().map(ModelConfig::new).collect();
+        }
         self
     }
 
     pub fn with_model_configs(mut self, configs: Vec<ModelConfig>) -> Self {
-        self.model_configs = Some(configs);
+        self.model_configs = configs;
+        self.custom_model_configs = true;
         self
     }
 
-    pub fn with_model_pattern(mut self, pattern: impl Into<String>) -> Self {
-        self.model_pattern = Some(pattern.into());
+    pub fn with_model_filter(mut self, pattern: impl Into<String>) -> Self {
+        self.model_filter = Some(pattern.into());
         self
     }
 
@@ -144,10 +155,7 @@ impl TestLlmProvider for GoogleMock {
     }
 
     fn model_configs(&self) -> Vec<ModelConfig> {
-        // Use explicit model configs if provided, otherwise generate from models list
-        self.model_configs
-            .clone()
-            .unwrap_or_else(|| self.models.iter().map(ModelConfig::new).collect())
+        self.model_configs.clone()
     }
 
     async fn spawn(self: Box<Self>) -> anyhow::Result<LlmProviderConfig> {
@@ -183,7 +191,7 @@ impl TestLlmProvider for GoogleMock {
             address,
             provider_type: super::provider::ProviderType::Google,
             model_configs,
-            model_pattern: self.model_pattern.clone(),
+            model_filter: self.model_filter.clone(),
         })
     }
 }

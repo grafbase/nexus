@@ -1,107 +1,197 @@
-use std::time::{Duration, Instant};
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
 
+use anyhow::anyhow;
+use config::LlmConfig;
 use futures::StreamExt;
-use tokio::sync::RwLock;
+use futures::stream::FuturesUnordered;
+use tokio::{sync::watch, task::JoinHandle, time};
 
-use crate::messages::openai::Model;
-use crate::provider::Provider;
+use crate::{messages::openai::Model, provider::Provider};
 
-/// Cache TTL - 5 minutes as per RFC.
-const CACHE_TTL: Duration = Duration::from_secs(300);
+/// Default refresh cadence for the background discovery loop.
+const DISCOVERY_INTERVAL: Duration = Duration::from_secs(300);
 
-/// Cache entry for all discovered models.
+/// Normalized metadata stored for each discovered model.
 #[derive(Clone, Debug)]
-struct CachedModels {
-    models: Vec<Model>,
-    cached_at: Instant,
+pub(crate) struct ModelInfo {
+    pub provider_name: String,
+    pub created: u64,
+    pub owned_by: String,
+    #[allow(dead_code)]
+    pub display_name: Option<String>,
 }
 
-/// Manages model discovery and caching for providers with pattern-based routing.
+/// Thread-safe mapping from model identifier to metadata.
+pub(crate) type ModelMap = Arc<BTreeMap<String, ModelInfo>>;
+
+#[derive(Clone)]
 pub(crate) struct ModelDiscovery {
-    /// Cache for all discovered models.
-    cache: RwLock<Option<CachedModels>>,
+    providers: Arc<Vec<Box<dyn Provider>>>,
+    config: Arc<LlmConfig>,
+    interval: Duration,
+}
+
+/// Successful provider fetch paired with its configuration index.
+struct ProviderModels {
+    index: usize,
+    name: String,
+    models: Vec<Model>,
+}
+
+/// Error reported by a provider while listing models.
+struct ProviderError {
+    name: String,
+    error: anyhow::Error,
 }
 
 impl ModelDiscovery {
-    /// Create a new model discovery manager.
-    pub fn new() -> Self {
+    /// Create a discovery coordinator using the default interval.
+    pub(crate) fn new(providers: Arc<Vec<Box<dyn Provider>>>, config: Arc<LlmConfig>) -> Self {
         Self {
-            cache: RwLock::new(None),
+            providers,
+            config,
+            interval: DISCOVERY_INTERVAL,
         }
     }
 
-    /// Get all models for the providers, including pattern-discovered and explicit models.
-    pub async fn get_all_models(&self, providers: &[Box<dyn Provider>]) -> Vec<Model> {
-        // Check cache first (read lock)
-        {
-            let cache = self.cache.read().await;
+    /// Perform a discovery pass and return the populated model map.
+    pub(crate) async fn fetch_models(&self) -> anyhow::Result<ModelMap> {
+        self.build_model_map()
+            .await
+            .map(Arc::new)
+            .map_err(|errors| self.aggregate_errors(errors))
+    }
 
-            if let Some(cached) = cache.as_ref()
-                && cached.cached_at.elapsed() < CACHE_TTL
-            {
-                return cached.models.clone();
+    /// Spawn a background task that refreshes models on a fixed interval.
+    ///
+    /// The loop exits automatically once every receiver drops the watch channel.
+    pub(crate) fn spawn_updater(&self, sender: watch::Sender<ModelMap>) -> JoinHandle<()> {
+        let discovery = self.clone();
+
+        tokio::spawn(async move {
+            let mut ticker = time::interval(discovery.interval);
+
+            loop {
+                ticker.tick().await;
+
+                match discovery.build_model_map().await {
+                    Ok(map) => {
+                        if sender.send(Arc::new(map)).is_err() {
+                            log::debug!("Model discovery watch channel closed; stopping background task");
+                            break;
+                        }
+                    }
+                    Err(errors) => {
+                        discovery.log_refresh_errors(errors);
+                    }
+                }
+            }
+        })
+    }
+
+    /// Build a fresh model map while collecting provider-level failures.
+    async fn build_model_map(&self) -> Result<BTreeMap<String, ModelInfo>, Vec<ProviderError>> {
+        let (mut provider_models, errors) = self.fetch_provider_models().await;
+
+        if !errors.is_empty() {
+            return Err(errors);
+        }
+
+        provider_models.sort_by_key(|entry| entry.index);
+
+        let mut map: BTreeMap<String, ModelInfo> = BTreeMap::new();
+
+        for ProviderModels { name, models, .. } in provider_models {
+            let filter = self
+                .config
+                .providers
+                .get(&name)
+                .and_then(|provider_config| provider_config.model_filter());
+
+            for model in models {
+                let is_discovered = !model.id.contains('/');
+
+                if is_discovered && filter.is_some_and(|regex| !regex.is_match(&model.id)) {
+                    continue;
+                }
+
+                if let Some(existing) = map.get(&model.id) {
+                    if is_discovered && existing.provider_name != name {
+                        log::warn!(
+                            "Model '{}' already claimed by provider '{}', skipping duplicate from provider '{}'",
+                            model.id,
+                            existing.provider_name,
+                            name
+                        );
+                    } else {
+                        log::debug!("Provider '{}' returned duplicate model '{}', skipping", name, model.id);
+                    }
+
+                    continue;
+                }
+
+                map.insert(
+                    model.id,
+                    ModelInfo {
+                        provider_name: name.clone(),
+                        created: model.created,
+                        owned_by: model.owned_by,
+                        display_name: None,
+                    },
+                );
             }
         }
 
-        // Acquire write lock to prevent thundering herd
-        let mut cache = self.cache.write().await;
+        Ok(map)
+    }
 
-        // Double-check: another thread might have refreshed the cache while we were waiting for the write lock
-        if let Some(cached) = cache.as_ref()
-            && cached.cached_at.elapsed() < CACHE_TTL
-        {
-            return cached.models.clone();
+    /// Fetch models from every provider concurrently, preserving config order.
+    async fn fetch_provider_models(&self) -> (Vec<ProviderModels>, Vec<ProviderError>) {
+        let mut futures = FuturesUnordered::new();
+
+        for (index, provider) in self.providers.iter().enumerate() {
+            let provider_ref = provider.as_ref();
+            let name = provider_ref.name().to_string();
+
+            futures.push(async move {
+                let result = provider_ref.list_models().await;
+                (index, name, result)
+            });
         }
 
-        // Now we're the only thread that will fetch models
-        let mut all_models = Vec::new();
+        let mut successes = Vec::new();
+        let mut errors = Vec::new();
 
-        // Fetch models from all providers in parallel
-        let mut futures = providers
-            .iter()
-            .map(|provider| async move {
-                let provider_name = provider.name();
-                (provider_name, provider.list_models().await)
-            })
-            .collect::<futures::stream::FuturesUnordered<_>>();
-
-        while let Some((provider_name, result)) = futures.next().await {
+        while let Some((index, name, result)) = futures.next().await {
             match result {
-                Ok(models) => {
-                    // Providers handle prefixing:
-                    // - Pattern-matched models: no prefix
-                    // - Explicit models: provider prefix added
-                    all_models.extend(models);
-                }
-                Err(e) => {
-                    log::warn!("Failed to fetch models for provider {provider_name}: {e}");
-                    // Continue with other providers
-                }
+                Ok(models) => successes.push(ProviderModels { index, name, models }),
+                Err(error) => errors.push(ProviderError { name, error }),
             }
         }
 
-        // Sort models for consistent ordering:
-        // - Pattern-matched models (no slash) sorted alphabetically
-        // - Explicit models (with slash) sorted alphabetically
-        all_models.sort_by(|a, b| {
-            let a_has_slash = a.id.contains('/');
-            let b_has_slash = b.id.contains('/');
+        (successes, errors)
+    }
 
-            match (a_has_slash, b_has_slash) {
-                // Both pattern-matched or both explicit - sort by id
-                (false, false) | (true, true) => a.id.cmp(&b.id),
-                // Pattern-matched (no slash) comes before explicit (with slash)
-                (false, true) => std::cmp::Ordering::Less,
-                (true, false) => std::cmp::Ordering::Greater,
-            }
-        });
+    /// Collapse provider errors into a single `anyhow::Error` while logging.
+    fn aggregate_errors(&self, errors: Vec<ProviderError>) -> anyhow::Error {
+        let mut error = anyhow!("model discovery failed for {} provider(s)", errors.len());
 
-        // Cache all models together (we already have the write lock)
-        *cache = Some(CachedModels {
-            models: all_models.clone(),
-            cached_at: Instant::now(),
-        });
+        for ProviderError {
+            name,
+            error: provider_error,
+        } in errors
+        {
+            log::error!("Failed to discover models for provider '{name}': {provider_error}");
+            error = error.context(format!("provider {name}: {provider_error}"));
+        }
 
-        all_models
+        error
+    }
+
+    /// Log refresh errors reported by the background loop and continue.
+    fn log_refresh_errors(&self, errors: Vec<ProviderError>) {
+        for ProviderError { name, error } in errors {
+            log::error!("Failed to refresh models for provider '{name}': {error}");
+        }
     }
 }

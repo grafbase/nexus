@@ -1,6 +1,7 @@
 mod input;
 mod output;
 
+use anyhow::{Context, anyhow};
 use async_trait::async_trait;
 use config::ApiProviderConfig;
 use reqwest::{Client, Method};
@@ -20,7 +21,7 @@ use crate::{
         openai::Model,
         unified::{UnifiedChunk, UnifiedRequest, UnifiedResponse},
     },
-    provider::{HttpProvider, ModelManager, Provider, http_client::default_http_client_builder, resolve_model, token},
+    provider::{HttpProvider, ModelManager, Provider, http_client::default_http_client_builder, token},
     request::RequestContext,
 };
 use config::HeaderRule;
@@ -64,6 +65,28 @@ impl GoogleProvider {
             config,
         })
     }
+
+    fn resolve_request_model(&self, request: &mut UnifiedRequest) -> crate::Result<()> {
+        if let Some(filter) = &self.config.model_filter
+            && filter.is_match(&request.model)
+        {
+            return Ok(());
+        }
+
+        if let Some(resolved_model) = self.model_manager.resolve_model(&request.model) {
+            request.model = resolved_model;
+            return Ok(());
+        }
+
+        if self.config.model_filter.is_none() {
+            return Ok(());
+        }
+
+        Err(LlmError::ModelNotFound(format!(
+            "Model '{}' is not configured",
+            request.model
+        )))
+    }
 }
 
 #[async_trait]
@@ -77,8 +100,8 @@ impl Provider for GoogleProvider {
         // Get the model config BEFORE resolving, so we lookup by the original alias
         let model_config = self.model_manager.get_model_config(&request.model);
 
-        // Resolve model if needed (pattern doesn't match or no pattern)
-        resolve_model(&mut request, self.config.model_pattern.as_ref(), &self.model_manager)?;
+        // Resolve model for configured aliases when discovery doesn't cover the request
+        self.resolve_request_model(&mut request)?;
 
         let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
@@ -170,56 +193,47 @@ impl Provider for GoogleProvider {
     }
 
     async fn list_models(&self) -> anyhow::Result<Vec<Model>> {
+        #[derive(serde::Deserialize)]
+        struct ModelsResponse {
+            models: Vec<ApiModel>,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct ApiModel {
+            name: String,
+        }
+
         let mut models = Vec::new();
 
-        // If model_pattern is configured, fetch from API and filter
-        if let Some(ref pattern) = self.config.model_pattern {
-            // Try to fetch models from Google AI API
-            if let Some(api_key) = self.config.api_key.as_ref() {
-                match self
-                    .client
-                    .get(format!("{}/models?key={}", self.base_url, api_key.expose_secret()))
-                    .send()
-                    .await
-                {
-                    Ok(response) if response.status().is_success() => {
-                        #[derive(serde::Deserialize)]
-                        struct ModelsResponse {
-                            models: Vec<ApiModel>,
-                        }
+        if let Some(api_key) = self.config.api_key.as_ref() {
+            let response = self
+                .client
+                .get(format!("{}/models?key={}", self.base_url, api_key.expose_secret()))
+                .send()
+                .await
+                .context("failed to request Google models")?;
 
-                        #[derive(serde::Deserialize)]
-                        struct ApiModel {
-                            name: String,
-                        }
-
-                        if let Ok(api_response) = response.json::<ModelsResponse>().await {
-                            let filtered_models = api_response
-                                .models
-                                .into_iter()
-                                .map(|m| {
-                                    // Extract model ID from name (format: "models/gemini-pro")
-                                    m.name.strip_prefix("models/").unwrap_or(&m.name).to_string()
-                                })
-                                .filter(|id| pattern.is_match(id))
-                                .map(|id| Model {
-                                    id,
-                                    object: crate::messages::openai::ObjectType::Model,
-                                    created: 0,
-                                    owned_by: "google".to_string(),
-                                });
-
-                            models.extend(filtered_models);
-                        }
-                    }
-                    Ok(response) => {
-                        log::debug!("Failed to fetch Google models: status {}", response.status());
-                    }
-                    Err(e) => {
-                        log::debug!("Failed to fetch Google models: {}", e);
-                    }
-                }
+            if !response.status().is_success() {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_else(|_| "<empty response>".to_string());
+                return Err(anyhow!("Google models request failed with status {status}: {body}"));
             }
+
+            let api_response: ModelsResponse = response
+                .json()
+                .await
+                .context("failed to deserialize Google models response")?;
+
+            models.extend(api_response.models.into_iter().map(|model| {
+                let id = model.name.strip_prefix("models/").unwrap_or(&model.name).to_string();
+
+                Model {
+                    id,
+                    object: crate::messages::openai::ObjectType::Model,
+                    created: 0,
+                    owned_by: "google".to_string(),
+                }
+            }));
         }
 
         // Always include explicitly configured models with provider prefix
@@ -242,8 +256,8 @@ impl Provider for GoogleProvider {
         // Get the model config BEFORE resolving, so we lookup by the original alias
         let model_config = self.model_manager.get_model_config(&request.model);
 
-        // Resolve model if needed (pattern doesn't match or no pattern)
-        resolve_model(&mut request, self.config.model_pattern.as_ref(), &self.model_manager)?;
+        // Resolve model for configured aliases when discovery doesn't cover the request
+        self.resolve_request_model(&mut request)?;
 
         let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 

@@ -1,27 +1,27 @@
-//! Tests for model discovery with pattern-based routing across all providers
+//! Tests for model discovery with regex-based routing across all providers
 
 use insta::assert_json_snapshot;
 use integration_tests::TestServer;
 use serde_json::json;
 
 #[tokio::test]
-async fn pattern_routing_works_for_all_provider_types() {
+async fn model_filter_routing_works_for_all_provider_types() {
     use integration_tests::llms::{AnthropicMock, GoogleMock, OpenAIMock};
 
-    // Set up mocks for all three provider types with pattern matching
+    // Set up mocks for all three provider types with regex filtering
     let openai_mock = OpenAIMock::new("openai")
         .with_models(vec!["gpt-4o".to_string(), "gpt-3.5-turbo".to_string()])
-        .with_model_pattern("^gpt-.*")
+        .with_model_filter("^gpt-.*")
         .with_response("test response", "OpenAI response");
 
     let anthropic_mock = AnthropicMock::new("anthropic")
         .with_models(vec!["claude-3-opus".to_string(), "claude-3-sonnet".to_string()])
-        .with_model_pattern("^claude-.*")
+        .with_model_filter("^claude-.*")
         .with_response("test response", "Anthropic response");
 
     let google_mock = GoogleMock::new("google")
         .with_models(vec!["gemini-pro".to_string(), "gemini-ultra".to_string()])
-        .with_model_pattern("^gemini-.*")
+        .with_model_filter("^gemini-.*")
         .with_response("test response", "Google response");
 
     let mut builder = TestServer::builder();
@@ -30,7 +30,7 @@ async fn pattern_routing_works_for_all_provider_types() {
     builder.spawn_llm(google_mock).await;
     let server = builder.build("").await;
 
-    // Test OpenAI pattern routing - should get successful response
+    // Test OpenAI regex routing - should get successful response
     let request = json!({
         "model": "gpt-4o",
         "messages": [{"role": "user", "content": "test"}]
@@ -63,7 +63,7 @@ async fn pattern_routing_works_for_all_provider_types() {
     }
     "#);
 
-    // Test Anthropic pattern routing
+    // Test Anthropic regex routing
     let request = json!({
         "model": "claude-3-opus",
         "messages": [{"role": "user", "content": "test"}]
@@ -96,7 +96,7 @@ async fn pattern_routing_works_for_all_provider_types() {
     }
     "#);
 
-    // Test Google pattern routing
+    // Test Google regex routing
     let request = json!({
         "model": "gemini-pro",
         "messages": [{"role": "user", "content": "test"}]
@@ -131,18 +131,18 @@ async fn pattern_routing_works_for_all_provider_types() {
 }
 
 #[tokio::test]
-async fn pattern_routing_respects_provider_order() {
+async fn model_filter_routing_respects_provider_order() {
     use integration_tests::llms::OpenAIMock;
 
     let specific_mock = OpenAIMock::new("aaa_specific")
         .with_models(vec!["gpt-4o-mini".to_string()])
-        .with_model_pattern("^gpt-4o-mini$")
-        .with_response("pattern-hit", "specific provider response");
+        .with_model_filter("^gpt-4o-mini$")
+        .with_response("filter-hit", "specific provider response");
 
     let broad_mock = OpenAIMock::new("zzz_broad")
         .with_models(vec!["gpt-4o-mini".to_string(), "gpt-4o".to_string()])
-        .with_model_pattern("^gpt-.*")
-        .with_response("pattern-hit", "broad provider response");
+        .with_model_filter("^gpt-.*")
+        .with_response("filter-hit", "broad provider response");
 
     let mut builder = TestServer::builder();
     builder.spawn_llm(specific_mock).await;
@@ -151,7 +151,7 @@ async fn pattern_routing_respects_provider_order() {
 
     let request = json!({
         "model": "gpt-4o-mini",
-        "messages": [{"role": "user", "content": "pattern-hit"}]
+        "messages": [{"role": "user", "content": "filter-hit"}]
     });
 
     let response = server.openai_completions(request).send().await;
@@ -185,7 +185,7 @@ async fn pattern_routing_respects_provider_order() {
 
     let request = json!({
         "model": "gpt-4o",
-        "messages": [{"role": "user", "content": "pattern-hit"}]
+        "messages": [{"role": "user", "content": "filter-hit"}]
     });
 
     let response = server.openai_completions(request).send().await;
@@ -219,12 +219,12 @@ async fn pattern_routing_respects_provider_order() {
 }
 
 #[tokio::test]
-async fn pattern_routing_is_case_insensitive() {
+async fn model_filter_routing_is_case_insensitive() {
     use integration_tests::llms::OpenAIMock;
 
     let mock = OpenAIMock::new("openai")
-        .with_models(vec!["gpt-4o-mini".to_string()])
-        .with_model_pattern("^gpt-4o.*")
+        .with_models(vec!["GPT-4O-MINI".to_string()])
+        .with_model_filter("^gpt-4o.*")
         .with_response("Hello", "Case insensitive response");
 
     let mut builder = TestServer::builder();
@@ -267,14 +267,14 @@ async fn pattern_routing_is_case_insensitive() {
 }
 
 #[tokio::test]
-async fn pattern_routing_supports_streaming() {
+async fn model_filter_routing_supports_streaming() {
     use integration_tests::llms::OpenAIMock;
 
     let mock = OpenAIMock::new("openai")
         .with_models(vec!["gpt-4o-mini".to_string()])
-        .with_model_pattern("^gpt-4o.*")
+        .with_model_filter("^gpt-4o.*")
         .with_streaming()
-        .with_streaming_chunks(vec!["Hello", " ", "pattern routing!"]);
+        .with_streaming_chunks(vec!["Hello", " ", "model filter routing!"]);
 
     let mut builder = TestServer::builder();
     builder.spawn_llm(mock).await;
@@ -300,14 +300,14 @@ async fn pattern_routing_supports_streaming() {
         })
         .collect();
 
-    insta::assert_snapshot!(assembled, @"Hello pattern routing!");
+    insta::assert_snapshot!(assembled, @"Hello model filter routing!");
 }
 
 #[tokio::test]
-async fn mixed_pattern_and_explicit_models() {
+async fn mixed_filter_and_explicit_models() {
     use integration_tests::llms::OpenAIMock;
 
-    // Set up a mock with both pattern and explicit models
+    // Set up a mock with both filter-matched and explicit models
     let hybrid_mock = OpenAIMock::new("hybrid")
         .with_models(vec![
             "gpt-4o-mini".to_string(),
@@ -315,7 +315,7 @@ async fn mixed_pattern_and_explicit_models() {
             "custom-model".to_string(),
             "dall-e-3".to_string(),
         ])
-        .with_model_pattern("^gpt-4.*")
+        .with_model_filter("^gpt-4.*")
         .with_model_configs(vec![
             integration_tests::llms::ModelConfig::new("gpt-3.5-turbo"),
             integration_tests::llms::ModelConfig::new("custom-model"),
@@ -326,7 +326,7 @@ async fn mixed_pattern_and_explicit_models() {
     builder.spawn_llm(hybrid_mock).await;
     let server = builder.build("").await;
 
-    // Pattern-matched model (gpt-4o-mini matches ^gpt-4.*)
+    // Filter-matched model (gpt-4o-mini matches ^gpt-4.*)
     let request = json!({
         "model": "gpt-4o-mini",
         "messages": [{"role": "user", "content": "test"}]
@@ -359,7 +359,7 @@ async fn mixed_pattern_and_explicit_models() {
     }
     "###);
 
-    // Explicit model that doesn't match pattern
+    // Explicit model that doesn't match the filter
     let request = json!({
         "model": "hybrid/gpt-3.5-turbo",
         "messages": [{"role": "user", "content": "test"}]
@@ -425,7 +425,7 @@ async fn mixed_pattern_and_explicit_models() {
     }
     "###);
 
-    // Model that doesn't match pattern or explicit config
+    // Model that doesn't match the filter or explicit config
     let request = json!({
         "model": "dall-e-3",
         "messages": [{"role": "user", "content": "test"}]

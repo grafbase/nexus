@@ -12,6 +12,7 @@ anyhow.workspace = true
 ascii = { workspace = true, features = ["serde"] }
 duration-str.workspace = true
 http.workspace = true
+indexmap.workspace = true
 indoc.workspace = true
 log.workspace = true
 opentelemetry-otlp.workspace = true

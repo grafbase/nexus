@@ -122,6 +122,7 @@ pub async fn serve(
             }
             Err(e) => {
                 log::error!("Failed to initialize LLM router: {e}");
+                return Err(anyhow!("Failed to initialize LLM router: {e}"));
             }
         }
     } else {

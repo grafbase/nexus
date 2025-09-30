@@ -21,32 +21,58 @@ async fn list_models() {
     let server = builder.build("").await;
     let body = server.openai_list_models().await;
 
-    insta::assert_json_snapshot!(body, @r#"
+    insta::assert_json_snapshot!(body, {
+        ".data[].created" => "[created]"
+    }, @r#"
     {
       "object": "list",
       "data": [
         {
+          "id": "gemini-1.5-flash",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "google"
+        },
+        {
+          "id": "gemini-1.5-pro",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "google"
+        },
+        {
+          "id": "gemini-pro",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "google"
+        },
+        {
+          "id": "text-embedding-004",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "google"
+        },
+        {
           "id": "google/gemini-1.5-flash",
           "object": "model",
-          "created": 1719475200,
+          "created": "[created]",
           "owned_by": "google"
         },
         {
           "id": "google/gemini-1.5-pro",
           "object": "model",
-          "created": 1719475200,
+          "created": "[created]",
           "owned_by": "google"
         },
         {
           "id": "google/gemini-pro",
           "object": "model",
-          "created": 1719475200,
+          "created": "[created]",
           "owned_by": "google"
         },
         {
           "id": "google/text-embedding-004",
           "object": "model",
-          "created": 1719475200,
+          "created": "[created]",
           "owned_by": "google"
         }
       ]
@@ -437,20 +463,34 @@ async fn custom_models() {
     let server = builder.build("").await;
     let body = server.openai_list_models().await;
 
-    insta::assert_json_snapshot!(body, @r#"
+    insta::assert_json_snapshot!(body, {
+        ".data[].created" => "[created]"
+    }, @r#"
     {
       "object": "list",
       "data": [
         {
+          "id": "gemini-custom",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "google"
+        },
+        {
+          "id": "gemini-experimental",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "google"
+        },
+        {
           "id": "google/gemini-custom",
           "object": "model",
-          "created": 1719475200,
+          "created": "[created]",
           "owned_by": "google"
         },
         {
           "id": "google/gemini-experimental",
           "object": "model",
-          "created": 1719475200,
+          "created": "[created]",
           "owned_by": "google"
         }
       ]

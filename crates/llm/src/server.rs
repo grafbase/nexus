@@ -7,7 +7,7 @@ mod tracing;
 
 pub(crate) use builder::LlmServerBuilder;
 pub(crate) use handler::LlmHandler;
-use model_discovery::ModelDiscovery;
+use model_discovery::ModelMap;
 pub(crate) use service::LlmService;
 
 use std::{fmt, sync::Arc};
@@ -16,12 +16,12 @@ use config::LlmConfig;
 use futures::stream::StreamExt;
 use itertools::Itertools;
 use rate_limit::{TokenRateLimitManager, TokenRateLimitRequest};
-use regex::Regex;
+use tokio::sync::watch;
 
 use crate::{
     error::LlmError,
     messages::{
-        openai::{ModelsResponse, ObjectType},
+        openai::{Model, ModelsResponse, ObjectType},
         unified::{UnifiedRequest, UnifiedResponse},
     },
     provider::{ChatCompletionStream, Provider},
@@ -35,27 +35,19 @@ pub(crate) struct LlmServer {
 
 pub(crate) struct LlmServerInner {
     /// Live provider handles that service requests.
-    pub(crate) providers: Vec<Box<dyn Provider>>,
+    pub(crate) providers: Arc<Vec<Box<dyn Provider>>>,
     /// Resolved configuration snapshot used for routing and limits.
-    pub(crate) config: LlmConfig,
+    pub(crate) config: Arc<LlmConfig>,
     /// Optional token rate limiter shared across providers.
     pub(crate) token_rate_limiter: Option<TokenRateLimitManager>,
-    /// Ordered regex routes for pattern-based model resolution.
-    pattern_routes: Vec<ModelPatternRoute>,
-    /// Model discovery and caching for pattern-based providers.
-    model_discovery: ModelDiscovery,
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct ModelPatternRoute {
-    provider_index: usize,
-    regex: Regex,
+    /// Watch channel receiver for discovered models.
+    model_map: watch::Receiver<ModelMap>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ModelRouteSource {
     LegacyPrefix,
-    Pattern,
+    Discovery,
 }
 
 struct ResolvedModelRoute<'providers, 'model> {
@@ -246,7 +238,7 @@ impl LlmServer {
                 .iter()
                 .position(|provider| provider.name() == provider_name)
             else {
-                log::error!(
+                log::debug!(
                     "Provider '{provider_name}' not found. Available providers: [{providers}]",
                     providers = self.shared.providers.iter().map(|p| p.name()).join(", ")
                 );
@@ -255,41 +247,40 @@ impl LlmServer {
             };
 
             return Ok(ResolvedModelRoute {
-                providers: &self.shared.providers,
+                providers: self.shared.providers.as_slice(),
                 provider_index,
                 model_name,
                 source: ModelRouteSource::LegacyPrefix,
             });
         }
 
-        log::debug!(
-            "Checking {} pattern routes for model '{}'",
-            self.shared.pattern_routes.len(),
-            requested_model
-        );
+        let model_map = self.shared.model_map.borrow().clone();
 
-        if let Some(route) = self.shared.pattern_routes.iter().find(|route| {
-            let matches = route.regex.is_match(requested_model);
-            log::debug!(
-                "Pattern '{}' match for '{}': {}",
-                route.regex.as_str(),
-                requested_model,
-                matches
+        let Some(model_info) = model_map.get(requested_model) else {
+            log::debug!("Model '{requested_model}' not found in discovery map");
+            return Err(LlmError::ModelNotFound(format!("Model '{requested_model}' not found")));
+        };
+
+        let Some(provider_index) = self
+            .shared
+            .providers
+            .iter()
+            .position(|provider| provider.name() == model_info.provider_name)
+        else {
+            log::error!(
+                "Model '{requested_model}' mapped to unknown provider '{provider}'",
+                provider = model_info.provider_name
             );
-            matches
-        }) {
-            log::debug!("Model '{}' matched pattern route", requested_model);
-            return Ok(ResolvedModelRoute {
-                providers: &self.shared.providers,
-                provider_index: route.provider_index,
-                model_name: requested_model,
-                source: ModelRouteSource::Pattern,
-            });
-        }
 
-        log::warn!("Model '{requested_model}' did not match any configured provider patterns");
+            return Err(LlmError::ProviderNotFound(model_info.provider_name.clone()));
+        };
 
-        Err(LlmError::ModelNotFound(requested_model.to_string()))
+        Ok(ResolvedModelRoute {
+            providers: self.shared.providers.as_slice(),
+            provider_index,
+            model_name: requested_model,
+            source: ModelRouteSource::Discovery,
+        })
     }
 
     /// Check rate limits and return an error if exceeded.
@@ -322,11 +313,35 @@ impl LlmServer {
 
 impl LlmService for LlmServer {
     async fn models(&self) -> ModelsResponse {
-        let models = self.shared.model_discovery.get_all_models(&self.shared.providers).await;
+        let model_map = self.shared.model_map.borrow().clone();
+
+        let mut discovered = Vec::new();
+        let mut explicit = Vec::new();
+
+        for (id, info) in model_map.iter() {
+            let model = Model {
+                id: id.clone(),
+                object: ObjectType::Model,
+                created: info.created,
+                owned_by: info.owned_by.clone(),
+            };
+
+            if id.contains('/') {
+                explicit.push(model);
+            } else {
+                discovered.push(model);
+            }
+        }
+
+        discovered.sort_by(|a, b| a.id.cmp(&b.id));
+        explicit.sort_by(|a, b| a.id.cmp(&b.id));
+        discovered.extend(explicit);
+
+        let data = discovered;
 
         ModelsResponse {
             object: ObjectType::List,
-            data: models,
+            data,
         }
     }
 
@@ -343,42 +358,16 @@ impl LlmService for LlmServer {
     }
 }
 
-pub(super) fn build_pattern_routes(config: &LlmConfig, providers: &[Box<dyn Provider>]) -> Vec<ModelPatternRoute> {
-    let mut routes = Vec::new();
-
-    for (name, provider_config) in &config.providers {
-        let Some(pattern) = provider_config.model_pattern() else {
-            log::debug!("Provider '{name}' has no model_pattern configured");
-            continue;
-        };
-
-        let Some(provider_index) = providers.iter().position(|provider| provider.name() == name) else {
-            log::warn!("Configured model pattern for provider '{name}' but provider failed to initialize");
-            continue;
-        };
-
-        log::debug!(
-            "Adding pattern route for provider '{name}' with pattern: {}",
-            pattern.pattern()
-        );
-
-        routes.push(ModelPatternRoute {
-            provider_index,
-            regex: pattern.regex().clone(),
-        });
-    }
-
-    log::debug!("Built {} pattern routes", routes.len());
-    routes
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use async_trait::async_trait;
     use indoc::indoc;
     use insta::assert_debug_snapshot;
-    use std::sync::Arc;
+    use std::{collections::BTreeMap, sync::Arc};
+    use tokio::sync::watch;
+
+    use super::model_discovery::ModelInfo;
 
     struct DummyProvider {
         name: String,
@@ -421,7 +410,7 @@ mod tests {
         }
     }
 
-    fn build_test_server(toml: &str) -> LlmServer {
+    fn build_test_server(toml: &str, models: BTreeMap<String, ModelInfo>) -> LlmServer {
         let config: LlmConfig = toml::from_str(toml).expect("valid LLM config");
         let provider_names: Vec<String> = config.providers.keys().cloned().collect();
 
@@ -430,28 +419,33 @@ mod tests {
             .map(|name| Box::new(DummyProvider::new(name.clone())) as Box<dyn Provider>)
             .collect();
 
-        let pattern_routes = build_pattern_routes(&config, &providers);
-        let model_discovery = ModelDiscovery::new();
+        let providers = Arc::new(providers);
+        let config = Arc::new(config);
+
+        let (sender, receiver) = watch::channel::<ModelMap>(Arc::new(models));
+        drop(sender);
 
         LlmServer {
             shared: Arc::new(LlmServerInner {
                 providers,
                 config,
                 token_rate_limiter: None,
-                pattern_routes,
-                model_discovery,
+                model_map: receiver,
             }),
         }
     }
 
     #[test]
     fn routes_prefixed_models_using_legacy_format() {
-        let server = build_test_server(indoc! {r#"
-            [providers.openai]
-            type = "openai"
-            api_key = "test"
-            model_pattern = "gpt-4.*"
-        "#});
+        let server = build_test_server(
+            indoc! {r#"
+                [providers.openai]
+                type = "openai"
+                api_key = "test"
+                model_filter = ".*"
+            "#},
+            BTreeMap::new(),
+        );
 
         let route = server
             .resolve_model_route("openai/gpt-4o-mini")
@@ -467,63 +461,50 @@ mod tests {
     }
 
     #[test]
-    fn routes_models_with_case_insensitive_pattern_match() {
-        let server = build_test_server(indoc! {r#"
-            [providers.openai]
-            type = "openai"
-            api_key = "test"
-            model_pattern = "gpt-4o.*"
+    fn routes_models_using_discovery_map() {
+        let mut models = BTreeMap::new();
+        models.insert(
+            "gpt-4o-mini".to_string(),
+            ModelInfo {
+                provider_name: "openai".to_string(),
+                created: 0,
+                owned_by: "openai".to_string(),
+                display_name: None,
+            },
+        );
 
-            [providers.anthropic]
-            type = "anthropic"
-            api_key = "test"
-            model_pattern = "claude.*"
-        "#});
-
-        let route = server.resolve_model_route("GPT-4O-MINI").expect("route should resolve");
-
-        assert_debug_snapshot!((&route.provider_name(), route.model_name, route.source), @r###"
-        (
-            "openai",
-            "GPT-4O-MINI",
-            Pattern,
-        )
-        "###);
-    }
-
-    #[test]
-    fn respects_config_order_for_pattern_matches() {
-        let server = build_test_server(indoc! {r#"
-            [providers.alpha]
-            type = "openai"
-            api_key = "test"
-            model_pattern = "^gpt-4.*"
-
-            [providers.omega]
-            type = "openai"
-            api_key = "test"
-            model_pattern = "^gpt-4o-mini$"
-        "#});
+        let server = build_test_server(
+            indoc! {r#"
+                [providers.openai]
+                type = "openai"
+                api_key = "test"
+                model_filter = ".*"
+            "#},
+            models,
+        );
 
         let route = server.resolve_model_route("gpt-4o-mini").expect("route should resolve");
 
         assert_debug_snapshot!((&route.provider_name(), route.model_name, route.source), @r###"
         (
-            "alpha",
+            "openai",
             "gpt-4o-mini",
-            Pattern,
+            Discovery,
         )
         "###);
     }
 
     #[test]
     fn returns_error_when_model_cannot_be_resolved() {
-        let server = build_test_server(indoc! {r#"
-            [providers.openai]
-            type = "openai"
-            api_key = "test"
-            model_pattern = "gpt-4.*"
-        "#});
+        let server = build_test_server(
+            indoc! {r#"
+                [providers.openai]
+                type = "openai"
+                api_key = "test"
+                model_filter = ".*"
+            "#},
+            BTreeMap::new(),
+        );
 
         let error = server
             .resolve_model_route("unknown-model")
