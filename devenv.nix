@@ -2,6 +2,7 @@
 {
   packages = with pkgs; [
     rustup
+    taplo
 
     cargo-nextest
     cargo-insta

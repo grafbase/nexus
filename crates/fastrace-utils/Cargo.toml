@@ -1,0 +1,8 @@
+[package]
+name = "fastrace-utils"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+fastrace.workspace = true
+pin-project.workspace = true

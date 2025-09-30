@@ -21,6 +21,7 @@ config.workspace = true
 eventsource-stream.workspace = true
 fastrace = { workspace = true, features = ["enable"] }
 fastrace-futures.workspace = true
+fastrace-utils.workspace = true
 futures.workspace = true
 header-rules.workspace = true
 itertools.workspace = true
