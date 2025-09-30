@@ -1,9 +1,10 @@
 //! Builder for LLM server with conditional metrics
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use config::Config;
 use rate_limit::TokenRateLimitManager;
+use tokio::sync::watch;
 
 use crate::{
     error::LlmError,
@@ -13,6 +14,8 @@ use crate::{
     },
     server::{LlmHandler, LlmServer, LlmServerInner, metrics::LlmServerWithMetrics, tracing::LlmServerWithTracing},
 };
+
+use super::model_discovery::{ModelDiscovery, ModelMap};
 
 pub(crate) struct LlmServerBuilder<'a> {
     config: &'a Config,
@@ -28,6 +31,8 @@ impl<'a> LlmServerBuilder<'a> {
             "Initializing LLM server with {} providers",
             self.config.llm.providers.len()
         );
+
+        let (model_sender, model_receiver) = watch::channel::<ModelMap>(Arc::new(BTreeMap::new()));
 
         let mut providers = Vec::with_capacity(self.config.llm.providers.len());
 
@@ -61,10 +66,13 @@ impl<'a> LlmServerBuilder<'a> {
             log::debug!("LLM server initialized with {} active provider(s)", providers.len());
         }
 
+        let providers = Arc::new(providers);
+        let llm_config = Arc::new(self.config.llm.clone());
+
+        let model_discovery = ModelDiscovery::new(Arc::clone(&providers), Arc::clone(&llm_config));
+
         // Initialize token rate limiter if any provider has rate limits configured
-        let has_token_rate_limits = self
-            .config
-            .llm
+        let has_token_rate_limits = llm_config
             .providers
             .values()
             .any(|p| p.rate_limits().is_some() || p.models().values().any(|m| m.rate_limits().is_some()));
@@ -82,16 +90,25 @@ impl<'a> LlmServerBuilder<'a> {
             None
         };
 
-        let pattern_routes = super::build_pattern_routes(&self.config.llm, &providers);
-        let model_discovery = super::ModelDiscovery::new();
+        let initial_models = model_discovery.fetch_models().await.map_err(|error| {
+            log::error!("Initial model discovery failed: {error}");
+            LlmError::InternalError(Some("Model discovery failed during startup".to_string()))
+        })?;
+
+        if model_sender.send(initial_models).is_err() {
+            return Err(LlmError::InternalError(Some(
+                "Model discovery channel closed before startup completed".to_string(),
+            )));
+        }
+
+        let _discovery_task = model_discovery.spawn_updater(model_sender);
 
         let server = LlmServer {
             shared: Arc::new(LlmServerInner {
                 providers,
-                config: self.config.llm.clone(),
+                config: llm_config,
                 token_rate_limiter,
-                pattern_routes,
-                model_discovery,
+                model_map: model_receiver,
             }),
         };
 

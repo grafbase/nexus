@@ -33,6 +33,7 @@ deadpool = { version = "0.12", features = ["managed", "rt_tokio_1"] }
 duration-str = "0.17"
 eventsource-stream = "0.2.3"
 fast-glob = "1.0.0"
+indexmap = "2.7.0"
 # TODO: use crates.io again when this one is released: https://github.com/fast/fastrace/pull/134
 # fastrace = "0.7.14"
 # fastrace-futures = "0.7.5"

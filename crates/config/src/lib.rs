@@ -34,7 +34,7 @@ pub use health::HealthConfig;
 pub use http_types::{HeaderName, HeaderValue};
 pub use llm::{
     ApiModelConfig, ApiProviderConfig, BedrockModelConfig, BedrockProviderConfig, LlmConfig, LlmProtocol,
-    LlmProviderConfig, ModelConfig, ModelPattern, ProviderType,
+    LlmProviderConfig, ModelConfig, ModelFilter, ProviderType,
 };
 pub use mcp::{
     ClientAuthConfig, HttpConfig, HttpProtocol, McpConfig, McpServer, McpServerRateLimit, StdioConfig, StdioTarget,

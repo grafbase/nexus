@@ -1,6 +1,7 @@
 mod input;
 mod output;
 
+use anyhow::{Context, anyhow};
 use async_trait::async_trait;
 use config::ApiProviderConfig;
 use eventsource_stream::Eventsource;
@@ -20,8 +21,7 @@ use crate::{
         unified::{UnifiedRequest, UnifiedResponse},
     },
     provider::{
-        ChatCompletionStream, HttpProvider, ModelManager, Provider, http_client::default_http_client_builder,
-        resolve_model, token,
+        ChatCompletionStream, HttpProvider, ModelManager, Provider, http_client::default_http_client_builder, token,
     },
     request::RequestContext,
 };
@@ -67,6 +67,28 @@ impl OpenAIProvider {
             config,
         })
     }
+
+    fn resolve_request_model(&self, request: &mut UnifiedRequest) -> crate::Result<()> {
+        if let Some(filter) = &self.config.model_filter
+            && filter.is_match(&request.model)
+        {
+            return Ok(());
+        }
+
+        if let Some(resolved_model) = self.model_manager.resolve_model(&request.model) {
+            request.model = resolved_model;
+            return Ok(());
+        }
+
+        if self.config.model_filter.is_none() {
+            return Ok(());
+        }
+
+        Err(LlmError::ModelNotFound(format!(
+            "Model '{}' is not configured",
+            request.model
+        )))
+    }
 }
 
 #[async_trait]
@@ -84,8 +106,8 @@ impl Provider for OpenAIProvider {
         // Get the model config BEFORE resolving, so we lookup by the original alias
         let model_config = self.model_manager.get_model_config(&request.model);
 
-        // Resolve model if needed (pattern doesn't match or no pattern)
-        resolve_model(&mut request, self.config.model_pattern.as_ref(), &self.model_manager)?;
+        // Resolve model for configured aliases when discovery doesn't cover the request
+        self.resolve_request_model(&mut request)?;
 
         let mut openai_request = OpenAIRequest::from(request);
         openai_request.stream = false; // Always false for now
@@ -149,55 +171,46 @@ impl Provider for OpenAIProvider {
     }
 
     async fn list_models(&self) -> anyhow::Result<Vec<Model>> {
+        #[derive(serde::Deserialize)]
+        struct ModelsResponse {
+            data: Vec<ApiModel>,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct ApiModel {
+            id: String,
+            created: Option<u64>,
+            owned_by: Option<String>,
+        }
+
         let mut models = Vec::new();
 
-        // If model_pattern is configured, fetch from API and filter
-        if let Some(ref pattern) = self.config.model_pattern {
-            // Try to fetch models from OpenAI API
-            if let Some(api_key) = self.config.api_key.as_ref() {
-                match self
-                    .client
-                    .get(format!("{}/models", self.base_url))
-                    .bearer_auth(api_key.expose_secret())
-                    .send()
-                    .await
-                {
-                    Ok(response) if response.status().is_success() => {
-                        #[derive(serde::Deserialize)]
-                        struct ModelsResponse {
-                            data: Vec<ApiModel>,
-                        }
+        if let Some(api_key) = self.config.api_key.as_ref() {
+            let response = self
+                .client
+                .get(format!("{}/models", self.base_url))
+                .bearer_auth(api_key.expose_secret())
+                .send()
+                .await
+                .context("failed to request OpenAI models")?;
 
-                        #[derive(serde::Deserialize)]
-                        struct ApiModel {
-                            id: String,
-                            created: Option<u64>,
-                            owned_by: Option<String>,
-                        }
-
-                        if let Ok(api_response) = response.json::<ModelsResponse>().await {
-                            let filtered_models = api_response
-                                .data
-                                .into_iter()
-                                .filter(|m| pattern.is_match(&m.id))
-                                .map(|m| Model {
-                                    id: m.id,
-                                    object: crate::messages::openai::ObjectType::Model,
-                                    created: m.created.unwrap_or(0),
-                                    owned_by: m.owned_by.unwrap_or_else(|| "openai".to_string()),
-                                });
-
-                            models.extend(filtered_models);
-                        }
-                    }
-                    Ok(response) => {
-                        log::debug!("Failed to fetch OpenAI models: status {}", response.status());
-                    }
-                    Err(e) => {
-                        log::debug!("Failed to fetch OpenAI models: {}", e);
-                    }
-                }
+            if !response.status().is_success() {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_else(|_| "<empty response>".to_string());
+                return Err(anyhow!("OpenAI models request failed with status {status}: {body}"));
             }
+
+            let api_response: ModelsResponse = response
+                .json()
+                .await
+                .context("failed to deserialize OpenAI models response")?;
+
+            models.extend(api_response.data.into_iter().map(|model| Model {
+                id: model.id,
+                object: crate::messages::openai::ObjectType::Model,
+                created: model.created.unwrap_or(0),
+                owned_by: model.owned_by.unwrap_or_else(|| "openai".to_string()),
+            }));
         }
 
         // Always include explicitly configured models with provider prefix
@@ -220,8 +233,8 @@ impl Provider for OpenAIProvider {
         // Get the model config BEFORE resolving, so we lookup by the original alias
         let model_config = self.model_manager.get_model_config(&request.model);
 
-        // Resolve model if needed (pattern doesn't match or no pattern)
-        resolve_model(&mut request, self.config.model_pattern.as_ref(), &self.model_manager)?;
+        // Resolve model for configured aliases when discovery doesn't cover the request
+        self.resolve_request_model(&mut request)?;
 
         let mut openai_request = OpenAIRequest::from(request);
         openai_request.stream = true;

@@ -682,92 +682,71 @@ AWS Bedrock provides access to multiple foundation models through a single API. 
 
 #### Model Configuration
 
-Nexus provides two approaches for configuring which models are available through your providers:
+Nexus automatically discovers models from every provider. At startup the server performs an initial discovery; a background task then refreshes provider inventories every five minutes and publishes the results through a watch channel for lock-free lookups.
 
-1. **Explicit Model Configuration**: List specific models you want to expose
-2. **Pattern-Based Routing**: Use regex patterns to match model names dynamically
+##### Automatic Discovery (default)
 
-##### Basic Model Configuration (Explicit)
-
-Configure specific models you want to expose:
+Simply configure a provider—no model list is required. Nexus fetches the provider's models and exposes them as bare model names:
 
 ```toml
 [llm.providers.openai]
 type = "openai"
 api_key = "{{ env.OPENAI_API_KEY }}"
-
-# Each model you want to expose must be explicitly configured
-[llm.providers.openai.models.gpt-4]
-[llm.providers.openai.models.gpt-3-5-turbo]
 ```
 
-##### Pattern-Based Model Routing
+Discovered models appear in `/v1/models` (e.g., `gpt-4`, `gpt-4o-mini`). Requests using these bare names route automatically.
 
-Use regex patterns to dynamically match model names without explicit configuration. This is particularly useful for:
-- AI code editors (Claude Code, Cursor) that need to dynamically select models
-- Allowing users to experiment with new models without configuration changes
-- Supporting model families without listing every variant
+##### Restrict Discovery with `model_filter`
+
+Use `model_filter` to limit which discovered models are exposed. The regex is case-insensitive, must not be empty, and follows the [regex crate syntax](https://docs.rs/regex/1.11.3/regex/).
 
 ```toml
 [llm.providers.openai]
 type = "openai"
 api_key = "{{ env.OPENAI_API_KEY }}"
-model_pattern = "^gpt-.*"  # Match all models starting with "gpt-"
+model_filter = "^gpt-4"  # Only expose GPT-4-family models from discovery
 
 [llm.providers.anthropic]
 type = "anthropic"
 api_key = "{{ env.ANTHROPIC_API_KEY }}"
-model_pattern = "^claude-.*"  # Match all Claude models
-
-[llm.providers.google]
-type = "google"
-api_key = "{{ env.GOOGLE_API_KEY }}"
-model_pattern = "^gemini-.*"  # Match all Gemini models
+model_filter = "^claude-"
 ```
 
-**Pattern Routing Features:**
-- **Case-insensitive matching**: `GPT-4` and `gpt-4` both match `^gpt-.*`
-- **Provider ordering**: When multiple patterns match, the first provider in config wins
-- **No validation required**: Nexus forwards requests directly to the provider API
-- **Model discovery**: Pattern-matched models appear in `/v1/models` responses (fetched from provider APIs)
-- **5-minute cache**: Model lists are cached and reused if provider APIs are unavailable
+If discovery fails for any provider at startup, Nexus exits so you can fix the configuration. Refresh failures log errors but keep the last successful snapshot.
 
-**Pattern Rules:**
-- Cannot be empty
-- Cannot contain `/` characters
-- Must be valid regex syntax
+##### Combine Discovery with Explicit Models
 
-##### Mixed Configuration
-
-You can combine pattern routing with explicit models for fine-grained control:
+Explicit models remain useful for renames, rate limits, and legacy prefixes. They always appear with `provider/model` even when a filter would exclude them.
 
 ```toml
 [llm.providers.openai]
 type = "openai"
 api_key = "{{ env.OPENAI_API_KEY }}"
-model_pattern = "^gpt-4.*"  # Match GPT-4 family via pattern
+model_filter = "^gpt-4"
 
-# Explicit models with custom names or rate limits
 [llm.providers.openai.models.gpt-3-5-turbo]
 rename = "fast-model"
 
 [llm.providers.openai.models.gpt-4]
-# Override with stricter rate limits for expensive model
 [llm.providers.openai.models.gpt-4.rate_limits.per_user]
 input_token_limit = 50000
 interval = "60s"
 ```
 
+**Discovery guarantees:**
+- Provider order in the TOML determines duplicate resolution (first provider wins); skipped duplicates emit warn-level logs
+- `/v1/models` lists bare discovered models first, followed by explicit `provider/model` entries
+- The watch channel keeps request handlers in sync without locking
+
 **How model resolution works:**
-1. If model name contains `/` (e.g., `openai/gpt-4`), route to specified provider
-2. Check pattern matching (case-insensitive, first match wins)
-3. Check explicit model configuration
-4. Return "model not found" error
+1. If the model name contains `/`, route to the specified provider (`openai/gpt-4`)
+2. Otherwise look up the bare name in the discovered model map (`gpt-4` → provider)
+3. Return "model not found" if the name is missing from both
 
 **Accessing models:**
-- **Pattern-matched**: Use bare model name (e.g., `gpt-4`, `claude-3-opus`)
-- **Explicit models**: Use `provider/model` format (e.g., `openai/gpt-4`)
-- Both formats work for models configured both ways
+- **Discovered models**: Use bare names (e.g., `gpt-4`, `claude-3-opus`)
+- **Explicit models**: Use `provider/model` format (e.g., `openai/fast-model`)
+- Both formats share rate limits and telemetry accounting
 
 ##### Model Renaming
 

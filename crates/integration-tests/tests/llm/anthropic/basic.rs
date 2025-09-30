@@ -17,6 +17,36 @@ async fn list_models() {
       "object": "list",
       "data": [
         {
+          "id": "claude-3-5-haiku-20241022",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "anthropic"
+        },
+        {
+          "id": "claude-3-5-sonnet-20241022",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "anthropic"
+        },
+        {
+          "id": "claude-3-haiku-20240307",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "anthropic"
+        },
+        {
+          "id": "claude-3-opus-20240229",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "anthropic"
+        },
+        {
+          "id": "claude-3-sonnet-20240229",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "anthropic"
+        },
+        {
           "id": "anthropic/claude-3-5-haiku-20241022",
           "object": "model",
           "created": "[created]",

@@ -166,39 +166,42 @@ Nexus requires at least one downstream service (MCP servers or LLM providers) to
 - **LLM**: When `llm.enabled = true`, at least one provider must be configured in `llm.providers`
   - Each LLM provider MUST have either:
     - At least one model explicitly configured under `[llm.providers.<name>.models.<model-id>]`, OR
-    - A `model_pattern` regex for dynamic model routing
+    - A `model_filter` regex for dynamic model routing
   - Model IDs containing dots must be quoted: `[llm.providers.google.models."gemini-1.5-flash"]`
   - **Endpoints**: LLM endpoints are configured using the `[llm.protocols]` section
     - OpenAI protocol: `[llm.protocols.openai]` with `enabled` and `path` fields
     - Anthropic protocol: `[llm.protocols.anthropic]` with `enabled` and `path` fields
     - Example: `[llm.protocols.openai]` with `enabled = true` and `path = "/llm"`
 
-#### Model Pattern Routing
+#### Model Discovery and Filters
 
-Providers can use regex patterns to dynamically match model names:
+Nexus discovers models for every provider at startup and refreshes the list every five minutes. A background task fetches all provider models in parallel, applies any configured filters, and publishes the results through a `tokio::sync::watch` channel. Request handlers read from the watch receiver, giving lock-free lookups for routing and `/v1/models` responses.
+
+**Discovery flow:**
+- Startup performs an initial fetch; if any provider fails, Nexus exits so configuration issues surface immediately
+- Background refresh continues independently—failures log errors but keep the previous successful snapshot
+- Discovered models are de-duplicated using provider order (first configured provider wins) and stored in a shared `ModelMap`
+
+**Model filters:**
+- `model_filter` is an optional regex that runs against bare model IDs returned by discovery
+- Filters are case-insensitive, cannot be empty, and must not contain `/`
+- Filtering only affects discovered models—explicitly configured models always remain available
 
 ```toml
 [llm.providers.openai]
 type = "openai"
 api_key = "{{ env.OPENAI_API_KEY }}"
-model_pattern = "^gpt-.*"  # Matches all models starting with "gpt-"
+model_filter = "^gpt-"  # Expose only GPT-family models from discovery
 
-# Can combine with explicit models for fine-grained control
+# Explicit models can still add aliases, renames, or rate limits
 [llm.providers.openai.models.gpt-3-5-turbo]
 rename = "fast-model"
 ```
 
-**Pattern Routing Features:**
-- Case-insensitive regex matching
-- Provider order determines precedence when multiple patterns match
-- Models discovered via pattern appear in `/v1/models` without provider prefix
-- 5-minute cache for discovered models, reused on provider API errors
-- Rate limits work identically for both `model` and `provider/model` formats
-
-**Pattern Requirements:**
-- Cannot be empty
-- Cannot contain `/` characters
-- Must be valid regex syntax
+**Discovery guarantees:**
+- Discovered models appear as bare names (e.g. `gpt-4`); explicit models appear with `provider/model`
+- Provider ordering determines duplicate resolution; skipped duplicates emit a warn-level log entry
+- The watch channel ensures request handlers always see a consistent snapshot without locking
 
 #### Client Identification for Rate Limiting
 

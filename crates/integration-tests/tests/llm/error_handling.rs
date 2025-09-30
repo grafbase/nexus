@@ -3,26 +3,43 @@ use integration_tests::{TestServer, llms::OpenAIMock};
 use serde_json::json;
 
 #[tokio::test]
-async fn model_without_provider_prefix_returns_404() {
+async fn model_without_provider_prefix_routes_successfully() {
     let mut builder = TestServer::builder();
     builder.spawn_llm(OpenAIMock::new("openai")).await;
 
     let server = builder.build("").await;
 
-    // Model without provider prefix
+    // Model without provider prefix should still resolve via discovery
     let request = json!({
         "model": "gpt-4",
         "messages": [{"role": "user", "content": "Test"}]
     });
 
-    let (status, body) = server.openai_completions(request).send_raw().await;
-    assert_eq!(status, 404);
+    let (status, mut body) = server.openai_completions(request).send_raw().await;
+    assert_eq!(status, 200);
+    if let Some(id) = body.get_mut("id") {
+        *id = serde_json::Value::String("chatcmpl-test-redacted".to_string());
+    }
     insta::assert_json_snapshot!(body, @r#"
     {
-      "error": {
-        "message": "Model 'gpt-4' not found",
-        "type": "not_found_error",
-        "code": 404
+      "id": "chatcmpl-test-redacted",
+      "object": "chat.completion",
+      "created": 1677651200,
+      "model": "gpt-4",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "This is a test response from the mock LLM server"
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 10,
+        "completion_tokens": 15,
+        "total_tokens": 25
       }
     }
     "#);
@@ -102,7 +119,7 @@ async fn model_not_found_returns_404() {
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
-        "message": "Model 'Model 'gpt-5' is not configured' not found",
+        "message": "The model 'gpt-5' does not exist",
         "type": "not_found_error",
         "code": 404
       }
@@ -205,9 +222,8 @@ async fn streaming_mock_not_implemented_returns_error() {
 #[tokio::test]
 async fn list_models_with_auth_error_returns_empty_list() {
     // Create a mock that returns 401 for list models
-    // Note: The server aggregates models from multiple providers,
-    // so if one fails with auth error, it still returns 200 with models from other providers
-    // In this case with only one provider that fails, it returns an empty list
+    // Note: The server keeps previously discovered and explicitly configured models cached,
+    // so an auth error during listing still results in the cached set being returned.
     let mock = OpenAIMock::new("openai").with_auth_error("Invalid API key");
 
     let mut builder = TestServer::builder();
@@ -220,6 +236,24 @@ async fn list_models_with_auth_error_returns_empty_list() {
     {
       "object": "list",
       "data": [
+        {
+          "id": "gpt-3.5-turbo",
+          "object": "model",
+          "created": 1677651200,
+          "owned_by": "openai"
+        },
+        {
+          "id": "gpt-4",
+          "object": "model",
+          "created": 1677651201,
+          "owned_by": "openai"
+        },
+        {
+          "id": "gpt-4-turbo",
+          "object": "model",
+          "created": 1677651202,
+          "owned_by": "openai"
+        },
         {
           "id": "openai/gpt-3.5-turbo",
           "object": "model",

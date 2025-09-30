@@ -18,7 +18,7 @@ pub struct LlmProviderConfig {
     pub address: SocketAddr,
     pub provider_type: ProviderType,
     pub model_configs: Vec<ModelConfig>,
-    pub model_pattern: Option<String>,
+    pub model_filter: Option<String>,
 }
 
 /// Trait for test LLM providers
@@ -65,13 +65,13 @@ pub fn generate_config_for_type(provider_type: ProviderType, config: &LlmProvide
                 _ => unreachable!(),
             };
 
-            let pattern_line = config
-                .model_pattern
+            let filter_line = config
+                .model_filter
                 .as_ref()
-                .map(|pattern| {
+                .map(|filter| {
                     // Escape backslashes for TOML
-                    let escaped_pattern = pattern.replace('\\', "\\\\");
-                    format!("\n                model_pattern = \"{}\"", escaped_pattern)
+                    let escaped_filter = filter.replace('\\', "\\\\");
+                    format!("\n                model_filter = \"{}\"", escaped_filter)
                 })
                 .unwrap_or_default();
 
@@ -82,16 +82,16 @@ pub fn generate_config_for_type(provider_type: ProviderType, config: &LlmProvide
                 api_key = "test-key"
                 base_url = "http://{}{}"{}
                 {}
-            "#, config.name, provider_type_str, config.address, base_url_path, pattern_line, models_section}
+            "#, config.name, provider_type_str, config.address, base_url_path, filter_line, models_section}
         }
         ProviderType::Bedrock => {
-            let pattern_line = config
-                .model_pattern
+            let filter_line = config
+                .model_filter
                 .as_ref()
-                .map(|pattern| {
+                .map(|filter| {
                     // Escape backslashes for TOML
-                    let escaped_pattern = pattern.replace('\\', "\\\\");
-                    format!("\n                model_pattern = \"{}\"", escaped_pattern)
+                    let escaped_filter = filter.replace('\\', "\\\\");
+                    format!("\n                model_filter = \"{}\"", escaped_filter)
                 })
                 .unwrap_or_default();
 
@@ -105,7 +105,7 @@ pub fn generate_config_for_type(provider_type: ProviderType, config: &LlmProvide
                 secret_access_key = "test-secret-key"
                 base_url = "http://{}"{}
                 {}
-            "#, config.name, config.address, pattern_line, models_section}
+            "#, config.name, config.address, filter_line, models_section}
         }
     }
 }

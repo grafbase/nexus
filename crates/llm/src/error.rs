@@ -22,7 +22,7 @@ pub enum LlmError {
     ProviderNotFound(String),
 
     /// Model not found at the provider.
-    #[error("Model '{0}' not found")]
+    #[error("{0}")]
     ModelNotFound(String),
 
     /// Authentication failed (missing or invalid API key).

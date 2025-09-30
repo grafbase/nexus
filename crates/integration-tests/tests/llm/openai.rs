@@ -33,6 +33,24 @@ async fn list_models() {
       "object": "list",
       "data": [
         {
+          "id": "gpt-3.5-turbo",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "openai"
+        },
+        {
+          "id": "gpt-4",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "openai"
+        },
+        {
+          "id": "gpt-4-turbo",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "openai"
+        },
+        {
           "id": "test_openai/gpt-3.5-turbo",
           "object": "model",
           "created": "[created]",
@@ -71,6 +89,24 @@ path = "/custom"
     {
       "object": "list",
       "data": [
+        {
+          "id": "gpt-3.5-turbo",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "openai"
+        },
+        {
+          "id": "gpt-4",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "openai"
+        },
+        {
+          "id": "gpt-4-turbo",
+          "object": "model",
+          "created": "[created]",
+          "owned_by": "openai"
+        },
         {
           "id": "test_openai/gpt-3.5-turbo",
           "object": "model",
@@ -451,13 +487,14 @@ path = "/llm"
 }
 
 #[tokio::test]
-async fn pattern_routing_respects_config_order() {
+async fn model_filter_routing_respects_config_order() {
     let mut builder = TestServer::builder();
 
     builder
         .spawn_llm(
             OpenAIMock::new("alpha")
-                .with_model_pattern("gpt-4.*")
+                .with_models(vec!["gpt-4-super".to_string()])
+                .with_model_filter("gpt-4.*")
                 .with_model_configs(vec![ModelConfig::new("gpt-4-super").with_rename("gpt-4")])
                 .with_response("route probe", "alpha handled"),
         )
@@ -466,7 +503,8 @@ async fn pattern_routing_respects_config_order() {
     builder
         .spawn_llm(
             OpenAIMock::new("omega")
-                .with_model_pattern("gpt-4-super.*")
+                .with_models(vec!["gpt-4-super".to_string()])
+                .with_model_filter("gpt-4-super.*")
                 .with_model_configs(vec![ModelConfig::new("gpt-4-super").with_rename("gpt-4")])
                 .with_response("route probe", "omega handled"),
         )

@@ -10,7 +10,7 @@ Type-safe TOML configuration with validation for Nexus.
 - `cors.rs` - CORS with comprehensive tests
 - `client_identification.rs` - Rate limiting identity
 - `mcp.rs` - Model Context Protocol
-- `llm.rs` - LLM providers (includes model pattern routing)
+- `llm.rs` - LLM providers (model discovery configuration and filters)
 - `rate_limit.rs` - Rate limiting
 - `telemetry.rs` - Observability
 
@@ -95,38 +95,39 @@ fn config_test() {
 
 ## LLM Provider Configuration
 
-### Model Pattern Routing
+### Model Discovery and Filters
 
-The `llm.rs` module supports dynamic model routing via regex patterns:
+The `llm.rs` module exposes automatic model discovery with optional regex filtering. Providers may either:
+- Configure at least one explicit model under `[llm.providers.<name>.models.<model-id>]`, or
+- Supply a `model_filter` regex to restrict which discovered models are exposed
+
+`ModelFilter` wraps a case-insensitive regex and enforces strict validation:
 
 ```rust
-pub struct ModelPattern {
-    regex: Regex,  // Case-insensitive regex
+pub struct ModelFilter {
+    pattern: Regex,  // validated: non-empty, no '/'
 }
 ```
 
 **Validation Rules:**
-- Pattern cannot be empty
-- Pattern cannot contain `/` characters
-- Must be valid regex syntax
-- Case-insensitive by default
+- Filter cannot be empty
+- Filter cannot contain `/` characters
+- Regex must compile successfully (case-insensitive flag is applied automatically)
 
 **Configuration:**
 ```toml
 [llm.providers.openai]
 type = "openai"
 api_key = "sk-..."
-model_pattern = "^gpt-.*"  # Optional: matches all GPT models
+model_filter = "^gpt-4.*"  # Optional: restrict discovery to GPT-4 variants
 
-# Can mix pattern with explicit models
-[llm.providers.openai.models.gpt-4]
+# Explicit models always remain available, even if the filter would exclude them
+[llm.providers.openai.models.gpt-3-5-turbo]
 ```
 
 **Provider Requirements:**
-- Each provider must have either:
-  - At least one explicit model configured, OR
-  - A `model_pattern` field
-- Both can coexist for mixed routing
+- Startup validation ensures each provider has at least one explicit model or a `model_filter`
+- Both explicit models and filters may coexist (filters apply only to discovered models)
 
 ## Update This Doc When:
 - Adding modules or config sections

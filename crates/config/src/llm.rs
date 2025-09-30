@@ -2,11 +2,13 @@
 
 use std::{borrow::Cow, collections::BTreeMap, fmt};
 
+use indexmap::IndexMap;
+
 use crate::headers::HeaderRule;
 use crate::rate_limit::TokenRateLimitsConfig;
 use regex::{Regex, RegexBuilder};
 use secrecy::SecretString;
-use serde::{Deserialize, Deserializer, de::Error as DeError};
+use serde::{Deserialize, Deserializer};
 
 /// Configuration for an individual model within API-based providers.
 #[derive(Debug, Clone, Deserialize)]
@@ -72,29 +74,25 @@ impl ModelConfig {
     }
 }
 
-/// Case-insensitive regex pattern for matching model identifiers.
+/// Case-insensitive regex filter for matching model identifiers.
 #[derive(Clone)]
-pub struct ModelPattern {
+pub struct ModelFilter {
     regex: Regex,
 }
 
-impl ModelPattern {
-    /// Create a new validated model pattern.
+impl ModelFilter {
+    /// Create a new validated model filter.
     fn new(pattern: &str) -> Result<Self, String> {
         let trimmed = pattern.trim();
 
         if trimmed.is_empty() {
-            return Err("model_pattern cannot be empty".to_string());
-        }
-
-        if trimmed.contains('/') {
-            return Err("model_pattern cannot contain '/' characters".to_string());
+            return Err("model_filter cannot be empty".to_string());
         }
 
         let regex = RegexBuilder::new(trimmed)
             .case_insensitive(true)
             .build()
-            .map_err(|err| format!("invalid model_pattern regex: {err}"))?;
+            .map_err(|err| format!("invalid model_filter regex: {err}"))?;
 
         Ok(Self { regex })
     }
@@ -115,21 +113,19 @@ impl ModelPattern {
     }
 }
 
-impl fmt::Debug for ModelPattern {
+impl fmt::Debug for ModelFilter {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ModelPattern")
-            .field("pattern", &self.pattern())
-            .finish()
+        f.debug_struct("ModelFilter").field("pattern", &self.pattern()).finish()
     }
 }
 
-impl<'de> Deserialize<'de> for ModelPattern {
+impl<'de> Deserialize<'de> for ModelFilter {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
         let pattern = Cow::<'de, str>::deserialize(deserializer)?;
-        ModelPattern::new(pattern.as_ref()).map_err(serde::de::Error::custom)
+        ModelFilter::new(pattern.as_ref()).map_err(serde::de::Error::custom)
     }
 }
 
@@ -205,7 +201,7 @@ pub struct LlmConfig {
     pub protocols: LlmProtocolsConfig,
 
     /// Map of LLM provider configurations.
-    pub providers: BTreeMap<String, LlmProviderConfig>,
+    pub providers: IndexMap<String, LlmProviderConfig>,
 }
 
 impl Default for LlmConfig {
@@ -213,7 +209,7 @@ impl Default for LlmConfig {
         Self {
             enabled: true,
             protocols: LlmProtocolsConfig::default(),
-            providers: BTreeMap::new(),
+            providers: IndexMap::new(),
         }
     }
 }
@@ -261,8 +257,8 @@ pub struct ApiProviderConfig {
     /// Enable token forwarding from user requests.
     pub forward_token: bool,
 
-    /// Regular expression pattern for automatically routing models to this provider.
-    pub model_pattern: Option<ModelPattern>,
+    /// Regular expression filter for automatically routing models to this provider.
+    pub model_filter: Option<ModelFilter>,
 
     /// Explicitly configured models for this provider.
     pub models: BTreeMap<String, ApiModelConfig>,
@@ -289,7 +285,7 @@ impl<'de> Deserialize<'de> for ApiProviderConfig {
             #[serde(default)]
             forward_token: bool,
             #[serde(default)]
-            model_pattern: Option<ModelPattern>,
+            model_filter: Option<ModelFilter>,
             #[serde(default)]
             models: BTreeMap<String, ApiModelConfig>,
             #[serde(default)]
@@ -300,17 +296,11 @@ impl<'de> Deserialize<'de> for ApiProviderConfig {
 
         let raw = ApiProviderConfigSerde::deserialize(deserializer)?;
 
-        if raw.model_pattern.is_none() && raw.models.is_empty() {
-            return Err(DeError::custom(
-                "model_pattern or at least one model must be configured",
-            ));
-        }
-
         Ok(Self {
             api_key: raw.api_key,
             base_url: raw.base_url,
             forward_token: raw.forward_token,
-            model_pattern: raw.model_pattern,
+            model_filter: raw.model_filter,
             models: raw.models,
             rate_limits: raw.rate_limits,
             headers: raw.headers,
@@ -339,8 +329,8 @@ pub struct BedrockProviderConfig {
     /// Custom endpoint URL (optional - for VPC endpoints).
     pub base_url: Option<String>,
 
-    /// Regular expression pattern for automatically routing models to this provider.
-    pub model_pattern: Option<ModelPattern>,
+    /// Regular expression filter for automatically routing models to this provider.
+    pub model_filter: Option<ModelFilter>,
 
     /// Explicitly configured models for this provider.
     /// Bedrock models don't support custom headers due to SigV4 signing.
@@ -366,18 +356,12 @@ impl<'de> Deserialize<'de> for BedrockProviderConfig {
             #[serde(default)]
             pub base_url: Option<String>,
             #[serde(default)]
-            pub model_pattern: Option<ModelPattern>,
+            pub model_filter: Option<ModelFilter>,
             #[serde(default)]
             pub models: BTreeMap<String, BedrockModelConfig>,
         }
 
         let raw = BedrockProviderConfigSerde::deserialize(deserializer)?;
-
-        if raw.model_pattern.is_none() && raw.models.is_empty() {
-            return Err(DeError::custom(
-                "model_pattern or at least one model must be configured",
-            ));
-        }
 
         Ok(Self {
             access_key_id: raw.access_key_id,
@@ -386,7 +370,7 @@ impl<'de> Deserialize<'de> for BedrockProviderConfig {
             profile: raw.profile,
             region: raw.region,
             base_url: raw.base_url,
-            model_pattern: raw.model_pattern,
+            model_filter: raw.model_filter,
             models: raw.models,
         })
     }
@@ -440,13 +424,13 @@ impl LlmProviderConfig {
         }
     }
 
-    /// Get the configured model pattern for this provider, if any.
-    pub fn model_pattern(&self) -> Option<&ModelPattern> {
+    /// Get the configured model filter for this provider, if any.
+    pub fn model_filter(&self) -> Option<&ModelFilter> {
         match self {
-            Self::Openai(config) => config.model_pattern.as_ref(),
-            Self::Anthropic(config) => config.model_pattern.as_ref(),
-            Self::Google(config) => config.model_pattern.as_ref(),
-            Self::Bedrock(config) => config.model_pattern.as_ref(),
+            Self::Openai(config) => config.model_filter.as_ref(),
+            Self::Anthropic(config) => config.model_filter.as_ref(),
+            Self::Google(config) => config.model_filter.as_ref(),
+            Self::Bedrock(config) => config.model_filter.as_ref(),
         }
     }
 
@@ -566,7 +550,7 @@ mod tests {
                         ),
                         base_url: None,
                         forward_token: false,
-                        model_pattern: None,
+                        model_filter: None,
                         models: {
                             "gpt-3-5-turbo": ApiModelConfig {
                                 rename: None,
@@ -629,7 +613,7 @@ mod tests {
                         ),
                         base_url: None,
                         forward_token: false,
-                        model_pattern: None,
+                        model_filter: None,
                         models: {
                             "claude-3-opus": ApiModelConfig {
                                 rename: None,
@@ -690,7 +674,7 @@ mod tests {
                         ),
                         base_url: None,
                         forward_token: false,
-                        model_pattern: None,
+                        model_filter: None,
                         models: {
                             "gemini-pro": ApiModelConfig {
                                 rename: None,
@@ -762,7 +746,7 @@ path = "/ai"
                         ),
                         base_url: None,
                         forward_token: false,
-                        model_pattern: None,
+                        model_filter: None,
                         models: {
                             "claude-3-opus": ApiModelConfig {
                                 rename: None,
@@ -781,7 +765,7 @@ path = "/ai"
                         ),
                         base_url: None,
                         forward_token: false,
-                        model_pattern: None,
+                        model_filter: None,
                         models: {
                             "gemini-pro": ApiModelConfig {
                                 rename: None,
@@ -800,7 +784,7 @@ path = "/ai"
                         ),
                         base_url: None,
                         forward_token: false,
-                        model_pattern: None,
+                        model_filter: None,
                         models: {
                             "gpt-4": ApiModelConfig {
                                 rename: None,
@@ -818,7 +802,7 @@ path = "/ai"
     }
 
     #[test]
-    fn llm_config_with_model_pattern_only() {
+    fn llm_config_with_model_filter_only() {
         let config = indoc! {r#"
             enabled = true
 
@@ -829,88 +813,87 @@ path = "/ai"
             [providers.anthropic]
             type = "anthropic"
             api_key = "test"
-            model_pattern = "^claude-.*"
+            model_filter = "^claude-.*"
         "#};
 
         let config: LlmConfig = toml::from_str(config).unwrap();
 
         let provider = config.providers.get("anthropic").unwrap();
-        let pattern = provider.model_pattern().unwrap();
+        let pattern = provider.model_filter().unwrap();
         assert_eq!(pattern.pattern(), "^claude-.*");
         assert!(pattern.is_match("CLAUDE-3-OPUS"));
         assert!(provider.models().is_empty());
     }
 
     #[test]
-    fn llm_config_rejects_empty_model_pattern() {
+    fn llm_config_rejects_empty_model_filter() {
         let config = indoc! {r#"
             [providers.anthropic]
             type = "anthropic"
             api_key = "test"
-            model_pattern = ""
+            model_filter = ""
         "#};
 
         let err = toml::from_str::<LlmConfig>(config).unwrap_err();
-        assert!(err.to_string().contains("model_pattern cannot be empty"));
+        assert!(err.to_string().contains("model_filter cannot be empty"));
     }
 
     #[test]
-    fn llm_config_rejects_model_pattern_with_slash() {
+    fn llm_config_allows_model_filter_with_slash() {
         let config = indoc! {r#"
             [providers.anthropic]
             type = "anthropic"
             api_key = "test"
-            model_pattern = "anthropic/claude"
+            model_filter = "anthropic/claude"
         "#};
 
-        let err = toml::from_str::<LlmConfig>(config).unwrap_err();
-        assert!(err.to_string().contains("model_pattern cannot contain '/'"));
+        let config: LlmConfig = toml::from_str(config).unwrap();
+        let provider = config.providers.get("anthropic").unwrap();
+        let filter = provider.model_filter().expect("filter missing");
+        assert!(filter.is_match("anthropic/claude"));
     }
 
     #[test]
-    fn llm_config_rejects_invalid_regex_model_pattern() {
+    fn llm_config_rejects_invalid_regex_model_filter() {
         let config = indoc! {r#"
             [providers.anthropic]
             type = "anthropic"
             api_key = "test"
-            model_pattern = "["
+            model_filter = "["
         "#};
 
         let err = toml::from_str::<LlmConfig>(config).unwrap_err();
-        assert!(err.to_string().contains("invalid model_pattern regex"));
+        assert!(err.to_string().contains("invalid model_filter regex"));
     }
 
     #[test]
-    fn bedrock_requires_models_or_pattern() {
+    fn bedrock_allows_missing_models_and_filter() {
         let config = indoc! {r#"
             [providers.bedrock]
             type = "bedrock"
             region = "us-east-1"
-        "#};
-
-        let err = toml::from_str::<LlmConfig>(config).unwrap_err();
-        insta::assert_snapshot!(err.to_string(), @r#"
-        TOML parse error at line 1, column 1
-          |
-        1 | [providers.bedrock]
-          | ^^^^^^^^^^^^^^^^^^^
-        model_pattern or at least one model must be configured
-        "#);
-    }
-
-    #[test]
-    fn bedrock_allows_pattern_only() {
-        let config = indoc! {r#"
-            [providers.bedrock]
-            type = "bedrock"
-            region = "us-east-1"
-            model_pattern = "^anthropic-.*"
         "#};
 
         let config: LlmConfig = toml::from_str(config).unwrap();
         let provider = config.providers.get("bedrock").unwrap();
-        let pattern = provider.model_pattern().unwrap();
-        assert!(pattern.is_match("ANTHROPIC-CLAUDE"));
+
+        assert!(provider.model_filter().is_none());
+        assert!(provider.models().is_empty());
+    }
+
+    #[test]
+    fn bedrock_allows_filter_only() {
+        let config = indoc! {r#"
+            [providers.bedrock]
+            type = "bedrock"
+            region = "us-east-1"
+            model_filter = "^anthropic-.*"
+        "#};
+
+        let config: LlmConfig = toml::from_str(config).unwrap();
+        let provider = config.providers.get("bedrock").unwrap();
+        let filter = provider.model_filter().unwrap();
+        assert!(filter.is_match("ANTHROPIC-CLAUDE"));
         assert!(provider.models().is_empty());
         assert_debug_snapshot!(provider, @r#"
         Bedrock(
@@ -921,8 +904,8 @@ path = "/ai"
                 profile: None,
                 region: "us-east-1",
                 base_url: None,
-                model_pattern: Some(
-                    ModelPattern {
+                model_filter: Some(
+                    ModelFilter {
                         pattern: "^anthropic-.*",
                     },
                 ),
@@ -1037,7 +1020,7 @@ path = "/llm"
                         ),
                         base_url: None,
                         forward_token: false,
-                        model_pattern: None,
+                        model_filter: None,
                         models: {
                             "gpt-4": ApiModelConfig {
                                 rename: None,
@@ -1094,7 +1077,7 @@ path = "/llm"
                         ),
                         base_url: None,
                         forward_token: false,
-                        model_pattern: None,
+                        model_filter: None,
                         models: {
                             "gpt-3-5": ApiModelConfig {
                                 rename: Some(
@@ -1160,7 +1143,7 @@ path = "/llm"
                         ),
                         base_url: None,
                         forward_token: false,
-                        model_pattern: None,
+                        model_filter: None,
                         models: {
                             "custom-model": ApiModelConfig {
                                 rename: None,
@@ -1229,7 +1212,7 @@ path = "/llm"
                         ),
                         base_url: None,
                         forward_token: false,
-                        model_pattern: None,
+                        model_filter: None,
                         models: {
                             "claude-3": ApiModelConfig {
                                 rename: Some(
@@ -1255,7 +1238,7 @@ path = "/llm"
                         ),
                         base_url: None,
                         forward_token: false,
-                        model_pattern: None,
+                        model_filter: None,
                         models: {
                             "gpt-4": ApiModelConfig {
                                 rename: Some(
@@ -1415,7 +1398,7 @@ path = "/llm"
                         api_key: None,
                         base_url: None,
                         forward_token: true,
-                        model_pattern: None,
+                        model_filter: None,
                         models: {
                             "claude-3-opus": ApiModelConfig {
                                 rename: None,
@@ -1434,7 +1417,7 @@ path = "/llm"
                         ),
                         base_url: None,
                         forward_token: false,
-                        model_pattern: None,
+                        model_filter: None,
                         models: {
                             "gemini-pro": ApiModelConfig {
                                 rename: None,
@@ -1453,7 +1436,7 @@ path = "/llm"
                         ),
                         base_url: None,
                         forward_token: true,
-                        model_pattern: None,
+                        model_filter: None,
                         models: {
                             "gpt-4": ApiModelConfig {
                                 rename: None,
@@ -1511,7 +1494,7 @@ path = "/llm"
                         ),
                         base_url: None,
                         forward_token: false,
-                        model_pattern: None,
+                        model_filter: None,
                         models: {
                             "gpt-4": ApiModelConfig {
                                 rename: None,
@@ -1566,7 +1549,7 @@ protocol = "anthropic"
                         ),
                         base_url: None,
                         forward_token: false,
-                        model_pattern: None,
+                        model_filter: None,
                         models: {
                             "claude-3-opus": ApiModelConfig {
                                 rename: None,

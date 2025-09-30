@@ -46,9 +46,9 @@ pub struct OpenAIMock {
     name: String,
     models: Vec<String>,
     model_configs: Option<Vec<ModelConfig>>,
-    model_pattern: Option<String>,
+    model_filter: Option<String>,
     custom_responses: HashMap<String, String>,
-    error_type: Arc<Mutex<Option<ErrorType>>>,
+    error_config: Arc<Mutex<ErrorConfig>>,
     streaming_enabled: bool,
     streaming_chunks: Option<Vec<String>>,
     streaming_error: Option<String>,
@@ -59,28 +59,37 @@ pub struct OpenAIMock {
 
 #[derive(Clone)]
 pub struct OpenAIMockController {
-    error_type: Arc<Mutex<Option<ErrorType>>>,
+    error_config: Arc<Mutex<ErrorConfig>>,
 }
 
 impl OpenAIMockController {
     pub fn clear_error(&self) {
-        *self.error_type.lock().unwrap() = None;
+        let mut config = self.error_config.lock().unwrap();
+        config.clear();
     }
 
     pub fn set_service_unavailable(&self, message: impl Into<String>) {
-        *self.error_type.lock().unwrap() = Some(ErrorType::ServiceUnavailable(message.into()));
+        let mut config = self.error_config.lock().unwrap();
+        let error = ErrorType::ServiceUnavailable(message.into());
+        config.set_all(error);
     }
 
     pub fn set_internal_error(&self, message: impl Into<String>) {
-        *self.error_type.lock().unwrap() = Some(ErrorType::InternalError(message.into()));
+        let mut config = self.error_config.lock().unwrap();
+        let error = ErrorType::InternalError(message.into());
+        config.set_all(error);
     }
 
     pub fn set_rate_limit(&self, message: impl Into<String>) {
-        *self.error_type.lock().unwrap() = Some(ErrorType::RateLimit(message.into()));
+        let mut config = self.error_config.lock().unwrap();
+        let error = ErrorType::RateLimit(message.into());
+        config.set_all(error);
     }
 
     pub fn set_auth_error(&self, message: impl Into<String>) {
-        *self.error_type.lock().unwrap() = Some(ErrorType::AuthError(message.into()));
+        let mut config = self.error_config.lock().unwrap();
+        let error = ErrorType::AuthError(message.into());
+        config.set_all(error);
     }
 }
 
@@ -103,6 +112,32 @@ enum ErrorType {
     ServiceUnavailable(String),
 }
 
+#[derive(Clone, Default)]
+struct ErrorConfig {
+    completion: Option<ErrorType>,
+    list_models: Option<ErrorType>,
+}
+
+impl ErrorConfig {
+    fn clear(&mut self) {
+        self.completion = None;
+        self.list_models = None;
+    }
+
+    fn set_all(&mut self, error: ErrorType) {
+        self.completion = Some(error.clone());
+        self.list_models = Some(error);
+    }
+
+    fn set_completion(&mut self, error: ErrorType) {
+        self.completion = Some(error);
+    }
+
+    fn set_list_models(&mut self, error: ErrorType) {
+        self.list_models = Some(error);
+    }
+}
+
 impl OpenAIMock {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
@@ -113,9 +148,9 @@ impl OpenAIMock {
                 "gpt-4-turbo".to_string(),
             ],
             model_configs: None,
-            model_pattern: None,
+            model_filter: None,
             custom_responses: HashMap::new(),
-            error_type: Arc::new(Mutex::new(None)),
+            error_config: Arc::new(Mutex::new(ErrorConfig::default())),
             streaming_enabled: false,
             streaming_chunks: None,
             streaming_error: None,
@@ -140,8 +175,8 @@ impl OpenAIMock {
         self
     }
 
-    pub fn with_model_pattern(mut self, pattern: impl Into<String>) -> Self {
-        self.model_pattern = Some(pattern.into());
+    pub fn with_model_filter(mut self, pattern: impl Into<String>) -> Self {
+        self.model_filter = Some(pattern.into());
         self
     }
 
@@ -151,37 +186,66 @@ impl OpenAIMock {
     }
 
     pub fn with_auth_error(self, message: impl Into<String>) -> Self {
-        *self.error_type.lock().unwrap() = Some(ErrorType::AuthError(message.into()));
+        {
+            let mut config = self.error_config.lock().unwrap();
+            config.set_completion(ErrorType::AuthError(message.into()));
+        }
         self
     }
 
     pub fn with_model_not_found(self, model: impl Into<String>) -> Self {
-        *self.error_type.lock().unwrap() = Some(ErrorType::ModelNotFound(model.into()));
+        {
+            let mut config = self.error_config.lock().unwrap();
+            config.set_completion(ErrorType::ModelNotFound(model.into()));
+        }
         self
     }
 
     pub fn with_rate_limit(self, message: impl Into<String>) -> Self {
-        *self.error_type.lock().unwrap() = Some(ErrorType::RateLimit(message.into()));
+        {
+            let mut config = self.error_config.lock().unwrap();
+            config.set_completion(ErrorType::RateLimit(message.into()));
+        }
         self
     }
 
     pub fn with_quota_exceeded(self, message: impl Into<String>) -> Self {
-        *self.error_type.lock().unwrap() = Some(ErrorType::QuotaExceeded(message.into()));
+        {
+            let mut config = self.error_config.lock().unwrap();
+            config.set_completion(ErrorType::QuotaExceeded(message.into()));
+        }
         self
     }
 
     pub fn with_bad_request(self, message: impl Into<String>) -> Self {
-        *self.error_type.lock().unwrap() = Some(ErrorType::BadRequest(message.into()));
+        {
+            let mut config = self.error_config.lock().unwrap();
+            config.set_completion(ErrorType::BadRequest(message.into()));
+        }
         self
     }
 
     pub fn with_internal_error(self, message: impl Into<String>) -> Self {
-        *self.error_type.lock().unwrap() = Some(ErrorType::InternalError(message.into()));
+        {
+            let mut config = self.error_config.lock().unwrap();
+            config.set_completion(ErrorType::InternalError(message.into()));
+        }
         self
     }
 
     pub fn with_service_unavailable(self, message: impl Into<String>) -> Self {
-        *self.error_type.lock().unwrap() = Some(ErrorType::ServiceUnavailable(message.into()));
+        {
+            let mut config = self.error_config.lock().unwrap();
+            config.set_completion(ErrorType::ServiceUnavailable(message.into()));
+        }
+        self
+    }
+
+    pub fn with_list_models_auth_error(self, message: impl Into<String>) -> Self {
+        {
+            let mut config = self.error_config.lock().unwrap();
+            config.set_list_models(ErrorType::AuthError(message.into()));
+        }
         self
     }
 
@@ -245,7 +309,7 @@ impl OpenAIMock {
 
     pub fn controller(&self) -> OpenAIMockController {
         OpenAIMockController {
-            error_type: self.error_type.clone(),
+            error_config: self.error_config.clone(),
         }
     }
 
@@ -283,9 +347,9 @@ impl TestLlmProvider for OpenAIMock {
             name,
             models,
             model_configs: _,
-            model_pattern,
+            model_filter,
             custom_responses,
-            error_type,
+            error_config,
             streaming_enabled,
             streaming_chunks,
             streaming_error,
@@ -297,7 +361,7 @@ impl TestLlmProvider for OpenAIMock {
         let state = Arc::new(TestLlmState {
             models,
             custom_responses,
-            error_type: error_type.clone(),
+            error_config: error_config.clone(),
             streaming_enabled,
             streaming_chunks,
             streaming_error,
@@ -326,7 +390,7 @@ impl TestLlmProvider for OpenAIMock {
             address,
             provider_type: super::provider::ProviderType::OpenAI,
             model_configs,
-            model_pattern,
+            model_filter,
         })
     }
 }
@@ -360,7 +424,7 @@ impl TestOpenAIServer {
 struct TestLlmState {
     models: Vec<String>,
     custom_responses: HashMap<String, String>,
-    error_type: Arc<Mutex<Option<ErrorType>>>,
+    error_config: Arc<Mutex<ErrorConfig>>,
     streaming_enabled: bool,
     streaming_chunks: Option<Vec<String>>,
     streaming_error: Option<String>,
@@ -378,7 +442,7 @@ impl Default for TestLlmState {
                 "gpt-4-turbo".to_string(),
             ],
             custom_responses: HashMap::new(),
-            error_type: Arc::new(Mutex::new(None)),
+            error_config: Arc::new(Mutex::new(ErrorConfig::default())),
             streaming_enabled: false,
             streaming_chunks: None,
             streaming_error: None,
@@ -401,6 +465,27 @@ impl IntoResponse for ErrorResponse {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::{ErrorType, OpenAIMock};
+
+    #[test]
+    fn auth_error_only_sets_completion() {
+        let mock = OpenAIMock::new("test").with_auth_error("Invalid API key");
+        let config = mock.error_config.lock().unwrap();
+        assert!(matches!(config.completion, Some(ErrorType::AuthError(_))));
+        assert!(config.list_models.is_none());
+    }
+
+    #[test]
+    fn list_models_auth_error_only_sets_list_models() {
+        let mock = OpenAIMock::new("test").with_list_models_auth_error("Invalid API key");
+        let config = mock.error_config.lock().unwrap();
+        assert!(config.completion.is_none());
+        assert!(matches!(config.list_models, Some(ErrorType::AuthError(_))));
+    }
+}
+
 /// Handle chat completion requests
 async fn chat_completions(
     State(state): State<Arc<TestLlmState>>,
@@ -416,7 +501,7 @@ async fn chat_completions(
     }
     *state.captured_headers.lock().unwrap() = captured;
     // Check for configured error responses
-    if let Some(error_type) = state.error_type.lock().unwrap().clone() {
+    if let Some(error_type) = state.error_config.lock().unwrap().completion.clone() {
         if let ErrorType::ModelNotFound(model) = &error_type
             && !request.model.contains(model)
         {
@@ -744,7 +829,7 @@ fn generate_success_response(request: ChatCompletionRequest, state: &TestLlmStat
 /// Handle list models requests
 async fn list_models(State(state): State<Arc<TestLlmState>>) -> Result<Json<ModelsResponse>, ErrorResponse> {
     // Check for configured error responses
-    if let Some(error_type) = state.error_type.lock().unwrap().clone() {
+    if let Some(error_type) = state.error_config.lock().unwrap().list_models.clone() {
         return Err(match error_type {
             ErrorType::AuthError(msg) => ErrorResponse {
                 status: StatusCode::UNAUTHORIZED,
