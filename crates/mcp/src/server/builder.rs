@@ -28,18 +28,10 @@ impl McpServerBuilder {
     /// Build the MCP handler with optional telemetry middleware.
     pub(crate) async fn build(self) -> anyhow::Result<McpHandler> {
         // Check if metrics are enabled
-        let metrics_enabled = self
-            .config
-            .telemetry
-            .as_ref()
-            .is_some_and(|t| t.metrics_otlp_config().is_some());
+        let metrics_enabled = self.config.telemetry.metrics_otlp_config().is_some();
 
         // Check if tracing is enabled
-        let tracing_enabled = self
-            .config
-            .telemetry
-            .as_ref()
-            .is_some_and(|t| t.traces_otlp_config().is_some());
+        let tracing_enabled = self.config.telemetry.traces_otlp_config().is_some();
 
         let mcp_config = self.config.mcp.clone();
         let mcp_server = McpServer::new(self).await?;

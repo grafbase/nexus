@@ -12,6 +12,7 @@ anyhow = { workspace = true, features = ["backtrace"] }
 axum = { workspace = true, features = ["macros", "json", "http2"] }
 axum-server.workspace = true
 config.workspace = true
+context.workspace = true
 fast-glob.workspace = true
 fastrace = { workspace = true, features = ["enable"] }
 http.workspace = true

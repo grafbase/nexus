@@ -47,7 +47,7 @@ impl RateLimitManager {
     pub async fn new(
         config: RateLimitConfig,
         mcp_config: McpConfig,
-        telemetry_config: Option<&config::TelemetryConfig>,
+        telemetry_config: &config::TelemetryConfig,
     ) -> Result<Self, RateLimitError> {
         let storage = match &config.storage {
             StorageConfig::Memory => Storage::Memory(InMemoryStorage::new()),
@@ -56,7 +56,7 @@ impl RateLimitManager {
                 let redis_storage = RedisStorage::new(redis_config).await.map_err(RateLimitError::Storage)?;
 
                 // Wrap with tracing if OTLP export is enabled
-                let should_trace = telemetry_config.and_then(|tc| tc.traces_otlp_config()).is_some();
+                let should_trace = telemetry_config.traces_otlp_config().is_some();
 
                 if should_trace {
                     Storage::TracedRedis(TracedRedisStorage::new(redis_storage))

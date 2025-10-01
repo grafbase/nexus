@@ -26,6 +26,7 @@ base64 = "0.22.1"
 clap = "4.5.41"
 clickhouse = { version = "0.13", features = ["lz4"] }
 config = { path = "crates/config" }
+context = { path = "crates/context" }
 convert_case = "0.8.0"
 ctor = "0.5.0"
 dashmap = "6.1.0"
@@ -34,6 +35,7 @@ duration-str = "0.17"
 eventsource-stream = "0.2.3"
 fast-glob = "1.0.0"
 indexmap = "2.7.0"
+serde_with = "3"
 # TODO: use crates.io again when this one is released: https://github.com/fast/fastrace/pull/134
 # fastrace = "0.7.14"
 # fastrace-futures = "0.7.5"

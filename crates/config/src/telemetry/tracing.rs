@@ -13,15 +13,12 @@ pub struct TracingConfig {
     pub parent_based_sampler: bool,
 
     /// Collection limits configuration
-    #[serde(default)]
     pub collect: CollectConfig,
 
     /// Trace context propagation configuration
-    #[serde(default)]
     pub propagation: PropagationConfig,
 
     /// Override global exporters for traces (optional)
-    #[serde(default)]
     exporters: Option<ExportersConfig>,
 }
 

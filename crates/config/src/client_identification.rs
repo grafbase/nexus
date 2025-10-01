@@ -33,18 +33,15 @@ impl Default for IdentificationSource {
 #[serde(default, deny_unknown_fields)]
 pub struct ClientIdentificationConfig {
     /// Whether client identification is enabled.
-    #[serde(default)]
     pub enabled: bool,
 
     /// Validation settings for client identification.
-    #[serde(default)]
     pub validation: ClientIdentificationValidation,
 
     /// Client ID extraction source.
     pub client_id: IdentificationSource,
 
     /// Group ID extraction source.
-    #[serde(default)]
     pub group_id: Option<IdentificationSource>,
 }
 
@@ -79,26 +76,24 @@ mod tests {
         let config: Config = toml::from_str(config).unwrap();
 
         assert_debug_snapshot!(&config.server.client_identification, @r#"
-        Some(
-            ClientIdentificationConfig {
-                enabled: true,
-                validation: ClientIdentificationValidation {
-                    group_values: {
-                        "enterprise",
-                        "free",
-                        "pro",
-                    },
+        ClientIdentificationConfig {
+            enabled: true,
+            validation: ClientIdentificationValidation {
+                group_values: {
+                    "enterprise",
+                    "free",
+                    "pro",
                 },
-                client_id: JwtClaim {
-                    jwt_claim: "sub",
-                },
-                group_id: Some(
-                    JwtClaim {
-                        jwt_claim: "plan",
-                    },
-                ),
             },
-        )
+            client_id: JwtClaim {
+                jwt_claim: "sub",
+            },
+            group_id: Some(
+                JwtClaim {
+                    jwt_claim: "plan",
+                },
+            ),
+        }
         "#);
     }
 
@@ -117,25 +112,23 @@ mod tests {
         let config: Config = toml::from_str(config).unwrap();
 
         assert_debug_snapshot!(&config.server.client_identification, @r#"
-        Some(
-            ClientIdentificationConfig {
-                enabled: true,
-                validation: ClientIdentificationValidation {
-                    group_values: {
-                        "basic",
-                        "premium",
-                    },
+        ClientIdentificationConfig {
+            enabled: true,
+            validation: ClientIdentificationValidation {
+                group_values: {
+                    "basic",
+                    "premium",
                 },
-                client_id: HttpHeader {
-                    http_header: "X-Client-Id",
-                },
-                group_id: Some(
-                    HttpHeader {
-                        http_header: "X-Plan",
-                    },
-                ),
             },
-        )
+            client_id: HttpHeader {
+                http_header: "X-Client-Id",
+            },
+            group_id: Some(
+                HttpHeader {
+                    http_header: "X-Plan",
+                },
+            ),
+        }
         "#);
     }
 }

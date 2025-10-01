@@ -31,7 +31,7 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower_http::cors::CorsLayer;
 
-use crate::tracing::TracingLayer;
+use crate::{csrf::CsrfLayer, tracing::TracingLayer};
 
 /// Configuration for serving Nexus.
 pub struct ServeConfig {
@@ -45,6 +45,8 @@ pub struct ServeConfig {
     pub log_filter: String,
     /// The version string to log on startup
     pub version: String,
+    /// Optional oneshot sender to send back the bound address (useful if port 0 was specified)
+    pub bound_addr_sender: Option<tokio::sync::oneshot::Sender<SocketAddr>>,
 }
 
 /// Starts and runs the Nexus server with the provided configuration.
@@ -55,6 +57,7 @@ pub async fn serve(
         shutdown_signal,
         log_filter,
         version,
+        bound_addr_sender,
     }: ServeConfig,
 ) -> anyhow::Result<()> {
     let _telemetry_guard = init_otel(&config, log_filter).await;
@@ -63,21 +66,10 @@ pub async fn serve(
     log::info!("Nexus {version}");
     let mut app = Router::new();
 
-    // Create CORS layer first, like Grafbase does
-    let cors = if let Some(cors_config) = &config.server.cors {
-        cors::generate(cors_config)
-    } else {
-        CorsLayer::permissive()
-    };
-
     let rate_limit_manager = if config.server.rate_limits.enabled {
         log::debug!("Initializing rate limit manager with configured limits");
-        let manager = RateLimitManager::new(
-            config.server.rate_limits.clone(),
-            config.mcp.clone(),
-            config.telemetry.as_ref(),
-        )
-        .await?;
+        let manager =
+            RateLimitManager::new(config.server.rate_limits.clone(), config.mcp.clone(), &config.telemetry).await?;
 
         Some(Arc::new(manager))
     } else {
@@ -85,8 +77,31 @@ pub async fn serve(
         None
     };
 
-    // Create a router for protected routes (that require OAuth)
-    let mut protected_router = Router::new();
+    let cors = if let Some(cors_config) = &config.server.cors {
+        cors::new_layer(cors_config)
+    } else {
+        CorsLayer::permissive()
+    };
+    let csrf = CsrfLayer::new(&config.server.csrf);
+
+    let layers_before_auth = {
+        tower::ServiceBuilder::new()
+            .layer(cors.clone())
+            .layer(csrf.clone())
+            .layer(metrics::MetricsLayer::new())
+    };
+
+    let nexus_only_auth_layer = AuthLayer::new(config.server.oauth.clone());
+
+    let layers_after_auth = {
+        let client_identification = ClientIdentificationLayer::new(config.server.client_identification.clone());
+        let rate_limit = RateLimitLayer::new(config.server.client_ip.clone(), rate_limit_manager.clone());
+
+        tower::ServiceBuilder::new()
+            .layer(client_identification)
+            .layer(TracingLayer::with_config(Arc::new(config.telemetry.clone())))
+            .layer(rate_limit)
+    };
 
     // Track which endpoints actually get initialized
     let mut mcp_actually_exposed = false;
@@ -95,15 +110,21 @@ pub async fn serve(
     // Apply CORS to MCP router before merging
     // Expose MCP endpoint if enabled
     if config.mcp.enabled() {
-        let mut mcp_config_builder = mcp::RouterConfig::builder(config.clone());
-
-        if let Some(ref manager) = rate_limit_manager {
-            mcp_config_builder = mcp_config_builder.rate_limit_manager(manager.clone());
-        }
-
-        match mcp::router(mcp_config_builder.build()).await {
+        match mcp::router(mcp::RouterConfig {
+            config: config.clone(),
+            rate_limit_manager,
+        })
+        .await
+        {
             Ok(mcp_router) => {
-                protected_router = protected_router.merge(mcp_router.layer(cors.clone()));
+                app = app.merge(
+                    mcp_router.layer(
+                        tower::ServiceBuilder::new()
+                            .layer(layers_before_auth.clone())
+                            .layer(nexus_only_auth_layer.clone())
+                            .layer(layers_after_auth.clone()),
+                    ),
+                );
                 mcp_actually_exposed = true;
             }
             Err(e) => {
@@ -117,7 +138,17 @@ pub async fn serve(
     if config.llm.enabled() && config.llm.has_providers() {
         match llm::router(&config).await {
             Ok(llm_router) => {
-                protected_router = protected_router.merge(llm_router.layer(cors.clone()));
+                app = app.merge(
+                    llm_router
+                        .clone()
+                        .layer(
+                            tower::ServiceBuilder::new()
+                                .layer(layers_before_auth.clone())
+                                .layer(nexus_only_auth_layer.clone())
+                                .layer(layers_after_auth.clone()),
+                        )
+                        .clone(),
+                );
                 llm_actually_exposed = true;
             }
             Err(e) => {
@@ -129,60 +160,16 @@ pub async fn serve(
         log::debug!("LLM is enabled but no providers are configured - LLM endpoint will not be exposed");
     }
 
-    // Apply rate limiting HTTP middleware FIRST (so it runs LAST, after tracing creates parent span)
-    // (global and IP-based limits only - MCP limits are handled in the MCP layer)
-    if config.server.rate_limits.enabled
-        && let Some(manager) = rate_limit_manager
-    {
-        log::debug!("Applying HTTP rate limiting middleware to protected routes");
-        protected_router = protected_router.layer(RateLimitLayer::new(config.server.client_ip.clone(), manager));
-    }
-
-    // Apply tracing middleware (runs after client identification, before rate limiting)
-    // This ensures client.id and client.group are available and creates parent span for rate limiting
-    if let Some(ref telemetry) = config.telemetry
-        && telemetry.tracing_enabled()
-    {
-        log::debug!("Applying tracing middleware to protected routes");
-        protected_router = protected_router.layer(TracingLayer::with_config(Arc::new(telemetry.clone())));
-    }
-
-    // Apply client identification middleware for access control
-    // IMPORTANT: In Axum, layers applied later in code run FIRST in execution
-    // So this must be applied BEFORE auth layer to run AFTER auth validates JWT
-    match config.server.client_identification {
-        Some(ref ident) if ident.enabled => {
-            log::debug!("Applying client identification middleware for access control");
-            let layer = ClientIdentificationLayer::new(ident.clone());
-            protected_router = protected_router.layer(layer);
-        }
-        _ => {
-            log::debug!("Client identification is disabled");
-        }
-    }
-
     // Apply OAuth authentication to protected routes
     // This runs BEFORE client identification (due to layer ordering) so JWT is available
-    if let Some(ref oauth_config) = config.server.oauth {
-        protected_router = protected_router.layer(AuthLayer::new(oauth_config.clone()));
-
+    if let Some(config) = &config.server.oauth {
         // Add OAuth metadata endpoint (this should be public, not protected)
-        let oauth_config_clone = oauth_config.clone();
-
+        let response = well_known::oauth_metadata(config);
         app = app.route(
             "/.well-known/oauth-protected-resource",
-            get(move || well_known::oauth_metadata(oauth_config_clone.clone())),
+            get(async move || response.clone()),
         );
     }
-
-    // Apply metrics middleware to protected routes if telemetry is enabled
-    if config.telemetry.is_some() {
-        log::debug!("Applying metrics middleware to protected routes");
-        protected_router = protected_router.layer(metrics::MetricsLayer::new());
-    }
-
-    // Merge protected routes (with all middleware) into main app
-    app = app.merge(protected_router);
 
     // Add health endpoint (unprotected - added AFTER rate limiting)
     if config.server.health.enabled {
@@ -195,20 +182,23 @@ pub async fn serve(
         } else {
             let health_router = Router::new()
                 .route(&config.server.health.path, get(health::health))
-                .layer(cors.clone());
+                // We shouldn't have one IMHO, but all the tests rely on this right now...
+                .layer(csrf)
+                .layer(cors);
 
             app = app.merge(health_router);
         }
     }
 
-    // Apply CSRF protection to the entire app if enabled
-    if config.server.csrf.enabled {
-        app = csrf::inject_layer(app, &config.server.csrf);
-    }
-
     let listener = TcpListener::bind(listen_address)
         .await
         .map_err(|e| anyhow!("Failed to bind to {listen_address}: {e}"))?;
+
+    if let Some(sender) = bound_addr_sender {
+        sender
+            .send(listener.local_addr()?)
+            .expect("Failed to send back bound address.");
+    }
 
     // Check what endpoints are actually exposed
     if !mcp_actually_exposed && !llm_actually_exposed {
@@ -294,28 +284,21 @@ pub async fn serve(
 }
 
 async fn init_otel(config: &Config, log_filter: String) -> Option<TelemetryGuard> {
-    if let Some(telemetry_config) = &config.telemetry {
-        // Don't let telemetry code log during initialization to avoid recursion
-        match telemetry::init(telemetry_config).await {
-            Ok(guard) => {
-                // Initialize logger with OTEL appender if logs are enabled
-                let otel_appender = guard.logs_appender().cloned();
-                logger::init(&log_filter, otel_appender);
+    // Don't let telemetry code log during initialization to avoid recursion
+    match telemetry::init(&config.telemetry).await {
+        Ok(guard) => {
+            // Initialize logger with OTEL appender if logs are enabled
+            let otel_appender = guard.logs_appender().cloned();
+            logger::init(&log_filter, otel_appender);
 
-                Some(guard)
-            }
-            Err(e) => {
-                eprintln!("Failed to initialize telemetry: {e}");
-                // Initialize logger without OTEL
-                logger::init(&log_filter, None);
-
-                None
-            }
+            Some(guard)
         }
-    } else {
-        // No telemetry configured, initialize basic logger
-        logger::init(&log_filter, None);
+        Err(e) => {
+            eprintln!("Failed to initialize telemetry: {e}");
+            // Initialize logger without OTEL
+            logger::init(&log_filter, None);
 
-        None
+            None
+        }
     }
 }

@@ -28,7 +28,7 @@ pub struct ServerConfig {
     /// Rate limiting configuration
     pub rate_limits: RateLimitConfig,
     /// Client identification configuration for token-based rate limiting
-    pub client_identification: Option<ClientIdentificationConfig>,
+    pub client_identification: ClientIdentificationConfig,
     /// Client IP configuration for IP-based rate limiting
     pub client_ip: ClientIpConfig,
 }
