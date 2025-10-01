@@ -84,12 +84,10 @@ pub async fn serve(
     };
     let csrf = CsrfLayer::new(&config.server.csrf);
 
-    let layers_before_auth = {
-        tower::ServiceBuilder::new()
-            .layer(cors.clone())
-            .layer(csrf.clone())
-            .layer(metrics::MetricsLayer::new())
-    };
+    let layers_before_auth = tower::ServiceBuilder::new()
+        .layer(cors.clone())
+        .layer(csrf.clone())
+        .layer(metrics::MetricsLayer::new());
 
     let nexus_only_auth_layer = AuthLayer::new(config.server.oauth.clone());
 

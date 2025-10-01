@@ -4,6 +4,4 @@ pub enum AuthError {
     Unauthorized,
     #[error("Internal server error")]
     Internal,
-    #[error("Invalid token: {0}")]
-    InvalidToken(&'static str),
 }

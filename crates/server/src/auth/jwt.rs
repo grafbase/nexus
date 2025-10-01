@@ -28,14 +28,15 @@ impl JwtAuth {
     }
 
     pub async fn authenticate(&self, parts: &Parts) -> Result<NexusToken, AuthError> {
-        let token_header = parts
-            .headers
-            .get(AUTHORIZATION)
-            .ok_or(AuthError::InvalidToken("missing token"))?;
+        let token_header = parts.headers.get(AUTHORIZATION).ok_or_else(|| {
+            log::debug!("missing token");
+            AuthError::Unauthorized
+        })?;
 
-        let token_str = token_header
-            .to_str()
-            .map_err(|_| AuthError::InvalidToken("invalid token"))?;
+        let token_str = token_header.to_str().map_err(|_| {
+            log::debug!("invalid token");
+            AuthError::Unauthorized
+        })?;
 
         // RFC 7235: authentication scheme is case-insensitive
         // Check if it starts with "bearer" (case-insensitive) followed by space
@@ -46,12 +47,15 @@ impl JwtAuth {
             let token_str = &token_str[BEARER_TOKEN_LENGTH + 1..]; // Skip "Bearer " (case-insensitive)
 
             if token_str.is_empty() {
-                return Err(AuthError::InvalidToken("missing token"));
+                log::debug!("missing token");
+                return Err(AuthError::Unauthorized);
             }
 
             // Continue with token validation
-            let untrusted_token =
-                UntrustedToken::new(token_str).map_err(|_| AuthError::InvalidToken("invalid token"))?;
+            let untrusted_token = UntrustedToken::new(token_str).map_err(|_| {
+                log::debug!("invalid token");
+                AuthError::Unauthorized
+            })?;
 
             let jwks = self.jwks_cache.get().await?;
 
@@ -65,10 +69,12 @@ impl JwtAuth {
             })
         } else if token_str.eq_ignore_ascii_case("bearer") {
             // Handle case where header is exactly "Bearer" with no space/token
-            Err(AuthError::InvalidToken("missing token"))
+            log::debug!("missing token");
+            Err(AuthError::Unauthorized)
         } else {
             // Not a valid Bearer format
-            Err(AuthError::InvalidToken("token must be prefixed with Bearer"))
+            log::debug!("token must be prefixed with Bearer");
+            Err(AuthError::Unauthorized)
         }
     }
 

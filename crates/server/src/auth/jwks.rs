@@ -146,7 +146,7 @@ pub enum Alg {
 }
 
 impl FromStr for Alg {
-    type Err = AuthError;
+    type Err = &'static str;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -161,7 +161,7 @@ impl FromStr for Alg {
             "PS384" => Ok(Alg::PS384),
             "PS512" => Ok(Alg::PS512),
             "EdDSA" => Ok(Alg::EdDSA),
-            _ => Err(AuthError::InvalidToken("unsupported algorithm")),
+            _ => Err("unsupported algorithm"),
         }
     }
 }

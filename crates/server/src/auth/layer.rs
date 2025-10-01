@@ -16,33 +16,6 @@ use serde::Serialize;
 
 use tower::Layer;
 
-#[derive(Serialize)]
-struct ErrorResponse {
-    error: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    error_description: Option<String>,
-}
-
-impl ErrorResponse {
-    fn new(error: impl Into<String>) -> Self {
-        Self {
-            error: error.into(),
-            error_description: None,
-        }
-    }
-
-    fn with_description(error: impl Into<String>, description: impl Into<String>) -> Self {
-        Self {
-            error: error.into(),
-            error_description: Some(description.into()),
-        }
-    }
-
-    fn to_json(&self) -> String {
-        serde_json::to_string(self).unwrap_or_else(|_| r#"{"error":"internal_error"}"#.to_string())
-    }
-}
-
 #[derive(Clone)]
 pub struct AuthLayer(Arc<AuthLayerInner>);
 
@@ -125,23 +98,21 @@ where
                         }
                     };
 
-                    let (status_code, error_response) = match auth_error {
-                        AuthError::Unauthorized => (StatusCode::UNAUTHORIZED, ErrorResponse::new("unauthorized")),
-                        AuthError::Internal => (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            ErrorResponse::with_description("internal_server_error", "An internal error occurred"),
-                        ),
-                        AuthError::InvalidToken(msg) => (
-                            StatusCode::UNAUTHORIZED,
-                            ErrorResponse::with_description("invalid_token", msg),
-                        ),
+                    #[derive(Serialize)]
+                    struct Content {
+                        error: &'static str,
+                    }
+
+                    let (status_code, error) = match auth_error {
+                        AuthError::Unauthorized => (StatusCode::UNAUTHORIZED, "Unauthorized"),
+                        AuthError::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error"),
                     };
 
                     let response = Response::builder()
                         .status(status_code)
-                        .header("WWW-Authenticate", www_authenticate_value)
-                        .header("Content-Type", "application/json")
-                        .body(Body::from(error_response.to_json()))
+                        .header(http::header::WWW_AUTHENTICATE, www_authenticate_value)
+                        .header(http::header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(serde_json::to_vec(&Content { error }).unwrap()))
                         .unwrap();
 
                     Ok(response)
