@@ -4,10 +4,10 @@ use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Clone, Debug)]
+#[derive(Default, Clone, Debug)]
 pub struct Authentication {
     pub nexus: Option<NexusToken>,
-    pub anthropic: Option<SecretString>,
+    pub has_anthropic_authorization: bool,
 }
 
 #[derive(Clone, Debug)]

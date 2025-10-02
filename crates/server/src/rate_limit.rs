@@ -10,11 +10,12 @@ use std::{
 };
 
 use axum::{body::Body, extract::ConnectInfo};
+use context::ClientIdentity;
 use http::{Request, Response, StatusCode};
 use rate_limit::{RateLimitError, RateLimitManager, RateLimitRequest};
 use tower::Layer;
 
-use config::{ClientIdentity, ClientIpConfig};
+use config::ClientIpConfig;
 
 #[derive(Clone)]
 pub struct RateLimitLayer {

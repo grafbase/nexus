@@ -3,7 +3,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use config::ClientIdentity;
+use context::ClientIdentity;
 use futures::Stream;
 use opentelemetry::metrics::Counter;
 use telemetry::metrics::Recorder;

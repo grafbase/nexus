@@ -13,7 +13,7 @@ use crate::{
 
 /// LLM handler that optionally applies metrics and tracing based on configuration
 #[derive(Clone)]
-pub(crate) enum LlmHandler {
+pub enum Server {
     /// Server with both metrics and tracing
     WithMetricsAndTracing(LlmServerWithTracing<LlmServerWithMetrics<LlmServer>>),
     /// Server with metrics only
@@ -24,56 +24,56 @@ pub(crate) enum LlmHandler {
     Direct(LlmServer),
 }
 
-impl LlmHandler {
+impl Server {
     /// List all available models from all providers.
-    pub async fn models(&self) -> ModelsResponse {
+    pub(crate) async fn models(&self) -> ModelsResponse {
         match self {
-            LlmHandler::WithMetricsAndTracing(server) => server.models().await,
-            LlmHandler::WithMetrics(server) => server.models().await,
-            LlmHandler::WithTracing(server) => server.models().await,
-            LlmHandler::Direct(server) => server.models().await,
+            Server::WithMetricsAndTracing(server) => server.models().await,
+            Server::WithMetrics(server) => server.models().await,
+            Server::WithTracing(server) => server.models().await,
+            Server::Direct(server) => server.models().await,
         }
     }
 
     /// Process a unified chat completion request (protocol-agnostic).
-    pub async fn completions(
+    pub(crate) async fn completions(
         &self,
         request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<UnifiedResponse> {
         match self {
-            LlmHandler::WithMetricsAndTracing(server) => server.completions(request, context).await,
-            LlmHandler::WithMetrics(server) => server.completions(request, context).await,
-            LlmHandler::WithTracing(server) => server.completions(request, context).await,
-            LlmHandler::Direct(server) => server.completions(request, context).await,
+            Server::WithMetricsAndTracing(server) => server.completions(request, context).await,
+            Server::WithMetrics(server) => server.completions(request, context).await,
+            Server::WithTracing(server) => server.completions(request, context).await,
+            Server::Direct(server) => server.completions(request, context).await,
         }
     }
 
     /// Process a unified streaming chat completion request (protocol-agnostic).
-    pub async fn completions_stream(
+    pub(crate) async fn completions_stream(
         &self,
         request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
         match self {
-            LlmHandler::WithMetricsAndTracing(server) => server.completions_stream(request, context).await,
-            LlmHandler::WithMetrics(server) => server.completions_stream(request, context).await,
-            LlmHandler::WithTracing(server) => server.completions_stream(request, context).await,
-            LlmHandler::Direct(server) => server.completions_stream(request, context).await,
+            Server::WithMetricsAndTracing(server) => server.completions_stream(request, context).await,
+            Server::WithMetrics(server) => server.completions_stream(request, context).await,
+            Server::WithTracing(server) => server.completions_stream(request, context).await,
+            Server::Direct(server) => server.completions_stream(request, context).await,
         }
     }
 
     /// Forward an Anthropic count tokens request to the appropriate provider.
-    pub async fn count_tokens(
+    pub(crate) async fn count_tokens(
         &self,
         request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<CountTokensResponse> {
         match self {
-            LlmHandler::WithMetricsAndTracing(server) => server.count_tokens(request, context).await,
-            LlmHandler::WithMetrics(server) => server.count_tokens(request, context).await,
-            LlmHandler::WithTracing(server) => server.count_tokens(request, context).await,
-            LlmHandler::Direct(server) => server.count_tokens(request, context).await,
+            Server::WithMetricsAndTracing(server) => server.count_tokens(request, context).await,
+            Server::WithMetrics(server) => server.count_tokens(request, context).await,
+            Server::WithTracing(server) => server.count_tokens(request, context).await,
+            Server::Direct(server) => server.count_tokens(request, context).await,
         }
     }
 }

@@ -12,7 +12,7 @@ use crate::{
         Provider, anthropic::AnthropicProvider, bedrock::BedrockProvider, google::GoogleProvider,
         openai::OpenAIProvider,
     },
-    server::{LlmHandler, LlmServer, LlmServerInner, metrics::LlmServerWithMetrics, tracing::LlmServerWithTracing},
+    server::{LlmServer, LlmServerInner, Server, metrics::LlmServerWithMetrics, tracing::LlmServerWithTracing},
 };
 
 use super::model_discovery::{ModelDiscovery, ModelMap};
@@ -26,7 +26,7 @@ impl<'a> LlmServerBuilder<'a> {
         Self { config }
     }
 
-    pub async fn build(self) -> crate::Result<LlmHandler> {
+    pub async fn build(self) -> crate::Result<Server> {
         log::debug!(
             "Initializing LLM server with {} providers",
             self.config.llm.providers.len()
@@ -119,20 +119,20 @@ impl<'a> LlmServerBuilder<'a> {
         let handler = match (has_metrics, has_tracing) {
             (true, true) => {
                 log::debug!("Telemetry and tracing enabled, wrapping LLM server with both middlewares");
-                LlmHandler::WithMetricsAndTracing(LlmServerWithTracing::new(LlmServerWithMetrics::new(server)))
+                Server::WithMetricsAndTracing(LlmServerWithTracing::new(LlmServerWithMetrics::new(server)))
             }
             (true, false) => {
                 log::debug!("Telemetry enabled, wrapping LLM server with metrics middleware");
-                LlmHandler::WithMetrics(LlmServerWithMetrics::new(server))
+                Server::WithMetrics(LlmServerWithMetrics::new(server))
             }
             (false, true) => {
                 // This shouldn't happen (tracing requires telemetry), but handle it gracefully
                 log::debug!("Tracing enabled without metrics, wrapping LLM server with tracing middleware only");
-                LlmHandler::WithTracing(LlmServerWithTracing::new(server))
+                Server::WithTracing(LlmServerWithTracing::new(server))
             }
             (false, false) => {
                 log::debug!("Telemetry disabled, using direct LLM server");
-                LlmHandler::Direct(server)
+                Server::Direct(server)
             }
         };
 
