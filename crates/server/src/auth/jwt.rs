@@ -1,10 +1,9 @@
 use std::str::FromStr;
 
-use super::AuthResult;
-use super::claims::CustomClaims;
 use super::error::AuthError;
 use super::jwks::{Alg, Jwks, JwksCache};
 use config::OauthConfig;
+use context::{Claims, NexusToken};
 use http::{header::AUTHORIZATION, request::Parts};
 use jwt_compact::{Algorithm, AlgorithmExt, TimeOptions, UntrustedToken, jwk::JsonWebKey};
 use secrecy::SecretString;
@@ -12,7 +11,7 @@ use url::Url;
 
 const BEARER_TOKEN_LENGTH: usize = 6;
 
-pub struct JwtAuth {
+pub(crate) struct JwtAuth {
     config: OauthConfig,
     jwks_cache: JwksCache,
 }
@@ -28,7 +27,7 @@ impl JwtAuth {
         self.config.protected_resource.resource_documentation()
     }
 
-    pub async fn authenticate(&self, parts: &Parts) -> AuthResult<(SecretString, jwt_compact::Token<CustomClaims>)> {
+    pub async fn authenticate(&self, parts: &Parts) -> Result<NexusToken, AuthError> {
         let token_header = parts
             .headers
             .get(AUTHORIZATION)
@@ -60,7 +59,10 @@ impl JwtAuth {
                 .validate_token(&jwks, untrusted_token)
                 .ok_or(AuthError::Unauthorized)?;
 
-            Ok((SecretString::from(token_str.to_string()), validated_token))
+            Ok(NexusToken {
+                raw: SecretString::from(token_str.to_string()),
+                token: validated_token,
+            })
         } else if token_str.eq_ignore_ascii_case("bearer") {
             // Handle case where header is exactly "Bearer" with no space/token
             Err(AuthError::InvalidToken("missing token"))
@@ -74,7 +76,7 @@ impl JwtAuth {
         &self,
         jwks: &Jwks<'_>,
         untrusted_token: UntrustedToken<'_>,
-    ) -> Option<jwt_compact::Token<CustomClaims>> {
+    ) -> Option<jwt_compact::Token<Claims>> {
         use jwt_compact::alg::*;
 
         let time_options = TimeOptions::default();
@@ -127,13 +129,13 @@ impl JwtAuth {
             .map(|(_, _, _, _, token)| token)
     }
 
-    fn validate_issuer(&self, claims: &CustomClaims) -> bool {
+    fn validate_issuer(&self, claims: &Claims) -> bool {
         let Some(expected_issuer) = &self.config.expected_issuer else {
             // If no expected issuer is configured, skip validation
             return true;
         };
 
-        match claims.get_issuer() {
+        match &claims.issuer {
             Some(issuer) if issuer == expected_issuer => {
                 log::debug!("JWT validation successful: issuer claim matches expected value");
                 true
@@ -149,13 +151,17 @@ impl JwtAuth {
         }
     }
 
-    fn validate_audience(&self, claims: &CustomClaims) -> bool {
+    fn validate_audience(&self, claims: &Claims) -> bool {
         let Some(expected_audience) = &self.config.expected_audience else {
             // If no expected audience is configured, skip validation
             return true;
         };
 
-        if claims.has_audience(expected_audience) {
+        if claims
+            .audience
+            .as_ref()
+            .is_some_and(|audiences| audiences.iter().any(|aud| aud == expected_audience))
+        {
             log::debug!("JWT validation successful: audience claim matches expected value");
             true
         } else {
@@ -169,7 +175,7 @@ fn decode<A: Algorithm>(
     alg: A,
     jwk: &JsonWebKey<'_>,
     untrusted_token: &UntrustedToken<'_>,
-) -> Option<jwt_compact::Token<CustomClaims>>
+) -> Option<jwt_compact::Token<Claims>>
 where
     A::VerifyingKey: std::fmt::Debug + for<'a> TryFrom<&'a JsonWebKey<'a>>,
 {

@@ -20,23 +20,18 @@ pub struct TelemetryConfig {
     service_name: Option<String>,
 
     /// Custom resource attributes to attach to all telemetry
-    #[serde(default)]
     resource_attributes: BTreeMap<String, String>,
 
     /// Global exporters configuration (required, will always have a value)
-    #[serde(default)]
     exporters: ExportersConfig,
 
     /// Tracing-specific configuration
-    #[serde(default)]
     tracing: TracingConfig,
 
     /// Metrics-specific configuration
-    #[serde(default)]
     metrics: MetricsConfig,
 
     /// Logs-specific configuration
-    #[serde(default)]
     logs: LogsConfig,
 }
 
@@ -67,6 +62,17 @@ impl TelemetryConfig {
         // Check trace-specific exporters first, then fall back to global
         if let Some(trace_exporters) = self.tracing.exporters() {
             trace_exporters.otlp.enabled
+        } else {
+            self.exporters.otlp.enabled
+        }
+    }
+
+    /// Check if metrics are effectively enabled (has exporters configured and enabled)
+    pub fn metrics_enabled(&self) -> bool {
+        // Metrics are enabled if we have any OTLP exporter configured
+        // Check metrics-specific exporters first, then fall back to global
+        if let Some(metrics_exporters) = self.metrics.exporters() {
+            metrics_exporters.otlp.enabled
         } else {
             self.exporters.otlp.enabled
         }

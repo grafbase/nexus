@@ -17,7 +17,6 @@ use rmcp::{
 };
 use serde_json::json;
 use server::ServeConfig;
-use tokio::net::TcpListener;
 
 pub use downstream::{ServiceType, TestService, TestTool};
 pub use llms::TestOpenAIServer;
@@ -757,7 +756,7 @@ pub struct TestServer {
     /// Cancellation tokens for test services (MCP mocks, LLM mocks, etc.)
     pub test_service_tokens: Vec<CancellationToken>,
     /// Handle to the main Nexus server task
-    _nexus_task_handle: tokio::task::JoinHandle<()>,
+    _nexus_task_handle: tokio::task::JoinHandle<anyhow::Result<()>>,
     /// Shutdown signal for the main Nexus server
     nexus_shutdown_signal: CancellationToken,
 }
@@ -779,22 +778,6 @@ impl TestServer {
 
         // The server crate will handle telemetry and logger initialization
 
-        // Find an available port
-        let mut listener = TcpListener::bind("127.0.0.1:0").await;
-
-        #[allow(clippy::panic)]
-        while let Err(e) = listener {
-            if e.kind() == std::io::ErrorKind::AddrInUse {
-                listener = TcpListener::bind("127.0.0.1:0").await;
-            } else {
-                panic!("Failed to bind to address: {e}");
-            }
-        }
-
-        let listener = listener.unwrap();
-
-        let address = listener.local_addr().unwrap();
-
         // Check if TLS is configured before moving config into spawn task
         let has_tls = config.server.tls.is_some();
 
@@ -803,38 +786,31 @@ impl TestServer {
         let nexus_shutdown_signal_clone = nexus_shutdown_signal.clone();
 
         // Create the server configuration with telemetry guard
+        let (tx, mut rx) = tokio::sync::oneshot::channel();
         let serve_config = ServeConfig {
-            listen_address: address,
+            listen_address: "127.0.0.1:0".parse().unwrap(),
             config: config.clone(),
             shutdown_signal: nexus_shutdown_signal_clone,
             log_filter: "server=debug,mcp=debug,telemetry=debug,rate_limit=debug,llm=debug,config=debug,integration_tests=debug,nexus=debug".to_string(),
             version: "test".to_string(),
+            bound_addr_sender: Some(tx)
         };
 
         // Start the server in a background task
-        let (tx, mut rx) = tokio::sync::oneshot::channel();
-        let nexus_task_handle = tokio::spawn(async move {
-            // Drop the listener so the server can bind to the address
-            drop(listener);
+        let nexus_task_handle = tokio::spawn(server::serve(serve_config));
 
-            match server::serve(serve_config).await {
-                Ok(()) => {
-                    let _ = tx.send(Ok(()));
-                }
-                Err(e) => {
-                    let _ = tx.send(Err(e));
-                }
-            }
-        });
+        let result = tokio::time::timeout(Duration::from_secs(1), &mut rx).await;
 
-        // Wait for the server to start up or fail
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        // Check if the server failed to start (non-blocking check)
         #[allow(clippy::panic)]
-        if let Ok(Err(e)) = rx.try_recv() {
-            panic!("Server failed to start: {e}");
-        }
+        let Some(address) = result.ok().and_then(|r| r.ok()) else {
+            if nexus_task_handle.is_finished()
+                && let Ok(result) = nexus_task_handle.await
+                && let Err(err) = result
+            {
+                panic!("Server failed to start: {err}");
+            }
+            panic!("Server failed to start");
+        };
 
         // Create the test client - use HTTPS if TLS is configured
         let protocol = if has_tls { "https" } else { "http" };

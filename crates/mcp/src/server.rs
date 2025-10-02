@@ -8,6 +8,7 @@ pub mod tracing;
 use self::builder::McpServerBuilder;
 use crate::cache::DynamicDownstreamCache;
 use config::{ClientIdentity, Config, McpConfig};
+use context::Authentication;
 use execute::ExecuteParameters;
 use http::request::Parts;
 use indoc::indoc;
@@ -189,14 +190,16 @@ impl McpServer {
     ) -> Result<CallToolResult, ErrorData> {
         // Extract token and client identity from request
         let parts = ctx.extensions.get::<Parts>();
-        let token = parts.and_then(|p| p.extensions.get::<SecretString>()).cloned();
+        let token = parts
+            .and_then(|p| p.extensions.get::<Authentication>())
+            .and_then(|auth| auth.nexus.as_ref().map(|t| &t.raw));
 
         // ClientIdentity should be in Parts extensions (inserted by ClientIdentificationMiddleware)
         let client_identity = parts.and_then(|p| p.extensions.get::<ClientIdentity>());
         let user_group = client_identity.and_then(|id| id.group.as_deref());
 
         // Get the search tool to access all tools (using user's group for filtering)
-        let search_tool = self.get_search_tool(token.as_ref(), user_group).await?;
+        let search_tool = self.get_search_tool(token, user_group).await?;
 
         // Check if tool exists in our registry
         if search_tool.find_exact(&params.name).is_none() {
@@ -330,7 +333,9 @@ impl ServerHandler for McpServer {
 
         // Extract token from request extensions
         let parts = ctx.extensions.get::<Parts>();
-        let token = parts.and_then(|p| p.extensions.get::<SecretString>());
+        let token = parts
+            .and_then(|p| p.extensions.get::<Authentication>())
+            .and_then(|auth| auth.nexus.as_ref().map(|t| &t.raw));
 
         match params.name.as_ref() {
             "search" => {
@@ -421,10 +426,12 @@ impl ServerHandler for McpServer {
         log::debug!("Listing all available MCP prompts");
 
         // Extract token from request extensions
-        let token = ctx
-            .extensions
-            .get::<Parts>()
-            .and_then(|parts| parts.extensions.get::<SecretString>());
+        let token = ctx.extensions.get::<Parts>().and_then(|parts| {
+            parts
+                .extensions
+                .get::<Authentication>()
+                .and_then(|auth| auth.nexus.as_ref().map(|t| &t.raw))
+        });
 
         let downstream = self.get_downstream(token).await?;
         let prompts = downstream.list_prompts().cloned().collect();
@@ -443,10 +450,12 @@ impl ServerHandler for McpServer {
         log::debug!("Retrieving prompt details for '{}'", params.name);
 
         // Extract token from request extensions
-        let token = ctx
-            .extensions
-            .get::<Parts>()
-            .and_then(|parts| parts.extensions.get::<SecretString>());
+        let token = ctx.extensions.get::<Parts>().and_then(|parts| {
+            parts
+                .extensions
+                .get::<Authentication>()
+                .and_then(|auth| auth.nexus.as_ref().map(|t| &t.raw))
+        });
 
         let downstream = self.get_downstream(token).await?;
         downstream.get_prompt(params).await
@@ -460,10 +469,12 @@ impl ServerHandler for McpServer {
         log::debug!("Listing all available MCP resources");
 
         // Extract token from request extensions
-        let token = ctx
-            .extensions
-            .get::<Parts>()
-            .and_then(|parts| parts.extensions.get::<SecretString>());
+        let token = ctx.extensions.get::<Parts>().and_then(|parts| {
+            parts
+                .extensions
+                .get::<Authentication>()
+                .and_then(|auth| auth.nexus.as_ref().map(|t| &t.raw))
+        });
 
         let downstream = self.get_downstream(token).await?;
         let resources = downstream.list_resources().cloned().collect();
@@ -482,10 +493,12 @@ impl ServerHandler for McpServer {
         log::debug!("Reading resource content for URI: '{}'", params.uri);
 
         // Extract token from request extensions
-        let token = ctx
-            .extensions
-            .get::<Parts>()
-            .and_then(|parts| parts.extensions.get::<SecretString>());
+        let token = ctx.extensions.get::<Parts>().and_then(|parts| {
+            parts
+                .extensions
+                .get::<Authentication>()
+                .and_then(|auth| auth.nexus.as_ref().map(|t| &t.raw))
+        });
 
         let downstream = self.get_downstream(token).await?;
         downstream.read_resource(params).await

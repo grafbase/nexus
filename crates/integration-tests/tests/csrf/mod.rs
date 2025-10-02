@@ -252,6 +252,7 @@ async fn works_with_cors() {
     let response = server
         .client
         .request(Method::GET, "/health")
+        .header("Accept", "text/event-stream")
         .header("Origin", "https://example.com")
         .header("X-Nexus-CSRF-Protection", "1")
         .send()
@@ -263,6 +264,7 @@ async fn works_with_cors() {
     let response = server
         .client
         .request(Method::GET, "/health")
+        .header("Accept", "text/event-stream")
         .header("Origin", "https://example.com")
         .send()
         .await

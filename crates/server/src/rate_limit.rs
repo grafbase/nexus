@@ -19,11 +19,11 @@ use config::{ClientIdentity, ClientIpConfig};
 #[derive(Clone)]
 pub struct RateLimitLayer {
     client_ip_config: ClientIpConfig,
-    manager: Arc<RateLimitManager>,
+    manager: Option<Arc<RateLimitManager>>,
 }
 
 impl RateLimitLayer {
-    pub fn new(client_ip_config: ClientIpConfig, manager: Arc<RateLimitManager>) -> Self {
+    pub fn new(client_ip_config: ClientIpConfig, manager: Option<Arc<RateLimitManager>>) -> Self {
         Self {
             client_ip_config,
             manager,
@@ -68,9 +68,13 @@ where
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         let mut next = self.next.clone();
+
+        let Some(manager) = self.layer.manager.clone() else {
+            return Box::pin(next.call(req));
+        };
+
         // Extract client IP for IP-based rate limiting
         let ip = extract_client_ip(&self.layer.client_ip_config, &req);
-        let manager = self.layer.manager.clone();
 
         Box::pin(async move {
             // Get client identity from request extensions (already validated by ClientIdentificationLayer)

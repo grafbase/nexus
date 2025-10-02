@@ -74,5 +74,6 @@ fn serve_config(args: &Args, config: Config, shutdown_signal: CancellationToken)
         shutdown_signal,
         log_filter,
         version: env!("CARGO_PKG_VERSION").to_string(),
+        bound_addr_sender: None,
     }
 }

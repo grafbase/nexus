@@ -1504,6 +1504,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f8a2ca5ac02d09563609681103aada9e1777d54fc57a5acd7a41404f9c93b6e"
 
 [[package]]
+name = "context"
+version = "0.1.0"
+dependencies = [
+ "jwt-compact",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "serde_with",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4009,6 +4020,7 @@ dependencies = [
  "anyhow",
  "axum",
  "config",
+ "context",
  "convert_case",
  "fastrace 0.7.14 (git+https://github.com/pimeys/fastrace.git?branch=julius%2Fslsstmntvwuy)",
  "futures-util",
@@ -6115,6 +6127,7 @@ dependencies = [
  "axum",
  "axum-server",
  "config",
+ "context",
  "fast-glob",
  "fastrace 0.7.14 (git+https://github.com/pimeys/fastrace.git?branch=julius%2Fslsstmntvwuy)",
  "http 1.3.1",

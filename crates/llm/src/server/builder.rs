@@ -79,7 +79,7 @@ impl<'a> LlmServerBuilder<'a> {
 
         let token_rate_limiter = if has_token_rate_limits {
             Some(
-                TokenRateLimitManager::new(&self.config.server.rate_limits.storage, self.config.telemetry.as_ref())
+                TokenRateLimitManager::new(&self.config.server.rate_limits.storage, &self.config.telemetry)
                     .await
                     .map_err(|e| {
                         log::error!("Failed to initialize token rate limiter: {e}");
@@ -113,10 +113,10 @@ impl<'a> LlmServerBuilder<'a> {
         };
 
         // Create handler with metrics and/or tracing based on configuration
-        let has_telemetry = self.config.telemetry.is_some();
-        let has_tracing = self.config.telemetry.as_ref().is_some_and(|t| t.tracing_enabled());
+        let has_metrics = self.config.telemetry.metrics_enabled();
+        let has_tracing = self.config.telemetry.tracing_enabled();
 
-        let handler = match (has_telemetry, has_tracing) {
+        let handler = match (has_metrics, has_tracing) {
             (true, true) => {
                 log::debug!("Telemetry and tracing enabled, wrapping LLM server with both middlewares");
                 LlmHandler::WithMetricsAndTracing(LlmServerWithTracing::new(LlmServerWithMetrics::new(server)))

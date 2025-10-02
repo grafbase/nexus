@@ -43,8 +43,8 @@ impl GroupedSearchTool {
         let defined_groups = config
             .server
             .client_identification
-            .as_ref()
-            .map(|ci| &ci.validation.group_values)
+            .enabled
+            .then_some(&config.server.client_identification.validation.group_values)
             .filter(|groups| !groups.is_empty());
 
         // If no groups are defined, create a single index

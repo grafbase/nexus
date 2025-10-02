@@ -2,11 +2,9 @@ mod middleware;
 
 pub use config::ClientIdentity;
 use config::{ClientIdentificationConfig, IdentificationSource};
+use context::{Authentication, NexusToken};
 use http::Request;
-use jwt_compact::Token;
 pub use middleware::ClientIdentificationLayer;
-
-use crate::auth::claims::CustomClaims;
 
 /// Errors that can occur during client identification extraction.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,7 +60,10 @@ pub fn extract_client_identity<B>(
     }
 
     // Extract JWT token once if any source uses it
-    let jwt_token = req.extensions().get::<Token<CustomClaims>>();
+    let jwt_token = req
+        .extensions()
+        .get::<Authentication>()
+        .and_then(|auth| auth.nexus.as_ref());
 
     // Extract client ID (always configured when enabled)
     let client_id = extract_from_source_with_token(req.headers(), jwt_token, &config.client_id)
@@ -109,7 +110,7 @@ fn validate_group(
 /// Takes the JWT token as a parameter to avoid repeated lookups.
 fn extract_from_source_with_token(
     headers: &http::HeaderMap,
-    jwt_token: Option<&Token<CustomClaims>>,
+    jwt_token: Option<&NexusToken>,
     source: &IdentificationSource,
 ) -> Option<String> {
     match source {

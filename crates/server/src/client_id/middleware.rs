@@ -67,12 +67,6 @@ where
         let config = self.config.clone();
 
         Box::pin(async move {
-            // Skip client ID check for OPTIONS requests (CORS preflight)
-            // These requests won't have authentication headers
-            if req.method() == http::Method::OPTIONS {
-                return next.call(req).await;
-            }
-
             // Extract and validate client identity
             match extract_client_identity(&req, &config) {
                 Ok(Some(identity)) => {

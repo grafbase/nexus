@@ -11,6 +11,7 @@ repository.workspace = true
 anyhow = { workspace = true, features = ["backtrace"] }
 axum.workspace = true
 config.workspace = true
+context.workspace = true
 convert_case.workspace = true
 fastrace = { workspace = true, features = ["enable"] }
 futures-util.workspace = true

@@ -3,7 +3,7 @@ use config::OauthConfig;
 use http::StatusCode;
 use serde::Serialize;
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct OAuthProtectedResourceMetadata {
     /// The resource server's issuer identifier
     resource: String,
@@ -13,7 +13,7 @@ pub struct OAuthProtectedResourceMetadata {
 }
 
 /// Handles the OAuth 2.0 Protected Resource Metadata endpoint
-pub async fn oauth_metadata(config: OauthConfig) -> (StatusCode, Json<OAuthProtectedResourceMetadata>) {
+pub fn oauth_metadata(config: &OauthConfig) -> (StatusCode, Json<OAuthProtectedResourceMetadata>) {
     let authorization_servers = config
         .protected_resource
         .authorization_servers

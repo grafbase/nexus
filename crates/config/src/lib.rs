@@ -54,20 +54,16 @@ pub use tls::TlsServerConfig;
 
 /// Main configuration structure for the Nexus application.
 #[derive(Debug, Clone, Deserialize, Default)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct Config {
     /// HTTP server configuration settings.
-    #[serde(default)]
     pub server: ServerConfig,
     /// Model Context Protocol configuration settings.
-    #[serde(default)]
     pub mcp: McpConfig,
     /// LLM configuration settings.
-    #[serde(default)]
     pub llm: LlmConfig,
     /// Telemetry configuration settings.
-    #[serde(default)]
-    pub telemetry: Option<TelemetryConfig>,
+    pub telemetry: TelemetryConfig,
 }
 
 impl Config {
@@ -114,7 +110,16 @@ mod tests {
                     global: None,
                     per_ip: None,
                 },
-                client_identification: None,
+                client_identification: ClientIdentificationConfig {
+                    enabled: false,
+                    validation: ClientIdentificationValidation {
+                        group_values: {},
+                    },
+                    client_id: JwtClaim {
+                        jwt_claim: "sub",
+                    },
+                    group_id: None,
+                },
                 client_ip: ClientIpConfig {
                     x_real_ip: false,
                     x_forwarded_for_trusted_hops: None,
@@ -145,7 +150,64 @@ mod tests {
                 },
                 providers: {},
             },
-            telemetry: None,
+            telemetry: TelemetryConfig {
+                service_name: None,
+                resource_attributes: {},
+                exporters: ExportersConfig {
+                    otlp: OtlpExporterConfig {
+                        enabled: false,
+                        endpoint: Url {
+                            scheme: "http",
+                            cannot_be_a_base: false,
+                            username: "",
+                            password: None,
+                            host: Some(
+                                Domain(
+                                    "localhost",
+                                ),
+                            ),
+                            port: Some(
+                                4317,
+                            ),
+                            path: "/",
+                            query: None,
+                            fragment: None,
+                        },
+                        protocol: Grpc,
+                        timeout: 60s,
+                        batch_export: BatchExportConfig {
+                            scheduled_delay: 5s,
+                            max_queue_size: 2048,
+                            max_export_batch_size: 512,
+                            max_concurrent_exports: 1,
+                        },
+                        grpc: None,
+                        http: None,
+                    },
+                },
+                tracing: TracingConfig {
+                    sampling: 0.15,
+                    parent_based_sampler: false,
+                    collect: CollectConfig {
+                        max_events_per_span: 128,
+                        max_attributes_per_span: 128,
+                        max_links_per_span: 128,
+                        max_attributes_per_event: 128,
+                        max_attributes_per_link: 128,
+                    },
+                    propagation: PropagationConfig {
+                        trace_context: false,
+                        aws_xray: false,
+                    },
+                    exporters: None,
+                },
+                metrics: MetricsConfig {
+                    exporters: None,
+                },
+                logs: LogsConfig {
+                    exporters: None,
+                },
+            },
         }
         "#);
     }

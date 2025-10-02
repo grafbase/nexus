@@ -2,7 +2,7 @@ use config::{AnyOrAsciiStringArray, AnyOrHttpMethodArray, AnyOrUrlArray, CorsCon
 use http::{HeaderName, HeaderValue};
 use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer, ExposeHeaders};
 
-pub(super) fn generate(
+pub(super) fn new_layer(
     CorsConfig {
         allow_credentials,
         allow_origins,

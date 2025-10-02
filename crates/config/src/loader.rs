@@ -145,19 +145,14 @@ pub(crate) fn validate_rate_limits(config: &Config) -> anyhow::Result<Vec<String
         return Ok(Vec::new());
     }
 
-    // If we have LLM rate limits, client identification MUST be enabled
-    let Some(client_identification) = config.server.client_identification.as_ref() else {
-        anyhow::bail!(
-            "LLM rate limits are configured but client identification is not enabled. Enable client identification in [server.client_identification]"
-        );
-    };
-
     // If LLM rate limits are defined, client identification MUST be enabled
-    if !client_identification.enabled {
+    if !config.server.client_identification.enabled {
         anyhow::bail!(
             "LLM rate limits are configured but client identification is not enabled. Enable client identification in [server.client_identification]"
         );
     }
+
+    let client_identification = &config.server.client_identification;
 
     // If group_id is configured, group_values MUST be defined
     if client_identification.group_id.is_some() && client_identification.validation.group_values.is_empty() {
@@ -402,13 +397,12 @@ pub(crate) fn validate_mcp_access_control(config: &Config) -> anyhow::Result<()>
         return Ok(());
     }
 
-    let client_id = config.server.client_identification.as_ref();
+    let client_identification_config = &config.server.client_identification;
 
     if uses_mcp_groups(config) {
-        let client_id = ensure_client_identification_enabled(client_id)?;
-
-        ensure_group_id_configured(client_id)?;
-        validate_all_mcp_groups(config, client_id)?;
+        ensure_client_identification_enabled(client_identification_config)?;
+        ensure_group_id_configured(client_identification_config)?;
+        validate_all_mcp_groups(config, client_identification_config)?;
     }
 
     Ok(())
@@ -435,10 +429,8 @@ fn has_any_mcp_access_control(config: &Config) -> bool {
 /// Returns an error if:
 /// - Client identification is not configured at all
 /// - Client identification is configured but not enabled
-fn ensure_client_identification_enabled(
-    client_id: Option<&ClientIdentificationConfig>,
-) -> anyhow::Result<&ClientIdentificationConfig> {
-    let Some(client_id) = client_id else {
+fn ensure_client_identification_enabled(config: &ClientIdentificationConfig) -> anyhow::Result<()> {
+    if !config.enabled {
         bail!(indoc! {r#"
             MCP server access control is configured but client identification is not enabled.
 
@@ -454,13 +446,7 @@ fn ensure_client_identification_enabled(
         "#});
     };
 
-    if !client_id.enabled {
-        bail!(
-            "MCP server access control is configured but client identification is not enabled. Set server.client_identification.enabled = true"
-        );
-    }
-
-    Ok(client_id)
+    Ok(())
 }
 
 /// Determines if any MCP server or tool uses group-based access control.
@@ -489,8 +475,8 @@ fn has_non_empty_groups(groups: Option<&std::collections::BTreeSet<String>>) -> 
 /// # Errors
 ///
 /// Returns an error if `group_id` is not configured in client identification.
-fn ensure_group_id_configured(client_id: &ClientIdentificationConfig) -> anyhow::Result<()> {
-    if client_id.group_id.is_none() {
+fn ensure_group_id_configured(client_identification_config: &ClientIdentificationConfig) -> anyhow::Result<()> {
+    if client_identification_config.group_id.is_none() {
         bail!(indoc! {r#"
             MCP server access control uses groups but group_id is not configured in client identification.
 
@@ -510,10 +496,21 @@ fn ensure_group_id_configured(client_id: &ClientIdentificationConfig) -> anyhow:
 /// # Errors
 ///
 /// Returns an error if any referenced group doesn't exist in `group_values`.
-fn validate_all_mcp_groups(config: &Config, client_id: &ClientIdentificationConfig) -> anyhow::Result<()> {
+fn validate_all_mcp_groups(
+    config: &Config,
+    client_identification_config: &ClientIdentificationConfig,
+) -> anyhow::Result<()> {
     for (server_name, server) in &config.mcp.servers {
-        validate_server_groups(server_name, server, &client_id.validation.group_values)?;
-        validate_tool_groups(server_name, server, &client_id.validation.group_values)?;
+        validate_server_groups(
+            server_name,
+            server,
+            &client_identification_config.validation.group_values,
+        )?;
+        validate_tool_groups(
+            server_name,
+            server,
+            &client_identification_config.validation.group_values,
+        )?;
     }
     Ok(())
 }

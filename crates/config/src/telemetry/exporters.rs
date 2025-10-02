@@ -11,56 +11,45 @@ use url::Url;
 #[serde(default, deny_unknown_fields)]
 pub struct ExportersConfig {
     /// OTLP exporter configuration
-    #[serde(default)]
     pub otlp: OtlpExporterConfig,
 }
 
 /// OTLP exporter configuration
 #[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(default, deny_unknown_fields)]
 pub struct OtlpExporterConfig {
     /// Whether this exporter is enabled
-    #[serde(default)]
     pub enabled: bool,
 
     /// OTLP endpoint URL
-    #[serde(default = "default_endpoint")]
     pub endpoint: Url,
 
     /// OTLP protocol selection
-    #[serde(default)]
     pub protocol: OtlpProtocol,
 
     /// Request timeout
-    #[serde(deserialize_with = "deserialize_duration", default = "default_timeout")]
+    #[serde(deserialize_with = "deserialize_duration")]
     pub timeout: Duration,
 
     /// Batch export configuration
-    #[serde(default)]
     pub batch_export: BatchExportConfig,
 
     /// gRPC configuration (mutually exclusive with http)
-    #[serde(default)]
     pub grpc: Option<OtlpGrpcConfig>,
 
     /// HTTP configuration (mutually exclusive with grpc)
-    #[serde(default)]
     pub http: Option<OtlpHttpConfig>,
-}
-
-fn default_endpoint() -> Url {
-    Url::parse("http://localhost:4317").expect("default URL should be valid")
 }
 
 impl Default for OtlpExporterConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            endpoint: default_endpoint(),
+            endpoint: Url::parse("http://localhost:4317").expect("default URL should be valid"),
             protocol: OtlpProtocol::default(),
-            timeout: default_timeout(),
+            timeout: Duration::from_secs(60),
             batch_export: BatchExportConfig::default(),
-            grpc: Some(OtlpGrpcConfig::default()),
+            grpc: None,
             http: None,
         }
     }
@@ -141,10 +130,6 @@ impl ExportersConfig {
     pub fn otlp(&self) -> &OtlpExporterConfig {
         &self.otlp
     }
-}
-
-fn default_timeout() -> Duration {
-    Duration::from_secs(60)
 }
 
 /// OTLP protocol selection
