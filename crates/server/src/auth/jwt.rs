@@ -4,36 +4,30 @@ use super::error::AuthError;
 use super::jwks::{Alg, Jwks, JwksCache};
 use config::OauthConfig;
 use context::{Claims, NexusToken};
-use http::{header::AUTHORIZATION, request::Parts};
 use jwt_compact::{Algorithm, AlgorithmExt, TimeOptions, UntrustedToken, jwk::JsonWebKey};
 use secrecy::SecretString;
 use url::Url;
 
 const BEARER_TOKEN_LENGTH: usize = 6;
 
-pub(crate) struct JwtAuth {
+pub(crate) struct NexusOAuth {
     config: OauthConfig,
     jwks_cache: JwksCache,
 }
 
-impl JwtAuth {
+impl NexusOAuth {
     pub fn new(config: OauthConfig) -> Self {
         let jwks_cache = JwksCache::new(config.url.clone(), config.poll_interval);
 
-        JwtAuth { config, jwks_cache }
+        NexusOAuth { config, jwks_cache }
     }
 
     pub fn metadata_endpoint(&self) -> Url {
         self.config.protected_resource.resource_documentation()
     }
 
-    pub async fn authenticate(&self, parts: &Parts) -> Result<NexusToken, AuthError> {
-        let token_header = parts
-            .headers
-            .get(AUTHORIZATION)
-            .ok_or(AuthError::InvalidToken("missing token"))?;
-
-        let token_str = token_header
+    pub async fn authenticate(&self, authorization_header_value: &http::HeaderValue) -> Result<NexusToken, AuthError> {
+        let token_str = authorization_header_value
             .to_str()
             .map_err(|_| AuthError::InvalidToken("invalid token"))?;
 

@@ -6,7 +6,7 @@ mod service;
 mod tracing;
 
 pub(crate) use builder::LlmServerBuilder;
-pub(crate) use handler::LlmHandler;
+pub(crate) use handler::Server;
 use model_discovery::ModelMap;
 pub(crate) use service::LlmService;
 
@@ -30,7 +30,7 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub(crate) struct LlmServer {
+pub struct LlmServer {
     shared: Arc<LlmServerInner>,
 }
 

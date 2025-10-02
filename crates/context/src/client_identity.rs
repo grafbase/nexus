@@ -1,8 +1,3 @@
-//! Runtime client identity type.
-//!
-//! This type represents the extracted client identity at runtime,
-//! as opposed to the configuration types that specify how to extract it.
-
 /// Represents the identified client and their group membership.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientIdentity {

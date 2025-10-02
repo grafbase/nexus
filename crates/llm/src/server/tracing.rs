@@ -20,7 +20,7 @@ use self::stream::TracingStream;
 
 /// Wrapper that adds tracing to LLM service operations
 #[derive(Clone)]
-pub(crate) struct LlmServerWithTracing<S> {
+pub struct LlmServerWithTracing<S> {
     inner: S,
 }
 

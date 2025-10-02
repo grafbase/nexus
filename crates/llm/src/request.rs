@@ -1,5 +1,5 @@
 use axum::http::HeaderMap;
-use config::ClientIdentity;
+use context::{Authentication, ClientIdentity};
 use secrecy::SecretString;
 
 /// Header name for user-provided API keys (BYOK - Bring Your Own Key).
@@ -22,22 +22,29 @@ pub(crate) struct RequestContext {
 
     /// Incoming request headers for header transformation rules.
     pub headers: HeaderMap,
+
+    pub authentication: Authentication,
 }
 
 /// Extract request context from request headers and client identity.
 ///
 /// Combines runtime information from headers (like BYOK API keys) with
 /// client identity information for rate limiting and access control.
-pub(super) fn extract_context(headers: &HeaderMap, client_identity: Option<ClientIdentity>) -> RequestContext {
+pub(super) fn new_context(
+    headers: HeaderMap,
+    client_identity: Option<ClientIdentity>,
+    authentication: Authentication,
+) -> RequestContext {
     // Check for BYOK header
     let api_key = headers
         .get(PROVIDER_API_KEY_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .map(|key| SecretString::from(key.to_string()));
+        .and_then(|value| value.to_str().map(str::to_string).ok())
+        .map(SecretString::from);
 
     RequestContext {
         api_key,
         client_identity,
-        headers: headers.clone(),
+        authentication,
+        headers,
     }
 }
