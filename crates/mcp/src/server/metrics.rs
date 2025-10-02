@@ -138,7 +138,7 @@ where
 /// Add client identity attributes to the recorder
 fn add_client_identity(recorder: &mut Recorder, context: &RequestContext<RoleServer>) {
     if let Some(parts) = context.extensions.get::<Parts>()
-        && let Some(identity) = parts.extensions.get::<config::ClientIdentity>()
+        && let Some(identity) = parts.extensions.get::<context::ClientIdentity>()
     {
         recorder.push_attribute("client.id", identity.client_id.clone());
 
