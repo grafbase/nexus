@@ -20,7 +20,7 @@ eventsource-stream.workspace = true
 futures.workspace = true
 futures-util.workspace = true
 indoc.workspace = true
-insta.workspace = true
+insta = { workspace = true, features = ["redactions", "json"] }
 integration-test-macros.workspace = true
 log.workspace = true
 logforth = { workspace = true, features = ["colored"] }

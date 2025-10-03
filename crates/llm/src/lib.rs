@@ -2,11 +2,9 @@ use std::{convert::Infallible, sync::Arc};
 
 use axum::{
     Router,
-    body::{Body, Bytes},
-    extract::{Json, Request, State},
+    extract::{Json, State},
     http::StatusCode,
-    middleware::{self, Next},
-    response::{IntoResponse, Response, Sse, sse::Event},
+    response::{IntoResponse, Sse, sse::Event},
     routing::{get, post},
 };
 use futures::StreamExt;
@@ -40,27 +38,6 @@ pub fn anthropic_endpoint_router() -> Router<Arc<Server>> {
         .route("/v1/messages", post(anthropic_messages))
         .route("/v1/messages/count_tokens", post(count_tokens))
         .route("/v1/models", get(anthropic_list_models))
-        .layer(middleware::from_fn(log_request))
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct OriginalRequest(http::Request<Bytes>);
-
-impl std::ops::Deref for OriginalRequest {
-    type Target = http::Request<Bytes>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-async fn log_request(req: Request, next: Next) -> Response {
-    let (parts, body) = req.into_parts();
-    let bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap_or_default();
-
-    let mut req = Request::from_parts(parts.clone(), Body::from(bytes.clone()));
-    req.extensions_mut()
-        .insert(OriginalRequest(Request::from_parts(parts, bytes)));
-    next.run(req).await
 }
 
 pub fn openai_endpoint_router() -> Router<Arc<Server>> {
