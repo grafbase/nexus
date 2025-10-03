@@ -748,7 +748,6 @@ async fn missing_group_when_group_values_configured() {
     );
 
     // Verify the response is valid
-    let body = body;
     assert!(body["choices"].is_array());
 }
 
