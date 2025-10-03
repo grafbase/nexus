@@ -32,7 +32,7 @@ impl ProviderMode {
         if let Some(value) = supported
             .iter()
             .filter_map(|mode| match mode {
-                SupportedProviderMode::RouterWithClientKey(name) => ctx.headers.get(name),
+                SupportedProviderMode::RouterWithClientKey(name) => ctx.headers().get(name),
                 _ => None,
             })
             .next()
