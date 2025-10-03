@@ -3,7 +3,6 @@
 #![deny(missing_docs)]
 
 mod client_identification;
-mod client_identity;
 mod client_ip;
 mod cors;
 mod csrf;
@@ -22,7 +21,6 @@ mod tls;
 use std::path::Path;
 
 pub use client_identification::*;
-pub use client_identity::ClientIdentity;
 pub use client_ip::*;
 pub use cors::*;
 pub use csrf::CsrfConfig;

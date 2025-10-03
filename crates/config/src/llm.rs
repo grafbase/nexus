@@ -147,7 +147,7 @@ impl Default for LlmProtocol {
 
 /// OpenAI protocol configuration
 #[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct OpenAIProtocolConfig {
     pub enabled: bool,
     pub path: String,
@@ -181,7 +181,7 @@ impl Default for AnthropicProtocolConfig {
 
 /// Configuration for all LLM protocol endpoints.
 #[derive(Debug, Clone, Deserialize, Default)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct LlmProtocolsConfig {
     /// OpenAI protocol endpoint configuration
     pub openai: OpenAIProtocolConfig,
@@ -1515,9 +1515,8 @@ path = "/llm"
     fn llm_config_anthropic_protocol() {
         let config = indoc! {r#"
             [protocols.openai]
-enabled = true
-path = "/v1"
-protocol = "anthropic"
+            enabled = true
+            path = "/v1"
 
             [providers.anthropic]
             type = "anthropic"

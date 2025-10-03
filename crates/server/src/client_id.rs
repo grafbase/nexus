@@ -1,8 +1,7 @@
 mod middleware;
 
-pub use config::ClientIdentity;
 use config::{ClientIdentificationConfig, IdentificationSource};
-use context::{Authentication, NexusToken};
+use context::{Authentication, ClientIdentity, NexusToken};
 use http::Request;
 pub use middleware::ClientIdentificationLayer;
 

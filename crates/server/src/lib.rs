@@ -24,6 +24,7 @@ use axum::{Router, routing::get};
 use axum_server::tls_rustls::RustlsConfig;
 use client_id::ClientIdentificationLayer;
 use config::Config;
+use context::Authentication;
 use rate_limit::RateLimitLayer;
 use std::sync::Arc;
 use telemetry::TelemetryGuard;
@@ -136,25 +137,41 @@ pub async fn serve(
     // Apply CORS to LLM router before merging
     // Only expose LLM endpoint if enabled AND has configured providers
     if config.llm.enabled() && config.llm.has_providers() {
-        match llm::router(&config).await {
-            Ok(llm_router) => {
-                app = app.merge(
-                    llm_router
-                        .clone()
-                        .layer(
-                            tower::ServiceBuilder::new()
-                                .layer(layers_before_auth.clone())
-                                .layer(nexus_only_auth_layer.clone())
-                                .layer(layers_after_auth.clone()),
-                        )
-                        .clone(),
-                );
-                llm_actually_exposed = true;
-            }
-            Err(e) => {
-                log::error!("Failed to initialize LLM router: {e}");
-                return Err(anyhow!("Failed to initialize LLM router: {e}"));
-            }
+        let server = llm::build_server(&config).await.map_err(|err| {
+            log::error!("Failed to initialize LLM router: {err:?}");
+            anyhow!("Failed to initialize LLM router: {err}")
+        })?;
+
+        if config.llm.protocols.openai.enabled {
+            app = app.nest(
+                &config.llm.protocols.openai.path,
+                llm::openai_endpoint_router().with_state(server.clone()).layer(
+                    tower::ServiceBuilder::new()
+                        .layer(layers_before_auth.clone())
+                        .layer(nexus_only_auth_layer.clone())
+                        .layer(layers_after_auth.clone()),
+                ),
+            );
+            llm_actually_exposed = true;
+        }
+
+        if config.llm.protocols.anthropic.enabled {
+            app = app.nest(
+                &config.llm.protocols.anthropic.path,
+                llm::anthropic_endpoint_router().with_state(server.clone()).layer(
+                    tower::ServiceBuilder::new()
+                        .layer(layers_before_auth.clone())
+                        .layer(AuthLayer::new_with_native_provider(
+                            config.server.oauth.clone(),
+                            |parts: &http::request::Parts| Authentication {
+                                has_anthropic_authorization: parts.headers.contains_key(http::header::AUTHORIZATION),
+                                ..Default::default()
+                            },
+                        ))
+                        .layer(layers_after_auth.clone()),
+                ),
+            );
+            llm_actually_exposed = true;
         }
     } else {
         log::debug!("LLM is enabled but no providers are configured - LLM endpoint will not be exposed");

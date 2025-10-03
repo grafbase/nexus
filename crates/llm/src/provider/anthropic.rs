@@ -3,10 +3,10 @@ pub(super) mod output;
 
 use anyhow::{Context, anyhow};
 use async_trait::async_trait;
-use axum::http::HeaderMap;
 use config::ApiProviderConfig;
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
+use http::header::CONTENT_LENGTH;
 use reqwest::{Client, Method, header::CONTENT_TYPE};
 use secrecy::ExposeSecret;
 
@@ -22,9 +22,8 @@ use crate::{
         openai::Model,
         unified::{UnifiedRequest, UnifiedResponse},
     },
-    provider::{
-        ChatCompletionStream, HttpProvider, ModelManager, Provider, http_client::default_http_client_builder, token,
-    },
+    provider::{ChatCompletionStream, HttpProvider, ModelManager, Provider, http_client::default_http_client_builder},
+    provider_mode::{ProviderMode, SupportedProviderMode, proxy::insert_proxied_headers_into},
     request::RequestContext,
 };
 use config::HeaderRule;
@@ -38,29 +37,12 @@ pub(crate) struct AnthropicProvider {
     name: String,
     config: ApiProviderConfig,
     model_manager: ModelManager,
+    supported_modes: Vec<SupportedProviderMode>,
 }
 
 impl AnthropicProvider {
     pub fn new(name: String, config: ApiProviderConfig) -> crate::Result<Self> {
-        let mut headers = HeaderMap::new();
-
-        headers.insert(
-            "anthropic-version",
-            ANTHROPIC_VERSION.parse().map_err(|e| {
-                log::error!("Failed to parse Anthropic version header: {e}");
-                LlmError::InternalError(None)
-            })?,
-        );
-
-        headers.insert(
-            "content-type",
-            "application/json".parse().map_err(|e| {
-                log::error!("Failed to parse content-type header for Anthropic provider: {e}");
-                LlmError::InternalError(None)
-            })?,
-        );
-
-        let client = default_http_client_builder(headers).build().map_err(|e| {
+        let client = default_http_client_builder(Default::default()).build().map_err(|e| {
             log::error!("Failed to create HTTP client for Anthropic provider: {e}");
             LlmError::InternalError(None)
         })?;
@@ -79,12 +61,23 @@ impl AnthropicProvider {
             .collect();
         let model_manager = ModelManager::new(models, "anthropic");
 
+        let mut supported_modes = vec![SupportedProviderMode::AnthropicProxy];
+        if let Some(key) = config.api_key.clone() {
+            supported_modes.push(SupportedProviderMode::RouterWithOwnKey(key));
+        }
+        if config.forward_token {
+            supported_modes.push(SupportedProviderMode::RouterWithClientKey(
+                http::HeaderName::from_static("x-provider-api-key"),
+            ));
+        }
+
         Ok(Self {
             client,
             base_url,
             name,
             model_manager,
             config,
+            supported_modes,
         })
     }
 
@@ -119,7 +112,8 @@ impl Provider for AnthropicProvider {
         context: &RequestContext,
     ) -> crate::Result<UnifiedResponse> {
         let url = format!("{}/messages", self.base_url);
-        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
+
+        let mode = ProviderMode::determine(context, &self.supported_modes)?;
 
         let original_model = request.model.clone();
 
@@ -129,14 +123,18 @@ impl Provider for AnthropicProvider {
         // Resolve model for configured aliases when discovery doesn't cover the request
         self.resolve_request_model(&mut request)?;
 
+        let request_builder = match mode {
+            ProviderMode::Proxy => {
+                let builder = self.client.post(&url);
+                insert_proxied_headers_into(builder, &context.headers)
+            }
+            ProviderMode::RouterWithOwnedApiKey(api_key) | ProviderMode::RouterWithClientApiKey(api_key) => self
+                .request_builder(Method::POST, &url, context, model_config)
+                .header("anthropic-version", ANTHROPIC_VERSION)
+                .header("x-api-key", api_key),
+        };
+
         let anthropic_request = AnthropicRequest::from(request);
-
-        // Use create_post_request to ensure headers are applied
-        let mut request_builder = self.request_builder(Method::POST, &url, context, model_config);
-
-        // Add API key header (can be overridden by header rules)
-        request_builder = request_builder.header("x-api-key", api_key.expose_secret());
-
         let body = sonic_rs::to_vec(&anthropic_request).map_err(|e| {
             log::error!("Failed to serialize Anthropic request: {e}");
             LlmError::InternalError(None)
@@ -144,6 +142,7 @@ impl Provider for AnthropicProvider {
 
         let response = request_builder
             .header(CONTENT_TYPE, "application/json")
+            .header(CONTENT_LENGTH, body.len())
             .body(body)
             .send()
             .await
@@ -244,7 +243,8 @@ impl Provider for AnthropicProvider {
         context: &RequestContext,
     ) -> crate::Result<CountTokensResponse> {
         let url = format!("{}/messages/count_tokens", self.base_url);
-        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
+
+        let mode = ProviderMode::determine(context, &self.supported_modes)?;
 
         let model_config = self.model_manager.get_model_config(&request.model);
 
@@ -252,11 +252,18 @@ impl Provider for AnthropicProvider {
 
         request.stream = Some(false);
 
+        let request_builder = match mode {
+            ProviderMode::Proxy => {
+                let builder = self.client.post(&url);
+                insert_proxied_headers_into(builder, &context.headers)
+            }
+            ProviderMode::RouterWithOwnedApiKey(api_key) | ProviderMode::RouterWithClientApiKey(api_key) => self
+                .request_builder(Method::POST, &url, context, model_config)
+                .header("anthropic-version", ANTHROPIC_VERSION)
+                .header("x-api-key", api_key),
+        };
+
         let anthropic_request = AnthropicRequest::from(request);
-
-        let mut request_builder = self.request_builder(Method::POST, &url, context, model_config);
-        request_builder = request_builder.header("x-api-key", api_key.expose_secret());
-
         let body = sonic_rs::to_vec(&anthropic_request).map_err(|e| {
             log::error!("Failed to serialize Anthropic count tokens request: {e}");
             LlmError::InternalError(None)
@@ -264,6 +271,7 @@ impl Provider for AnthropicProvider {
 
         let response = request_builder
             .header(CONTENT_TYPE, "application/json")
+            .header(CONTENT_LENGTH, body.len())
             .body(body)
             .send()
             .await
@@ -311,20 +319,24 @@ impl Provider for AnthropicProvider {
         // Get the model config BEFORE resolving, so we lookup by the original alias
         let model_config = self.model_manager.get_model_config(&request.model);
 
+        let mode = ProviderMode::determine(context, &self.supported_modes)?;
+
         // Resolve model for configured aliases when discovery doesn't cover the request
         self.resolve_request_model(&mut request)?;
 
-        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
+        let request_builder = match mode {
+            ProviderMode::Proxy => {
+                let builder = self.client.post(&url);
+                insert_proxied_headers_into(builder, &context.headers)
+            }
+            ProviderMode::RouterWithOwnedApiKey(api_key) | ProviderMode::RouterWithClientApiKey(api_key) => self
+                .request_builder(Method::POST, &url, context, model_config)
+                .header("anthropic-version", ANTHROPIC_VERSION)
+                .header("x-api-key", api_key),
+        };
 
         let mut anthropic_request = AnthropicRequest::from(request);
         anthropic_request.stream = Some(true);
-
-        // Use create_post_request to ensure headers are applied
-        let mut request_builder = self.request_builder(Method::POST, &url, context, model_config);
-
-        // Add API key header (can be overridden by header rules)
-        request_builder = request_builder.header("x-api-key", api_key.expose_secret());
-
         let body = sonic_rs::to_vec(&anthropic_request).map_err(|e| {
             log::error!("Failed to serialize Anthropic streaming request: {e}");
             LlmError::InternalError(None)
@@ -332,6 +344,7 @@ impl Provider for AnthropicProvider {
 
         let response = request_builder
             .header(CONTENT_TYPE, "application/json")
+            .header(CONTENT_LENGTH, body.len())
             .body(body)
             .send()
             .await

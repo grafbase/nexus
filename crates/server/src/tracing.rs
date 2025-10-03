@@ -3,7 +3,8 @@
 //! Creates distributed traces for all HTTP requests following OpenTelemetry semantic conventions.
 
 use axum::{body::Body, extract::MatchedPath};
-use config::{ClientIdentity, TelemetryConfig};
+use config::TelemetryConfig;
+use context::ClientIdentity;
 use fastrace::future::FutureExt;
 use fastrace::{
     Span,

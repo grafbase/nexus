@@ -7,8 +7,8 @@ pub mod tracing;
 
 use self::builder::McpServerBuilder;
 use crate::cache::DynamicDownstreamCache;
-use config::{ClientIdentity, Config, McpConfig};
-use context::Authentication;
+use config::{Config, McpConfig};
+use context::{Authentication, ClientIdentity};
 use execute::ExecuteParameters;
 use http::request::Parts;
 use indoc::indoc;

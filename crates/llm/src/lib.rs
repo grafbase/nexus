@@ -8,52 +8,44 @@ use axum::{
     routing::{get, post},
 };
 use axum_serde::Sonic;
+use context::{Authentication, ClientIdentity};
 use futures::StreamExt;
 use messages::{anthropic, openai};
 
 mod error;
 mod messages;
 pub mod provider;
+mod provider_mode;
 mod request;
 mod server;
 pub mod token_counter;
 
 pub use error::{AnthropicResult, LlmError, LlmResult as Result};
-use server::{LlmHandler, LlmServerBuilder};
+use server::{LlmServerBuilder, Server};
 
 use crate::{error::AnthropicErrorResponse, messages::unified};
 
-/// Creates an axum router for LLM endpoints.
-pub async fn router(config: &config::Config) -> anyhow::Result<Router> {
+pub async fn build_server(config: &config::Config) -> anyhow::Result<Arc<Server>> {
     let server = Arc::new(
         LlmServerBuilder::new(config)
             .build()
             .await
             .map_err(|e| anyhow::anyhow!("Failed to initialize LLM server: {e}"))?,
     );
+    Ok(server)
+}
 
-    let mut router = Router::new();
+pub fn anthropic_endpoint_router() -> Router<Arc<Server>> {
+    Router::new()
+        .route("/v1/messages", post(anthropic_messages))
+        .route("/v1/messages/count_tokens", post(count_tokens))
+        .route("/v1/models", get(anthropic_list_models))
+}
 
-    if config.llm.protocols.openai.enabled {
-        let openai_routes = Router::new()
-            .route("/v1/chat/completions", post(chat_completions))
-            .route("/v1/models", get(list_models))
-            .with_state(server.clone());
-
-        router = router.nest(&config.llm.protocols.openai.path, openai_routes);
-    }
-
-    if config.llm.protocols.anthropic.enabled {
-        let anthropic_routes = Router::new()
-            .route("/v1/messages", post(anthropic_messages))
-            .route("/v1/messages/count_tokens", post(count_tokens))
-            .route("/v1/models", get(anthropic_list_models))
-            .with_state(server.clone());
-
-        router = router.nest(&config.llm.protocols.anthropic.path, anthropic_routes);
-    }
-
-    Ok(router)
+pub fn openai_endpoint_router() -> Router<Arc<Server>> {
+    Router::new()
+        .route("/v1/chat/completions", post(chat_completions))
+        .route("/v1/models", get(list_models))
 }
 
 /// Handle chat completion requests.
@@ -62,17 +54,17 @@ pub async fn router(config: &config::Config) -> anyhow::Result<Router> {
 /// When `stream: true` is set in the request, the response is sent as
 /// Server-Sent Events (SSE). Otherwise, a standard JSON response is returned.
 async fn chat_completions(
-    State(server): State<Arc<LlmHandler>>,
+    State(server): State<Arc<Server>>,
     headers: HeaderMap,
-    client_identity: Option<Extension<config::ClientIdentity>>,
+    Extension(authentication): Extension<Authentication>,
+    client_identity: Option<Extension<ClientIdentity>>,
     Sonic(request): Sonic<openai::ChatCompletionRequest>,
 ) -> Result<impl IntoResponse> {
     log::debug!("OpenAI chat completions handler called for model: {}", request.model);
     log::debug!("Request has {} messages", request.messages.len());
     log::debug!("Streaming: {}", request.stream.unwrap_or(false));
 
-    // Extract request context including client identity
-    let context = request::extract_context(&headers, client_identity.map(|ext| ext.0));
+    let context = request::new_context(headers, client_identity.map(|ext| ext.0), authentication);
 
     // Check if streaming is requested
     if request.stream.unwrap_or(false) {
@@ -126,7 +118,7 @@ async fn chat_completions(
 }
 
 /// Handle list models requests.
-async fn list_models(State(server): State<Arc<LlmHandler>>) -> Result<impl IntoResponse> {
+async fn list_models(State(server): State<Arc<Server>>) -> Result<impl IntoResponse> {
     let response = server.models().await;
 
     log::debug!("Returning {} models", response.data.len());
@@ -139,9 +131,10 @@ async fn list_models(State(server): State<Arc<LlmHandler>>) -> Result<impl IntoR
 /// When `stream: true` is set in the request, the response is sent as
 /// Server-Sent Events (SSE). Otherwise, a standard JSON response is returned.
 async fn anthropic_messages(
-    State(server): State<Arc<LlmHandler>>,
+    State(server): State<Arc<Server>>,
     headers: HeaderMap,
-    client_identity: Option<Extension<config::ClientIdentity>>,
+    Extension(authentication): Extension<Authentication>,
+    client_identity: Option<Extension<ClientIdentity>>,
     Sonic(request): Sonic<anthropic::AnthropicChatRequest>,
 ) -> AnthropicResult<impl IntoResponse> {
     log::debug!("Anthropic messages handler called for model: {}", request.model);
@@ -149,7 +142,7 @@ async fn anthropic_messages(
     log::debug!("Streaming: {}", request.stream.unwrap_or(false));
 
     // Extract request context including client identity
-    let context = request::extract_context(&headers, client_identity.map(|ext| ext.0));
+    let context = request::new_context(headers, client_identity.map(|ext| ext.0), authentication);
 
     // Convert Anthropic request to unified format
     let unified_request = unified::UnifiedRequest::from(request);
@@ -206,13 +199,14 @@ async fn anthropic_messages(
 
 /// Handle Anthropic count tokens requests.
 async fn count_tokens(
-    State(server): State<Arc<LlmHandler>>,
+    State(server): State<Arc<Server>>,
     headers: HeaderMap,
-    client_identity: Option<Extension<config::ClientIdentity>>,
+    Extension(authentication): Extension<Authentication>,
+    client_identity: Option<Extension<ClientIdentity>>,
     Sonic(request): Sonic<anthropic::AnthropicChatRequest>,
 ) -> AnthropicResult<impl IntoResponse> {
     // Maintain consistent context extraction even while the endpoint is unimplemented.
-    let context = request::extract_context(&headers, client_identity.map(|ext| ext.0));
+    let context = request::new_context(headers, client_identity.map(|ext| ext.0), authentication);
 
     let mut unified_request = unified::UnifiedRequest::from(request);
     unified_request.stream = Some(false);
@@ -226,7 +220,7 @@ async fn count_tokens(
 }
 
 /// Handle Anthropic list models requests.
-async fn anthropic_list_models(State(server): State<Arc<LlmHandler>>) -> AnthropicResult<impl IntoResponse> {
+async fn anthropic_list_models(State(server): State<Arc<Server>>) -> AnthropicResult<impl IntoResponse> {
     let openai_response = server.models().await;
 
     // Convert OpenAI models response to Anthropic format
