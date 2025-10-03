@@ -126,7 +126,7 @@ impl Provider for AnthropicProvider {
         let request_builder = match mode {
             ProviderMode::Proxy => {
                 let builder = self.client.post(&url);
-                insert_proxied_headers_into(builder, &context.headers)
+                insert_proxied_headers_into(builder, context.headers())
             }
             ProviderMode::RouterWithOwnedApiKey(api_key) | ProviderMode::RouterWithClientApiKey(api_key) => self
                 .request_builder(Method::POST, &url, context, model_config)
@@ -255,7 +255,7 @@ impl Provider for AnthropicProvider {
         let request_builder = match mode {
             ProviderMode::Proxy => {
                 let builder = self.client.post(&url);
-                insert_proxied_headers_into(builder, &context.headers)
+                insert_proxied_headers_into(builder, context.headers())
             }
             ProviderMode::RouterWithOwnedApiKey(api_key) | ProviderMode::RouterWithClientApiKey(api_key) => self
                 .request_builder(Method::POST, &url, context, model_config)
@@ -327,7 +327,7 @@ impl Provider for AnthropicProvider {
         let request_builder = match mode {
             ProviderMode::Proxy => {
                 let builder = self.client.post(&url);
-                insert_proxied_headers_into(builder, &context.headers)
+                insert_proxied_headers_into(builder, context.headers())
             }
             ProviderMode::RouterWithOwnedApiKey(api_key) | ProviderMode::RouterWithClientApiKey(api_key) => self
                 .request_builder(Method::POST, &url, context, model_config)
@@ -469,6 +469,15 @@ mod tests {
         )
     }
 
+    fn dummy_request_context() -> RequestContext {
+        RequestContext {
+            parts: http::Request::new("").into_parts().0,
+            api_key: None,
+            client_identity: None,
+            authentication: context::Authentication::default(),
+        }
+    }
+
     #[tokio::test]
     async fn count_tokens_raw_calls_endpoint_and_parses_response() {
         let state = CaptureState {
@@ -530,10 +539,7 @@ mod tests {
             metadata: None,
         };
 
-        let response = provider
-            .count_tokens(request, &RequestContext::default())
-            .await
-            .unwrap();
+        let response = provider.count_tokens(request, &dummy_request_context()).await.unwrap();
 
         assert_eq!(response.input_tokens, 42);
         assert_eq!(response.cache_creation_input_tokens, 1);
@@ -615,10 +621,7 @@ mod tests {
             metadata: None,
         };
 
-        provider
-            .count_tokens(request, &RequestContext::default())
-            .await
-            .unwrap();
+        provider.count_tokens(request, &dummy_request_context()).await.unwrap();
 
         let captured = state.captured.lock().unwrap().clone().expect("captured request");
         let (_headers, body) = captured;

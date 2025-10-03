@@ -136,7 +136,7 @@ pub(crate) trait HttpProvider: Provider {
         all_rules.extend_from_slice(provider_headers);
         all_rules.extend_from_slice(model_headers);
 
-        let headers = header_rules::apply(&context.headers, &all_rules);
+        let headers = header_rules::apply(context.headers(), &all_rules);
         client.request(method, url).headers(headers)
     }
 }

@@ -1,7 +1,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::messages::{openai::JsonSchema, unified};
+use crate::messages::{anthropic::AnthropicMetadata, openai::JsonSchema, unified};
 
 /// Request body for Anthropic Messages API.
 ///
@@ -77,6 +77,10 @@ pub struct AnthropicRequest {
     /// Default is false for non-streaming responses.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stream: Option<bool>,
+
+    /// Custom metadata to attach to the request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<AnthropicMetadata>,
 
     /// Tools available for the model to use.
     ///
@@ -403,7 +407,7 @@ impl From<unified::UnifiedRequest> for AnthropicRequest {
             tools,
             tool_choice,
             parallel_tool_calls: _, // Anthropic doesn't have explicit parallel tool calls setting
-            metadata: _,            // Anthropic doesn't use metadata in this conversion
+            metadata,               // Anthropic doesn't use metadata in this conversion
         } = request;
 
         // System message is already separated in unified format
@@ -451,6 +455,9 @@ impl From<unified::UnifiedRequest> for AnthropicRequest {
             stream: None,
             tools: anthropic_tools,
             tool_choice: anthropic_tool_choice,
+            metadata: metadata.map(|metadata| AnthropicMetadata {
+                user_id: metadata.user_id,
+            }),
         }
     }
 }

@@ -2,13 +2,11 @@ use std::{convert::Infallible, sync::Arc};
 
 use axum::{
     Router,
-    extract::{Extension, Json, State},
-    http::{HeaderMap, StatusCode},
+    extract::{Json, State},
+    http::StatusCode,
     response::{IntoResponse, Sse, sse::Event},
     routing::{get, post},
 };
-use axum_serde::Sonic;
-use context::{Authentication, ClientIdentity};
 use futures::StreamExt;
 use messages::{anthropic, openai};
 
@@ -23,7 +21,7 @@ pub mod token_counter;
 pub use error::{AnthropicResult, LlmError, LlmResult as Result};
 use server::{LlmServerBuilder, Server};
 
-use crate::{error::AnthropicErrorResponse, messages::unified};
+use crate::{error::AnthropicErrorResponse, messages::unified, request::Extract};
 
 pub async fn build_server(config: &config::Config) -> anyhow::Result<Arc<Server>> {
     let server = Arc::new(
@@ -55,16 +53,11 @@ pub fn openai_endpoint_router() -> Router<Arc<Server>> {
 /// Server-Sent Events (SSE). Otherwise, a standard JSON response is returned.
 async fn chat_completions(
     State(server): State<Arc<Server>>,
-    headers: HeaderMap,
-    Extension(authentication): Extension<Authentication>,
-    client_identity: Option<Extension<ClientIdentity>>,
-    Sonic(request): Sonic<openai::ChatCompletionRequest>,
+    Extract(context, request): Extract<openai::ChatCompletionRequest>,
 ) -> Result<impl IntoResponse> {
     log::debug!("OpenAI chat completions handler called for model: {}", request.model);
     log::debug!("Request has {} messages", request.messages.len());
     log::debug!("Streaming: {}", request.stream.unwrap_or(false));
-
-    let context = request::new_context(headers, client_identity.map(|ext| ext.0), authentication);
 
     // Check if streaming is requested
     if request.stream.unwrap_or(false) {
@@ -132,17 +125,11 @@ async fn list_models(State(server): State<Arc<Server>>) -> Result<impl IntoRespo
 /// Server-Sent Events (SSE). Otherwise, a standard JSON response is returned.
 async fn anthropic_messages(
     State(server): State<Arc<Server>>,
-    headers: HeaderMap,
-    Extension(authentication): Extension<Authentication>,
-    client_identity: Option<Extension<ClientIdentity>>,
-    Sonic(request): Sonic<anthropic::AnthropicChatRequest>,
+    Extract(context, request): Extract<anthropic::AnthropicChatRequest>,
 ) -> AnthropicResult<impl IntoResponse> {
     log::debug!("Anthropic messages handler called for model: {}", request.model);
     log::debug!("Request has {} messages", request.messages.len());
     log::debug!("Streaming: {}", request.stream.unwrap_or(false));
-
-    // Extract request context including client identity
-    let context = request::new_context(headers, client_identity.map(|ext| ext.0), authentication);
 
     // Convert Anthropic request to unified format
     let unified_request = unified::UnifiedRequest::from(request);
@@ -200,14 +187,8 @@ async fn anthropic_messages(
 /// Handle Anthropic count tokens requests.
 async fn count_tokens(
     State(server): State<Arc<Server>>,
-    headers: HeaderMap,
-    Extension(authentication): Extension<Authentication>,
-    client_identity: Option<Extension<ClientIdentity>>,
-    Sonic(request): Sonic<anthropic::AnthropicChatRequest>,
+    Extract(context, request): Extract<anthropic::AnthropicChatRequest>,
 ) -> AnthropicResult<impl IntoResponse> {
-    // Maintain consistent context extraction even while the endpoint is unimplemented.
-    let context = request::new_context(headers, client_identity.map(|ext| ext.0), authentication);
-
     let mut unified_request = unified::UnifiedRequest::from(request);
     unified_request.stream = Some(false);
 
