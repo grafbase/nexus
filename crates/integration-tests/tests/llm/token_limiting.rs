@@ -37,8 +37,8 @@ async fn no_client_id_allows_requests() {
 
     insta::assert_json_snapshot!(response["choices"][0]["message"], @r#"
     {
-      "role": "assistant",
-      "content": "Hello! I'm a test LLM assistant. How can I help you today?"
+      "content": "Hello! I'm a test LLM assistant. How can I help you today?",
+      "role": "assistant"
     }
     "#);
 }
@@ -748,7 +748,6 @@ async fn missing_group_when_group_values_configured() {
     );
 
     // Verify the response is valid
-    let body = body;
     assert!(body["choices"].is_array());
 }
 

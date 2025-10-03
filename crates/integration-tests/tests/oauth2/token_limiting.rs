@@ -229,9 +229,9 @@ async fn test_rate_limiting_with_sub_claim() {
     }, @r#"
     {
       "error": {
+        "code": 429,
         "message": "[rate limit message]",
-        "type": "rate_limit_error",
-        "code": 429
+        "type": "rate_limit_error"
       }
     }
     "#);
@@ -324,9 +324,9 @@ async fn two_jwt_users_independent_rate_limits() {
     }, @r#"
     {
       "error": {
+        "code": 429,
         "message": "[rate limit message]",
-        "type": "rate_limit_error",
-        "code": 429
+        "type": "rate_limit_error"
       }
     }
     "#);

@@ -125,23 +125,23 @@ async fn claude_code_multiple_tool_scenario() {
         ".id" => "[id]",
         ".model" => "[model]",
         ".usage" => "[usage]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "text",
-          "text": "Test response to: I want to understand the structure of this codebase. Can you help me explore it?"
+          "text": "Test response to: I want to understand the structure of this codebase. Can you help me explore it?",
+          "type": "text"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
-    "###);
+    "#);
 }
 
 /// Test the mixed content format that Claude Code uses - strings and arrays
@@ -258,23 +258,23 @@ async fn claude_code_mixed_content_conversation() {
         ".id" => "[id]",
         ".model" => "[model]",
         ".usage" => "[usage]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "text",
-          "text": "Test response to: Create a simple HTTP server in Rust using Axum"
+          "text": "Test response to: Create a simple HTTP server in Rust using Axum",
+          "type": "text"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
-    "###);
+    "#);
 }
 
 /// Test the scenario where Claude Code sends tool arguments as JSON values vs strings
@@ -389,23 +389,23 @@ async fn claude_code_tool_argument_variations() {
         ".id" => "[id]",
         ".model" => "[model]",
         ".usage" => "[usage]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "text",
-          "text": "Test response to: Help me analyze this project"
+          "text": "Test response to: Help me analyze this project",
+          "type": "text"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
-    "###);
+    "#);
 }
 
 /// Test the OpenAI format conversion to Anthropic when tool calls are present
@@ -513,23 +513,23 @@ async fn openai_to_anthropic_tool_conversion() {
         ".created" => "[timestamp]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[timestamp]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Test response to: Help me with file operations"
-          },
-          "finish_reason": "stop"
+            "content": "Test response to: Help me with file operations",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[timestamp]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -647,23 +647,23 @@ async fn role_mapping_tool_results() {
         ".id" => "[id]",
         ".model" => "[model]",
         ".usage" => "[usage]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "text",
-          "text": "Test response to: Check the system status"
+          "text": "Test response to: Check the system status",
+          "type": "text"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
-    "###);
+    "#);
 }
 
 /// Test that duplicate tool IDs are correctly rejected
@@ -732,13 +732,13 @@ async fn duplicate_tool_ids_correctly_rejected() {
     let (status, body) = server.anthropic_completions(request).send_raw().await;
 
     assert_eq!(status, 502);
-    insta::assert_json_snapshot!(body, @r###"
+    insta::assert_json_snapshot!(body, @r#"
     {
-      "type": "error",
       "error": {
-        "type": "invalid_request_error",
-        "message": "messages: `tool_use` ids must be unique (duplicate id: toolu_process_001)"
-      }
+        "message": "messages: `tool_use` ids must be unique (duplicate id: toolu_process_001)",
+        "type": "invalid_request_error"
+      },
+      "type": "error"
     }
-    "###);
+    "#);
 }

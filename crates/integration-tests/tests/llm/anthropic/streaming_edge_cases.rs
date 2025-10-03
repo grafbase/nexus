@@ -61,18 +61,18 @@ async fn streaming_tool_calls_null_arguments() {
         ".created" => "[timestamp]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion.chunk",
-      "created": "[timestamp]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
-          "index": 0,
           "delta": {
             "role": "assistant"
-          }
+          },
+          "index": 0
         }
-      ]
+      ],
+      "created": "[timestamp]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion.chunk"
     }
     "#);
 
@@ -94,28 +94,28 @@ async fn streaming_tool_calls_null_arguments() {
         ".choices[0].delta.tool_calls[0].id" => "[call_id]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion.chunk",
-      "created": "[timestamp]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
-          "index": 0,
           "delta": {
             "tool_calls": [
               {
-                "index": 0,
-                "id": "[call_id]",
-                "type": "function",
                 "function": {
-                  "name": "get_current_time",
-                  "arguments": ""
-                }
+                  "arguments": "",
+                  "name": "get_current_time"
+                },
+                "id": "[call_id]",
+                "index": 0,
+                "type": "function"
               }
             ]
-          }
+          },
+          "index": 0
         }
-      ]
+      ],
+      "created": "[timestamp]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion.chunk"
     }
     "#);
 
@@ -271,9 +271,9 @@ async fn streaming_not_enabled_error() {
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
-        "message": "Invalid request: {\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Streaming is not yet supported\"}}",
-        "type": "invalid_request_error",
-        "code": 400
+        "code": 400,
+        "message": "Invalid request: {\"error\":{\"message\":\"Streaming is not yet supported\",\"type\":\"invalid_request_error\"}}",
+        "type": "invalid_request_error"
       }
     }
     "#);
@@ -432,28 +432,28 @@ async fn streaming_malformed_tool_arguments() {
         ".choices[0].delta.tool_calls[0].id" => "[call_id]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion.chunk",
-      "created": "[timestamp]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
-          "index": 0,
           "delta": {
             "tool_calls": [
               {
-                "index": 0,
-                "id": "[call_id]",
-                "type": "function",
                 "function": {
-                  "name": "parse_json",
-                  "arguments": ""
-                }
+                  "arguments": "",
+                  "name": "parse_json"
+                },
+                "id": "[call_id]",
+                "index": 0,
+                "type": "function"
               }
             ]
-          }
+          },
+          "index": 0
         }
-      ]
+      ],
+      "created": "[timestamp]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion.chunk"
     }
     "#);
 }
@@ -520,28 +520,28 @@ async fn streaming_empty_tool_arguments() {
         ".choices[0].delta.tool_calls[0].id" => "[call_id]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion.chunk",
-      "created": "[timestamp]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
-          "index": 0,
           "delta": {
             "tool_calls": [
               {
-                "index": 0,
-                "id": "[call_id]",
-                "type": "function",
                 "function": {
-                  "name": "get_status",
-                  "arguments": ""
-                }
+                  "arguments": "",
+                  "name": "get_status"
+                },
+                "id": "[call_id]",
+                "index": 0,
+                "type": "function"
               }
             ]
-          }
+          },
+          "index": 0
         }
-      ]
+      ],
+      "created": "[timestamp]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion.chunk"
     }
     "#);
 }
@@ -604,20 +604,20 @@ async fn streaming_usage_information() {
         ".created" => "[timestamp]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion.chunk",
-      "created": "[timestamp]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
-          "index": 0,
           "delta": {},
-          "finish_reason": "tool_calls"
+          "finish_reason": "tool_calls",
+          "index": 0
         }
       ],
+      "created": "[timestamp]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion.chunk",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }

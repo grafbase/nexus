@@ -149,44 +149,44 @@ async fn per_ip_rate_limit_basic() {
       {
         "ip": "192.168.1.1",
         "request": 1,
-        "status": 200,
-        "retry_after": null
+        "retry_after": null,
+        "status": 200
       },
       {
         "ip": "192.168.1.1",
         "request": 2,
-        "status": 200,
-        "retry_after": null
+        "retry_after": null,
+        "status": 200
       },
       {
         "ip": "192.168.1.1",
         "request": 3,
-        "status": 429,
-        "retry_after": null
+        "retry_after": null,
+        "status": 429
       },
       {
         "ip": "192.168.1.1",
         "request": 4,
-        "status": 429,
-        "retry_after": null
+        "retry_after": null,
+        "status": 429
       },
       {
         "ip": "192.168.1.2",
         "request": 1,
-        "status": 406,
-        "retry_after": null
+        "retry_after": null,
+        "status": 406
       },
       {
         "ip": "192.168.1.2",
         "request": 2,
-        "status": 406,
-        "retry_after": null
+        "retry_after": null,
+        "status": 406
       },
       {
         "ip": "192.168.1.2",
         "request": 3,
-        "status": 429,
-        "retry_after": null
+        "retry_after": null,
+        "status": 429
       }
     ]
     "#);
@@ -242,26 +242,26 @@ async fn mcp_server_rate_limit() {
     insta::assert_json_snapshot!(results, @r#"
     [
       {
+        "content_count": 1,
         "request": 1,
-        "success": true,
-        "content_count": 1,
-        "result": "1 + 2 = 3"
+        "result": "1 + 2 = 3",
+        "success": true
       },
       {
+        "content_count": 1,
         "request": 2,
-        "success": true,
-        "content_count": 1,
-        "result": "1 + 2 = 3"
+        "result": "1 + 2 = 3",
+        "success": true
       },
       {
+        "error": "McpError(ErrorData { code: ErrorCode(-32000), message: \"Rate limit exceeded\", data: None })",
         "request": 3,
-        "success": false,
-        "error": "McpError(ErrorData { code: ErrorCode(-32000), message: \"Rate limit exceeded\", data: None })"
+        "success": false
       },
       {
+        "error": "McpError(ErrorData { code: ErrorCode(-32000), message: \"Rate limit exceeded\", data: None })",
         "request": 4,
-        "success": false,
-        "error": "McpError(ErrorData { code: ErrorCode(-32000), message: \"Rate limit exceeded\", data: None })"
+        "success": false
       }
     ]
     "#);
@@ -320,23 +320,23 @@ async fn mcp_tool_specific_rate_limit() {
     [
       {
         "request": 1,
-        "success": true,
-        "result": "1 + 10 = 11"
+        "result": "1 + 10 = 11",
+        "success": true
       },
       {
         "request": 2,
-        "success": true,
-        "result": "2 + 10 = 12"
+        "result": "2 + 10 = 12",
+        "success": true
       },
       {
+        "error": "McpError(ErrorData { code: ErrorCode(-32000), message: \"Rate limit exceeded\", data: None })",
         "request": 3,
-        "success": false,
-        "error": "McpError(ErrorData { code: ErrorCode(-32000), message: \"Rate limit exceeded\", data: None })"
+        "success": false
       },
       {
+        "error": "McpError(ErrorData { code: ErrorCode(-32000), message: \"Rate limit exceeded\", data: None })",
         "request": 4,
-        "success": false,
-        "error": "McpError(ErrorData { code: ErrorCode(-32000), message: \"Rate limit exceeded\", data: None })"
+        "success": false
       }
     ]
     "#);
@@ -401,12 +401,12 @@ async fn mcp_only_rate_limits_no_http_middleware() {
         "mcp_second_error": format!("{second_error:?}")
     }), @r#"
     {
-      "http_requests_successful": 10,
       "http_all_succeeded": true,
+      "http_requests_successful": 10,
       "mcp_first_request_success": true,
       "mcp_first_result": "1 + 2 = 3",
-      "mcp_second_request_failed": true,
-      "mcp_second_error": "McpError(ErrorData { code: ErrorCode(-32000), message: \"Rate limit exceeded\", data: None })"
+      "mcp_second_error": "McpError(ErrorData { code: ErrorCode(-32000), message: \"Rate limit exceeded\", data: None })",
+      "mcp_second_request_failed": true
     }
     "#);
 }
@@ -453,9 +453,9 @@ async fn rate_limiting_disabled() {
         "all_succeeded": success_count == 20
     }), @r#"
     {
-      "total_requests": 20,
+      "all_succeeded": true,
       "successful_requests": 20,
-      "all_succeeded": true
+      "total_requests": 20
     }
     "#);
 }
@@ -513,44 +513,44 @@ async fn mixed_rate_limits() {
     insta::assert_json_snapshot!(results, @r#"
     [
       {
+        "limit_type": "allowed",
         "request": 1,
-        "status": 406,
-        "limit_type": "allowed"
+        "status": 406
       },
       {
+        "limit_type": "allowed",
         "request": 2,
-        "status": 406,
-        "limit_type": "allowed"
+        "status": 406
       },
       {
+        "limit_type": "allowed",
         "request": 3,
-        "status": 406,
-        "limit_type": "allowed"
+        "status": 406
       },
       {
+        "limit_type": "allowed",
         "request": 4,
-        "status": 406,
-        "limit_type": "allowed"
+        "status": 406
       },
       {
+        "limit_type": "allowed",
         "request": 5,
-        "status": 406,
-        "limit_type": "allowed"
+        "status": 406
       },
       {
+        "limit_type": "rate_limited",
         "request": 6,
-        "status": 429,
-        "limit_type": "rate_limited"
+        "status": 429
       },
       {
+        "limit_type": "rate_limited",
         "request": 7,
-        "status": 429,
-        "limit_type": "rate_limited"
+        "status": 429
       },
       {
+        "limit_type": "rate_limited",
         "request": 8,
-        "status": 429,
-        "limit_type": "rate_limited"
+        "status": 429
       }
     ]
     "#);

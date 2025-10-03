@@ -148,20 +148,20 @@ async fn mixed_success_and_failure_servers() {
     insta::assert_json_snapshot!(search_results, @r#"
     [
       {
-        "name": "working_server__echo",
         "description": "Echoes back the input text message verbatim for testing and debugging purposes",
         "input_schema": {
-          "type": "object",
           "properties": {
             "text": {
-              "type": "string",
-              "description": "Text message to echo back verbatim"
+              "description": "Text message to echo back verbatim",
+              "type": "string"
             }
           },
           "required": [
             "text"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "working_server__echo",
         "score": 3.611918449401855
       }
     ]

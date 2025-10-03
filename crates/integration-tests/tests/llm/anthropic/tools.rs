@@ -61,32 +61,32 @@ path = "/llm"
         ".choices[0].message.tool_calls[0].id" => "[call_id]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[timestamp]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
+          "finish_reason": "tool_calls",
           "index": 0,
           "message": {
             "role": "assistant",
             "tool_calls": [
               {
-                "id": "[call_id]",
-                "type": "function",
                 "function": {
-                  "name": "get_weather",
-                  "arguments": "{\"location\":\"San Francisco\",\"unit\":\"celsius\"}"
-                }
+                  "arguments": "{\"location\":\"San Francisco\",\"unit\":\"celsius\"}",
+                  "name": "get_weather"
+                },
+                "id": "[call_id]",
+                "type": "function"
               }
             ]
-          },
-          "finish_reason": "tool_calls"
+          }
         }
       ],
+      "created": "[timestamp]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -152,32 +152,32 @@ path = "/llm"
         ".choices[0].message.tool_calls[0].id" => "[call_id]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[timestamp]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
+          "finish_reason": "tool_calls",
           "index": 0,
           "message": {
             "role": "assistant",
             "tool_calls": [
               {
-                "id": "[call_id]",
-                "type": "function",
                 "function": {
-                  "name": "get_weather",
-                  "arguments": "{\"location\":\"New York City\"}"
-                }
+                  "arguments": "{\"location\":\"New York City\"}",
+                  "name": "get_weather"
+                },
+                "id": "[call_id]",
+                "type": "function"
               }
             ]
-          },
-          "finish_reason": "tool_calls"
+          }
         }
       ],
+      "created": "[timestamp]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -262,32 +262,32 @@ path = "/llm"
         ".choices[0].message.tool_calls[0].function.arguments" => "[arguments]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[timestamp]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
+          "finish_reason": "tool_calls",
           "index": 0,
           "message": {
             "role": "assistant",
             "tool_calls": [
               {
-                "id": "[call_id]",
-                "type": "function",
                 "function": {
-                  "name": "calculator",
-                  "arguments": "[arguments]"
-                }
+                  "arguments": "[arguments]",
+                  "name": "calculator"
+                },
+                "id": "[call_id]",
+                "type": "function"
               }
             ]
-          },
-          "finish_reason": "tool_calls"
+          }
         }
       ],
+      "created": "[timestamp]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -349,23 +349,23 @@ path = "/llm"
         ".created" => "[timestamp]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[timestamp]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "The weather in San Francisco is 22°C and sunny."
-          },
-          "finish_reason": "stop"
+            "content": "The weather in San Francisco is 22°C and sunny.",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[timestamp]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -408,23 +408,23 @@ path = "/llm"
         ".created" => "[timestamp]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[timestamp]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hi there! How can I help you?"
-          },
-          "finish_reason": "stop"
+            "content": "Hi there! How can I help you?",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[timestamp]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -495,18 +495,18 @@ path = "/llm"
         ".created" => "[timestamp]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion.chunk",
-      "created": "[timestamp]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
-          "index": 0,
           "delta": {
             "role": "assistant"
-          }
+          },
+          "index": 0
         }
-      ]
+      ],
+      "created": "[timestamp]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion.chunk"
     }
     "#);
 
@@ -527,28 +527,28 @@ path = "/llm"
         ".choices[0].delta.tool_calls[0].function.arguments" => "[arguments]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion.chunk",
-      "created": "[timestamp]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
-          "index": 0,
           "delta": {
             "tool_calls": [
               {
-                "index": 0,
-                "id": "[call_id]",
-                "type": "function",
                 "function": {
-                  "name": "get_weather",
-                  "arguments": "[arguments]"
-                }
+                  "arguments": "[arguments]",
+                  "name": "get_weather"
+                },
+                "id": "[call_id]",
+                "index": 0,
+                "type": "function"
               }
             ]
-          }
+          },
+          "index": 0
         }
-      ]
+      ],
+      "created": "[timestamp]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion.chunk"
     }
     "#);
 
@@ -563,19 +563,19 @@ path = "/llm"
             ".created" => "[timestamp]",
             ".usage" => "[usage]"
         }, @r#"
+    {
+      "choices": [
         {
-          "id": "[id]",
-          "object": "chat.completion.chunk",
-          "created": "[timestamp]",
-          "model": "anthropic/claude-3-5-sonnet-20241022",
-          "choices": [
-            {
-              "index": 0,
-              "delta": {},
-              "finish_reason": "tool_calls"
-            }
-          ],
-          "usage": "[usage]"
+          "delta": {},
+          "finish_reason": "tool_calls",
+          "index": 0
         }
-        "#);
+      ],
+      "created": "[timestamp]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion.chunk",
+      "usage": "[usage]"
+    }
+    "#);
 }

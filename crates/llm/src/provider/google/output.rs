@@ -613,10 +613,10 @@ mod tests {
 
         assert_json_snapshot!(snapshot, @r#"
         {
-          "name": "get_weather",
           "args": {
             "location": "San Francisco"
-          }
+          },
+          "name": "get_weather"
         }
         "#);
     }
@@ -645,10 +645,10 @@ mod tests {
 
         assert_json_snapshot!(snapshot, @r#"
         {
-          "name": "get_weather",
           "args": {
             "location": "San Francisco"
-          }
+          },
+          "name": "get_weather"
         }
         "#);
     }
@@ -697,14 +697,14 @@ mod tests {
               "content": {
                 "parts": [
                   {
-                    "text": null,
                     "functionCall": {
-                      "name": "search",
                       "args": {
                         "query": "weather today"
-                      }
+                      },
+                      "name": "search"
                     },
-                    "functionResponse": null
+                    "functionResponse": null,
+                    "text": null
                   }
                 ],
                 "role": "model"
@@ -715,8 +715,8 @@ mod tests {
             }
           ],
           "usageMetadata": {
-            "promptTokenCount": 10,
             "candidatesTokenCount": 20,
+            "promptTokenCount": 10,
             "totalTokenCount": 30
           }
         }

@@ -92,7 +92,7 @@ rustls = { version = "0.23", features = ["aws-lc-rs"] }
 schemars = "1.0"
 secrecy = "0.10.3"
 serde = "1.0.219"
-serde-dynamic-string = { git = "https://github.com/grafbase/grafbase" }
+serde-dynamic-string = { path = "crates/serde-dynamic-string" }
 serde_json = "1.0"
 server = { path = "crates/server" }
 sha2 = "0.10"
@@ -100,6 +100,7 @@ sonic-rs = "0.5.3"
 syn = { version = "2.0", features = ["full", "parsing"] }
 tantivy = "0.25.0"
 telemetry = { path = "crates/telemetry" }
+temp-env = "0.3"
 tempfile = "3.14.0"
 thiserror = "2.0.12"
 tiktoken-rs = "0.7"

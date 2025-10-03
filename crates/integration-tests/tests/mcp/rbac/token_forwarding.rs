@@ -52,36 +52,36 @@ async fn search_respects_group_access_static_servers() {
     insta::assert_json_snapshot!(premium_search, @r#"
     [
       {
-        "name": "premium_tools__calculator",
         "description": "Performs basic mathematical calculations including addition, subtraction, multiplication and division with advanced error handling for edge cases",
         "input_schema": {
-          "type": "object",
           "properties": {
             "operation": {
-              "type": "string",
+              "description": "Mathematical operation to perform",
               "enum": [
                 "add",
                 "subtract",
                 "multiply",
                 "divide"
               ],
-              "description": "Mathematical operation to perform"
+              "type": "string"
             },
             "x": {
-              "type": "number",
-              "description": "First operand"
+              "description": "First operand",
+              "type": "number"
             },
             "y": {
-              "type": "number",
-              "description": "Second operand"
+              "description": "Second operand",
+              "type": "number"
             }
           },
           "required": [
             "operation",
             "x",
             "y"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "premium_tools__calculator",
         "score": 2.4077742099761963
       }
     ]
@@ -100,25 +100,25 @@ async fn search_respects_group_access_static_servers() {
     insta::assert_json_snapshot!(basic_search, @r#"
     [
       {
-        "name": "basic_tools__adder",
         "description": "Adds two numbers together",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First number to add"
+              "description": "First number to add",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second number to add"
+              "description": "Second number to add",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "basic_tools__adder",
         "score": 2.4077742099761963
       }
     ]
@@ -202,36 +202,36 @@ async fn search_keywords_filter_by_group_static() {
     insta::assert_json_snapshot!(premium_search, @r#"
     [
       {
-        "name": "premium_server__calculator",
         "description": "Performs basic mathematical calculations including addition, subtraction, multiplication and division with advanced error handling for edge cases",
         "input_schema": {
-          "type": "object",
           "properties": {
             "operation": {
-              "type": "string",
+              "description": "Mathematical operation to perform",
               "enum": [
                 "add",
                 "subtract",
                 "multiply",
                 "divide"
               ],
-              "description": "Mathematical operation to perform"
+              "type": "string"
             },
             "x": {
-              "type": "number",
-              "description": "First operand"
+              "description": "First operand",
+              "type": "number"
             },
             "y": {
-              "type": "number",
-              "description": "Second operand"
+              "description": "Second operand",
+              "type": "number"
             }
           },
           "required": [
             "operation",
             "x",
             "y"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "premium_server__calculator",
         "score": 0.8630462884902954
       }
     ]
@@ -407,38 +407,38 @@ async fn dynamic_server_cache_is_group_specific() {
     let group_a_search = group_a_client.search(&["text"]).await;
 
     // Group A should see text_processor (has access)
-    insta::assert_json_snapshot!(group_a_search, @r###"
+    insta::assert_json_snapshot!(group_a_search, @r#"
     [
       {
-        "name": "shared_server__text_processor",
         "description": "Processes text with various string manipulation operations like case conversion and reversal",
         "input_schema": {
-          "type": "object",
           "properties": {
-            "text": {
-              "type": "string",
-              "description": "Input text to process"
-            },
             "action": {
-              "type": "string",
+              "description": "Action to perform on the text",
               "enum": [
                 "uppercase",
                 "lowercase",
                 "reverse",
                 "word_count"
               ],
-              "description": "Action to perform on the text"
+              "type": "string"
+            },
+            "text": {
+              "description": "Input text to process",
+              "type": "string"
             }
           },
           "required": [
             "text",
             "action"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "shared_server__text_processor",
         "score": 0.8630462884902954
       }
     ]
-    "###);
+    "#);
 
     // Test group_b user with SAME auth token - should NOT see text_processor
     let mut group_b_headers = HeaderMap::new();
@@ -529,32 +529,32 @@ async fn mixed_static_and_dynamic_servers_with_groups() {
     let basic_search = basic_client.search(&["numbers"]).await;
 
     // Basic user should only see tools from static_shared (adder), not premium servers
-    insta::assert_json_snapshot!(basic_search, @r###"
+    insta::assert_json_snapshot!(basic_search, @r#"
     [
       {
-        "name": "static_shared__adder",
         "description": "Adds two numbers together",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First number to add"
+              "description": "First number to add",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second number to add"
+              "description": "Second number to add",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "static_shared__adder",
         "score": 0.6000000238418579
       }
     ]
-    "###);
+    "#);
 
     // Test premium user with OAuth2 token - should see static servers (shared + premium)
     let mut premium_headers = HeaderMap::new();
@@ -567,93 +567,93 @@ async fn mixed_static_and_dynamic_servers_with_groups() {
     let premium_search = premium_client.search(&["numbers", "files"]).await;
 
     // Premium user should see tools from both static_shared and static_premium and auth_required_premium
-    insta::assert_json_snapshot!(premium_search, @r###"
+    insta::assert_json_snapshot!(premium_search, @r#"
     [
       {
-        "name": "static_shared__adder",
         "description": "Adds two numbers together",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First number to add"
+              "description": "First number to add",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second number to add"
+              "description": "Second number to add",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "static_shared__adder",
         "score": 1.5813064575195313
       },
       {
-        "name": "auth_required_premium__filesystem",
         "description": "Manages files and directories with operations like listing, creating, and deleting",
         "input_schema": {
-          "type": "object",
           "properties": {
-            "path": {
-              "type": "string",
-              "description": "File or directory path"
-            },
             "operation": {
-              "type": "string",
+              "description": "Filesystem operation to perform",
               "enum": [
                 "list",
                 "create",
                 "delete",
                 "exists"
               ],
-              "description": "Filesystem operation to perform"
+              "type": "string"
+            },
+            "path": {
+              "description": "File or directory path",
+              "type": "string"
             }
           },
           "required": [
             "path",
             "operation"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "auth_required_premium__filesystem",
         "score": 1.1621382236480713
       },
       {
-        "name": "static_premium__calculator",
         "description": "Performs basic mathematical calculations including addition, subtraction, multiplication and division with advanced error handling for edge cases",
         "input_schema": {
-          "type": "object",
           "properties": {
             "operation": {
-              "type": "string",
+              "description": "Mathematical operation to perform",
               "enum": [
                 "add",
                 "subtract",
                 "multiply",
                 "divide"
               ],
-              "description": "Mathematical operation to perform"
+              "type": "string"
             },
             "x": {
-              "type": "number",
-              "description": "First operand"
+              "description": "First operand",
+              "type": "number"
             },
             "y": {
-              "type": "number",
-              "description": "Second operand"
+              "description": "Second operand",
+              "type": "number"
             }
           },
           "required": [
             "operation",
             "x",
             "y"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "static_premium__calculator",
         "score": 0.4000000059604645
       }
     ]
-    "###);
+    "#);
 
     // Test premium user with focused search - should see all servers
     let mut premium_focused_headers = HeaderMap::new();
@@ -666,43 +666,43 @@ async fn mixed_static_and_dynamic_servers_with_groups() {
     let premium_focused_search = premium_focused_client.search(&["calculator"]).await;
 
     // Premium user should see calculator tool from premium server
-    insta::assert_json_snapshot!(premium_focused_search, @r###"
+    insta::assert_json_snapshot!(premium_focused_search, @r#"
     [
       {
-        "name": "static_premium__calculator",
         "description": "Performs basic mathematical calculations including addition, subtraction, multiplication and division with advanced error handling for edge cases",
         "input_schema": {
-          "type": "object",
           "properties": {
             "operation": {
-              "type": "string",
+              "description": "Mathematical operation to perform",
               "enum": [
                 "add",
                 "subtract",
                 "multiply",
                 "divide"
               ],
-              "description": "Mathematical operation to perform"
+              "type": "string"
             },
             "x": {
-              "type": "number",
-              "description": "First operand"
+              "description": "First operand",
+              "type": "number"
             },
             "y": {
-              "type": "number",
-              "description": "Second operand"
+              "description": "Second operand",
+              "type": "number"
             }
           },
           "required": [
             "operation",
             "x",
             "y"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "static_premium__calculator",
         "score": 2.9424874782562256
       }
     ]
-    "###);
+    "#);
 
     // Verify that basic user cannot execute premium-only tools
     let error = basic_client

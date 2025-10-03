@@ -25,57 +25,57 @@ async fn list_models() {
         ".data[].created" => "[created]"
     }, @r#"
     {
-      "object": "list",
       "data": [
         {
+          "created": "[created]",
           "id": "gemini-1.5-flash",
           "object": "model",
-          "created": "[created]",
           "owned_by": "google"
         },
         {
+          "created": "[created]",
           "id": "gemini-1.5-pro",
           "object": "model",
-          "created": "[created]",
           "owned_by": "google"
         },
         {
+          "created": "[created]",
           "id": "gemini-pro",
           "object": "model",
-          "created": "[created]",
           "owned_by": "google"
         },
         {
+          "created": "[created]",
           "id": "text-embedding-004",
           "object": "model",
-          "created": "[created]",
           "owned_by": "google"
         },
         {
+          "created": "[created]",
           "id": "google/gemini-1.5-flash",
           "object": "model",
-          "created": "[created]",
           "owned_by": "google"
         },
         {
+          "created": "[created]",
           "id": "google/gemini-1.5-pro",
           "object": "model",
-          "created": "[created]",
           "owned_by": "google"
         },
         {
+          "created": "[created]",
           "id": "google/gemini-pro",
           "object": "model",
-          "created": "[created]",
           "owned_by": "google"
         },
         {
+          "created": "[created]",
           "id": "google/text-embedding-004",
           "object": "model",
-          "created": "[created]",
           "owned_by": "google"
         }
-      ]
+      ],
+      "object": "list"
     }
     "#);
 }
@@ -110,23 +110,23 @@ async fn chat_completion() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "google/gemini-1.5-flash",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hello! I'm Gemini, a test assistant. How can I help you today?"
-          },
-          "finish_reason": "stop"
+            "content": "Hello! I'm Gemini, a test assistant. How can I help you today?",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "google/gemini-1.5-flash",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -162,23 +162,23 @@ async fn handles_system_messages() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "google/gemini-pro",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Test response to: How are you?"
-          },
-          "finish_reason": "stop"
+            "content": "Test response to: How are you?",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "google/gemini-pro",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -376,23 +376,23 @@ async fn simple_completion() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "google/gemini-pro",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Test response to: Quick test"
-          },
-          "finish_reason": "stop"
+            "content": "Test response to: Quick test",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "google/gemini-pro",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -429,23 +429,23 @@ async fn with_parameters() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "google/gemini-1.5-flash",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "This is a creative response due to high temperature"
-          },
-          "finish_reason": "stop"
+            "content": "This is a creative response due to high temperature",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "google/gemini-1.5-flash",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -467,33 +467,33 @@ async fn custom_models() {
         ".data[].created" => "[created]"
     }, @r#"
     {
-      "object": "list",
       "data": [
         {
+          "created": "[created]",
           "id": "gemini-custom",
           "object": "model",
-          "created": "[created]",
           "owned_by": "google"
         },
         {
+          "created": "[created]",
           "id": "gemini-experimental",
           "object": "model",
-          "created": "[created]",
           "owned_by": "google"
         },
         {
+          "created": "[created]",
           "id": "google/gemini-custom",
           "object": "model",
-          "created": "[created]",
           "owned_by": "google"
         },
         {
+          "created": "[created]",
           "id": "google/gemini-experimental",
           "object": "model",
-          "created": "[created]",
           "owned_by": "google"
         }
-      ]
+      ],
+      "object": "list"
     }
     "#);
 }
@@ -524,23 +524,23 @@ async fn custom_response() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "google/gemini-1.5-flash",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "This is a special custom response"
-          },
-          "finish_reason": "stop"
+            "content": "This is a special custom response",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "google/gemini-1.5-flash",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -578,19 +578,19 @@ path = "/llm"
         ".choices[0].delta.content" => "[content]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion.chunk",
-      "created": "[created]",
-      "model": "google/gemini-pro",
       "choices": [
         {
-          "index": 0,
           "delta": {
-            "role": "assistant",
-            "content": "[content]"
-          }
+            "content": "[content]",
+            "role": "assistant"
+          },
+          "index": 0
         }
-      ]
+      ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "google/gemini-pro",
+      "object": "chat.completion.chunk"
     }
     "#);
 }

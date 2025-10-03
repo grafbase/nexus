@@ -55,20 +55,20 @@ async fn tool_arguments_null_handling() {
         ".usage" => "[usage]"
     }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "tool_use",
           "id": "[tool_id]",
+          "input": null,
           "name": "list_files",
-          "input": null
+          "type": "tool_use"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
     "#);
@@ -126,20 +126,20 @@ async fn tool_arguments_string_vs_json() {
         ".usage" => "[usage]"
     }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "tool_use",
           "id": "[tool_id]",
+          "input": "2024-09-17T14:30:00Z",
           "name": "get_current_time",
-          "input": "2024-09-17T14:30:00Z"
+          "type": "tool_use"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
     "#);
@@ -219,43 +219,43 @@ async fn tool_arguments_complex_json() {
         ".usage" => "[usage]"
     }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "tool_use",
           "id": "[tool_id]",
-          "name": "complex_search",
           "input": {
+            "options": {
+              "include_metadata": true,
+              "limit": 10
+            },
             "search_params": {
-              "query": "test",
               "filters": {
-                "date_range": {
-                  "start": "2024-01-01",
-                  "end": "2024-12-31"
-                },
                 "categories": [
                   "tech",
                   "science"
                 ],
+                "date_range": {
+                  "end": "2024-12-31",
+                  "start": "2024-01-01"
+                },
                 "priority": 1
               },
+              "query": "test",
               "sort": {
                 "field": "relevance",
                 "order": "desc"
               }
-            },
-            "options": {
-              "limit": 10,
-              "include_metadata": true
             }
-          }
+          },
+          "name": "complex_search",
+          "type": "tool_use"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
     "#);
@@ -361,22 +361,22 @@ async fn multiple_parallel_tools_unique_ids() {
         ".usage" => "[usage]"
     }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "tool_use",
           "id": "[tool_id]",
-          "name": "Glob",
           "input": {
             "pattern": "*.rs"
-          }
+          },
+          "name": "Glob",
+          "type": "tool_use"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
     "#);
@@ -453,18 +453,18 @@ async fn message_role_conversions_tool_results() {
         ".usage" => "[usage]"
     }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "text",
-          "text": "I can see the file contents show some configuration data."
+          "text": "I can see the file contents show some configuration data.",
+          "type": "text"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
     "#);
@@ -551,23 +551,23 @@ async fn anthropic_native_tool_use_blocks() {
         ".id" => "[id]",
         ".model" => "[model]",
         ".usage" => "[usage]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "text",
-          "text": "Test response to: Help me with file operations"
+          "text": "Test response to: Help me with file operations",
+          "type": "text"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
-    "###);
+    "#);
 }
 
 /// Test that successful requests work as expected for baseline comparison
@@ -606,23 +606,23 @@ async fn successful_request_baseline() {
         ".id" => "[id]",
         ".model" => "[model]",
         ".usage" => "[usage]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "text",
-          "text": "Test response to: Hello"
+          "text": "Test response to: Hello",
+          "type": "text"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
-    "###);
+    "#);
 }
 
 /// Test that malformed tool arguments are gracefully handled
@@ -676,20 +676,20 @@ async fn malformed_tool_arguments_handling() {
         ".usage" => "[usage]"
     }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "tool_use",
           "id": "[tool_id]",
+          "input": {},
           "name": "parse_data",
-          "input": {}
+          "type": "tool_use"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
     "#);

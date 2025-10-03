@@ -31,20 +31,20 @@ async fn stdio_basic_echo_tool() {
     insta::assert_json_snapshot!(search_results, @r#"
     [
       {
-        "name": "test_stdio__echo",
         "description": "Echoes back the input text message verbatim for testing and debugging purposes",
         "input_schema": {
-          "type": "object",
           "properties": {
             "text": {
-              "type": "string",
-              "description": "Text message to echo back verbatim"
+              "description": "Text message to echo back verbatim",
+              "type": "string"
             }
           },
           "required": [
             "text"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "test_stdio__echo",
         "score": 3.611918449401855
       }
     ]
@@ -280,20 +280,20 @@ async fn stdio_tool_search() {
     insta::assert_json_snapshot!(search_results, @r#"
     [
       {
-        "name": "test_stdio__echo",
         "description": "Echoes back the input text message verbatim for testing and debugging purposes",
         "input_schema": {
-          "type": "object",
           "properties": {
             "text": {
-              "type": "string",
-              "description": "Text message to echo back verbatim"
+              "description": "Text message to echo back verbatim",
+              "type": "string"
             }
           },
           "required": [
             "text"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "test_stdio__echo",
         "score": 4.947417736053467
       }
     ]
@@ -400,54 +400,39 @@ async fn stdio_server_startup_failure() {
           "name": "search",
           "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "type": "object",
             "properties": {
               "keywords": {
-                "type": "array",
+                "description": "A list of keywords to search with.",
                 "items": {
                   "type": "string"
                 },
-                "description": "A list of keywords to search with."
+                "type": "array"
               }
             },
             "required": [
               "keywords"
             ],
-            "title": "SearchParameters"
+            "title": "SearchParameters",
+            "type": "object"
           },
           "outputSchema": {
-            "type": "object",
-            "properties": {
-              "results": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/SearchResult"
-                },
-                "description": "The list of search results"
-              }
-            },
-            "required": [
-              "results"
-            ],
-            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
-                "type": "object",
                 "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "The name of the tool (format: \"server__tool\")"
-                  },
                   "description": {
-                    "type": "string",
-                    "description": "Description of what the tool does"
+                    "description": "Description of what the tool does",
+                    "type": "string"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
                   "score": {
-                    "type": "number",
-                    "description": "The relevance score for this result (higher is more relevant)"
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number"
                   }
                 },
                 "required": [
@@ -455,9 +440,24 @@ async fn stdio_server_startup_failure() {
                   "description",
                   "input_schema",
                   "score"
-                ]
+                ],
+                "type": "object"
               }
-            }
+            },
+            "properties": {
+              "results": {
+                "description": "The list of search results",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
+            "type": "object"
           },
           "annotations": {
             "readOnlyHint": true
@@ -468,22 +468,22 @@ async fn stdio_server_startup_failure() {
           "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
-            "type": "object",
             "properties": {
+              "arguments": {
+                "additionalProperties": true,
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
+                "type": "object"
+              },
               "name": {
                 "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
-              },
-              "arguments": {
-                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
-                "type": "object",
-                "additionalProperties": true
               }
             },
             "required": [
               "name",
               "arguments"
-            ]
+            ],
+            "type": "object"
           },
           "annotations": {
             "destructiveHint": true,
@@ -517,54 +517,39 @@ async fn stdio_minimal_config() {
           "name": "search",
           "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "type": "object",
             "properties": {
               "keywords": {
-                "type": "array",
+                "description": "A list of keywords to search with.",
                 "items": {
                   "type": "string"
                 },
-                "description": "A list of keywords to search with."
+                "type": "array"
               }
             },
             "required": [
               "keywords"
             ],
-            "title": "SearchParameters"
+            "title": "SearchParameters",
+            "type": "object"
           },
           "outputSchema": {
-            "type": "object",
-            "properties": {
-              "results": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/SearchResult"
-                },
-                "description": "The list of search results"
-              }
-            },
-            "required": [
-              "results"
-            ],
-            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
-                "type": "object",
                 "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "The name of the tool (format: \"server__tool\")"
-                  },
                   "description": {
-                    "type": "string",
-                    "description": "Description of what the tool does"
+                    "description": "Description of what the tool does",
+                    "type": "string"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
                   "score": {
-                    "type": "number",
-                    "description": "The relevance score for this result (higher is more relevant)"
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number"
                   }
                 },
                 "required": [
@@ -572,9 +557,24 @@ async fn stdio_minimal_config() {
                   "description",
                   "input_schema",
                   "score"
-                ]
+                ],
+                "type": "object"
               }
-            }
+            },
+            "properties": {
+              "results": {
+                "description": "The list of search results",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
+            "type": "object"
           },
           "annotations": {
             "readOnlyHint": true
@@ -585,22 +585,22 @@ async fn stdio_minimal_config() {
           "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
-            "type": "object",
             "properties": {
+              "arguments": {
+                "additionalProperties": true,
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
+                "type": "object"
+              },
               "name": {
                 "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
-              },
-              "arguments": {
-                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
-                "type": "object",
-                "additionalProperties": true
               }
             },
             "required": [
               "name",
               "arguments"
-            ]
+            ],
+            "type": "object"
           },
           "annotations": {
             "destructiveHint": true,
@@ -664,54 +664,39 @@ async fn stdio_command_not_found() {
           "name": "search",
           "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "type": "object",
             "properties": {
               "keywords": {
-                "type": "array",
+                "description": "A list of keywords to search with.",
                 "items": {
                   "type": "string"
                 },
-                "description": "A list of keywords to search with."
+                "type": "array"
               }
             },
             "required": [
               "keywords"
             ],
-            "title": "SearchParameters"
+            "title": "SearchParameters",
+            "type": "object"
           },
           "outputSchema": {
-            "type": "object",
-            "properties": {
-              "results": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/SearchResult"
-                },
-                "description": "The list of search results"
-              }
-            },
-            "required": [
-              "results"
-            ],
-            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
-                "type": "object",
                 "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "The name of the tool (format: \"server__tool\")"
-                  },
                   "description": {
-                    "type": "string",
-                    "description": "Description of what the tool does"
+                    "description": "Description of what the tool does",
+                    "type": "string"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
                   "score": {
-                    "type": "number",
-                    "description": "The relevance score for this result (higher is more relevant)"
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number"
                   }
                 },
                 "required": [
@@ -719,9 +704,24 @@ async fn stdio_command_not_found() {
                   "description",
                   "input_schema",
                   "score"
-                ]
+                ],
+                "type": "object"
               }
-            }
+            },
+            "properties": {
+              "results": {
+                "description": "The list of search results",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
+            "type": "object"
           },
           "annotations": {
             "readOnlyHint": true
@@ -732,22 +732,22 @@ async fn stdio_command_not_found() {
           "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
-            "type": "object",
             "properties": {
+              "arguments": {
+                "additionalProperties": true,
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
+                "type": "object"
+              },
               "name": {
                 "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
-              },
-              "arguments": {
-                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
-                "type": "object",
-                "additionalProperties": true
               }
             },
             "required": [
               "name",
               "arguments"
-            ]
+            ],
+            "type": "object"
           },
           "annotations": {
             "destructiveHint": true,
@@ -786,54 +786,39 @@ async fn stdio_permission_denied() {
           "name": "search",
           "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "type": "object",
             "properties": {
               "keywords": {
-                "type": "array",
+                "description": "A list of keywords to search with.",
                 "items": {
                   "type": "string"
                 },
-                "description": "A list of keywords to search with."
+                "type": "array"
               }
             },
             "required": [
               "keywords"
             ],
-            "title": "SearchParameters"
+            "title": "SearchParameters",
+            "type": "object"
           },
           "outputSchema": {
-            "type": "object",
-            "properties": {
-              "results": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/SearchResult"
-                },
-                "description": "The list of search results"
-              }
-            },
-            "required": [
-              "results"
-            ],
-            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
-                "type": "object",
                 "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "The name of the tool (format: \"server__tool\")"
-                  },
                   "description": {
-                    "type": "string",
-                    "description": "Description of what the tool does"
+                    "description": "Description of what the tool does",
+                    "type": "string"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
                   "score": {
-                    "type": "number",
-                    "description": "The relevance score for this result (higher is more relevant)"
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number"
                   }
                 },
                 "required": [
@@ -841,9 +826,24 @@ async fn stdio_permission_denied() {
                   "description",
                   "input_schema",
                   "score"
-                ]
+                ],
+                "type": "object"
               }
-            }
+            },
+            "properties": {
+              "results": {
+                "description": "The list of search results",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
+            "type": "object"
           },
           "annotations": {
             "readOnlyHint": true
@@ -854,22 +854,22 @@ async fn stdio_permission_denied() {
           "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
-            "type": "object",
             "properties": {
+              "arguments": {
+                "additionalProperties": true,
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
+                "type": "object"
+              },
               "name": {
                 "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
-              },
-              "arguments": {
-                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
-                "type": "object",
-                "additionalProperties": true
               }
             },
             "required": [
               "name",
               "arguments"
-            ]
+            ],
+            "type": "object"
           },
           "annotations": {
             "destructiveHint": true,
@@ -904,54 +904,39 @@ async fn stdio_invalid_working_directory() {
           "name": "search",
           "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "type": "object",
             "properties": {
               "keywords": {
-                "type": "array",
+                "description": "A list of keywords to search with.",
                 "items": {
                   "type": "string"
                 },
-                "description": "A list of keywords to search with."
+                "type": "array"
               }
             },
             "required": [
               "keywords"
             ],
-            "title": "SearchParameters"
+            "title": "SearchParameters",
+            "type": "object"
           },
           "outputSchema": {
-            "type": "object",
-            "properties": {
-              "results": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/SearchResult"
-                },
-                "description": "The list of search results"
-              }
-            },
-            "required": [
-              "results"
-            ],
-            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
-                "type": "object",
                 "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "The name of the tool (format: \"server__tool\")"
-                  },
                   "description": {
-                    "type": "string",
-                    "description": "Description of what the tool does"
+                    "description": "Description of what the tool does",
+                    "type": "string"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
                   "score": {
-                    "type": "number",
-                    "description": "The relevance score for this result (higher is more relevant)"
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number"
                   }
                 },
                 "required": [
@@ -959,9 +944,24 @@ async fn stdio_invalid_working_directory() {
                   "description",
                   "input_schema",
                   "score"
-                ]
+                ],
+                "type": "object"
               }
-            }
+            },
+            "properties": {
+              "results": {
+                "description": "The list of search results",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
+            "type": "object"
           },
           "annotations": {
             "readOnlyHint": true
@@ -972,22 +972,22 @@ async fn stdio_invalid_working_directory() {
           "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
-            "type": "object",
             "properties": {
+              "arguments": {
+                "additionalProperties": true,
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
+                "type": "object"
+              },
               "name": {
                 "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
-              },
-              "arguments": {
-                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
-                "type": "object",
-                "additionalProperties": true
               }
             },
             "required": [
               "name",
               "arguments"
-            ]
+            ],
+            "type": "object"
           },
           "annotations": {
             "destructiveHint": true,
@@ -1021,54 +1021,39 @@ async fn stdio_process_crashes_early() {
           "name": "search",
           "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "type": "object",
             "properties": {
               "keywords": {
-                "type": "array",
+                "description": "A list of keywords to search with.",
                 "items": {
                   "type": "string"
                 },
-                "description": "A list of keywords to search with."
+                "type": "array"
               }
             },
             "required": [
               "keywords"
             ],
-            "title": "SearchParameters"
+            "title": "SearchParameters",
+            "type": "object"
           },
           "outputSchema": {
-            "type": "object",
-            "properties": {
-              "results": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/SearchResult"
-                },
-                "description": "The list of search results"
-              }
-            },
-            "required": [
-              "results"
-            ],
-            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
-                "type": "object",
                 "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "The name of the tool (format: \"server__tool\")"
-                  },
                   "description": {
-                    "type": "string",
-                    "description": "Description of what the tool does"
+                    "description": "Description of what the tool does",
+                    "type": "string"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
                   "score": {
-                    "type": "number",
-                    "description": "The relevance score for this result (higher is more relevant)"
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number"
                   }
                 },
                 "required": [
@@ -1076,9 +1061,24 @@ async fn stdio_process_crashes_early() {
                   "description",
                   "input_schema",
                   "score"
-                ]
+                ],
+                "type": "object"
               }
-            }
+            },
+            "properties": {
+              "results": {
+                "description": "The list of search results",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
+            "type": "object"
           },
           "annotations": {
             "readOnlyHint": true
@@ -1089,22 +1089,22 @@ async fn stdio_process_crashes_early() {
           "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
-            "type": "object",
             "properties": {
+              "arguments": {
+                "additionalProperties": true,
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
+                "type": "object"
+              },
               "name": {
                 "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
-              },
-              "arguments": {
-                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
-                "type": "object",
-                "additionalProperties": true
               }
             },
             "required": [
               "name",
               "arguments"
-            ]
+            ],
+            "type": "object"
           },
           "annotations": {
             "destructiveHint": true,
@@ -1138,54 +1138,39 @@ async fn stdio_invalid_json_from_subprocess() {
           "name": "search",
           "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "type": "object",
             "properties": {
               "keywords": {
-                "type": "array",
+                "description": "A list of keywords to search with.",
                 "items": {
                   "type": "string"
                 },
-                "description": "A list of keywords to search with."
+                "type": "array"
               }
             },
             "required": [
               "keywords"
             ],
-            "title": "SearchParameters"
+            "title": "SearchParameters",
+            "type": "object"
           },
           "outputSchema": {
-            "type": "object",
-            "properties": {
-              "results": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/SearchResult"
-                },
-                "description": "The list of search results"
-              }
-            },
-            "required": [
-              "results"
-            ],
-            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
-                "type": "object",
                 "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "The name of the tool (format: \"server__tool\")"
-                  },
                   "description": {
-                    "type": "string",
-                    "description": "Description of what the tool does"
+                    "description": "Description of what the tool does",
+                    "type": "string"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
                   "score": {
-                    "type": "number",
-                    "description": "The relevance score for this result (higher is more relevant)"
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number"
                   }
                 },
                 "required": [
@@ -1193,9 +1178,24 @@ async fn stdio_invalid_json_from_subprocess() {
                   "description",
                   "input_schema",
                   "score"
-                ]
+                ],
+                "type": "object"
               }
-            }
+            },
+            "properties": {
+              "results": {
+                "description": "The list of search results",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
+            "type": "object"
           },
           "annotations": {
             "readOnlyHint": true
@@ -1206,22 +1206,22 @@ async fn stdio_invalid_json_from_subprocess() {
           "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
-            "type": "object",
             "properties": {
+              "arguments": {
+                "additionalProperties": true,
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
+                "type": "object"
+              },
               "name": {
                 "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
-              },
-              "arguments": {
-                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
-                "type": "object",
-                "additionalProperties": true
               }
             },
             "required": [
               "name",
               "arguments"
-            ]
+            ],
+            "type": "object"
           },
           "annotations": {
             "destructiveHint": true,

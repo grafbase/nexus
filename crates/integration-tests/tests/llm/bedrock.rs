@@ -29,27 +29,27 @@ async fn bedrock_list_models() {
         ".data[].created" => "[created]"
     }, @r#"
     {
-      "object": "list",
       "data": [
         {
+          "created": "[created]",
           "id": "bedrock/claude-3-sonnet",
           "object": "model",
-          "created": "[created]",
           "owned_by": "bedrock"
         },
         {
+          "created": "[created]",
           "id": "bedrock/r1",
           "object": "model",
-          "created": "[created]",
           "owned_by": "bedrock"
         },
         {
+          "created": "[created]",
           "id": "bedrock/titan-express",
           "object": "model",
-          "created": "[created]",
           "owned_by": "bedrock"
         }
-      ]
+      ],
+      "object": "list"
     }
     "#);
 }

@@ -32,7 +32,7 @@ log.workspace = true
 opentelemetry.workspace = true
 rate-limit.workspace = true
 regex.workspace = true
-reqwest = { workspace = true, features = ["json", "stream"] }
+reqwest = { workspace = true, features = ["json", "stream", "gzip"] }
 secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -45,7 +45,7 @@ uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 indoc.workspace = true
-insta.workspace = true
+insta = { workspace = true, features = ["json"] }
 tokio = { workspace = true, features = ["rt", "macros"] }
 toml.workspace = true
 

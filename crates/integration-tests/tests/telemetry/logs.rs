@@ -151,100 +151,100 @@ async fn logs_include_trace_and_span_ids() {
     insta::assert_json_snapshot!(log_summary, @r#"
     [
       {
-        "trace_id_matches": true,
+        "body_preview": "Invoking tool 'adder' on downstream server 'test_m...",
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Invoking tool 'adder' on downstream server 'test_m..."
+        "trace_id_matches": true
       },
       {
-        "trace_id_matches": true,
+        "body_preview": "Executing downstream tool: 'test_mcp_server__adder...",
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Executing downstream tool: 'test_mcp_server__adder..."
+        "trace_id_matches": true
       },
       {
-        "trace_id_matches": true,
+        "body_preview": "Rate limit manager not configured - skipping rate ...",
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Rate limit manager not configured - skipping rate ..."
+        "trace_id_matches": true
       },
       {
-        "trace_id_matches": true,
+        "body_preview": "Parsing tool name 'test_mcp_server__adder': server...",
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Parsing tool name 'test_mcp_server__adder': server..."
+        "trace_id_matches": true
       },
       {
-        "trace_id_matches": true,
+        "body_preview": "Retrieving static-only search tool for group: None",
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Retrieving static-only search tool for group: None"
+        "trace_id_matches": true
       },
       {
-        "trace_id_matches": true,
+        "body_preview": "Executing downstream tool: 'test_mcp_server__adder...",
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Executing downstream tool: 'test_mcp_server__adder..."
+        "trace_id_matches": true
       },
       {
-        "trace_id_matches": true,
+        "body_preview": "Executing downstream tool via execute endpoint",
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Executing downstream tool via execute endpoint"
+        "trace_id_matches": true
       },
       {
-        "trace_id_matches": true,
+        "body_preview": "Processing tool invocation for 'execute'",
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Processing tool invocation for 'execute'"
+        "trace_id_matches": true
       },
       {
-        "trace_id_matches": true,
+        "body_preview": "Completed request for POST /mcp, span will be subm...",
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Completed request for POST /mcp, span will be subm..."
+        "trace_id_matches": true
       },
       {
-        "trace_id_matches": true,
+        "body_preview": "Executing request within tracing span for POST /mc...",
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Executing request within tracing span for POST /mc..."
+        "trace_id_matches": true
       },
       {
-        "trace_id_matches": true,
+        "body_preview": "Completed request for POST /mcp, span will be subm...",
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Completed request for POST /mcp, span will be subm..."
+        "trace_id_matches": true
       },
       {
-        "trace_id_matches": true,
+        "body_preview": "Executing request within tracing span for POST /mc...",
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Executing request within tracing span for POST /mc..."
+        "trace_id_matches": true
       },
       {
-        "trace_id_matches": true,
+        "body_preview": "Completed request for POST /mcp, span will be subm...",
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Completed request for POST /mcp, span will be subm..."
+        "trace_id_matches": true
       },
       {
-        "trace_id_matches": true,
+        "body_preview": "Executing request within tracing span for POST /mc...",
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Executing request within tracing span for POST /mc..."
+        "trace_id_matches": true
       },
       {
-        "trace_id_matches": true,
+        "body_preview": "Completed request for POST /mcp, span will be subm...",
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Completed request for POST /mcp, span will be subm..."
+        "trace_id_matches": true
       },
       {
-        "trace_id_matches": true,
+        "body_preview": "Executing request within tracing span for POST /mc...",
         "has_span_id": true,
         "severity": "DEBUG",
-        "body_preview": "Executing request within tracing span for POST /mc..."
+        "trace_id_matches": true
       }
     ]
     "#);

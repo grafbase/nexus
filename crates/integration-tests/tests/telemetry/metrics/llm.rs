@@ -216,14 +216,14 @@ async fn count_tokens_metrics_record_histogram() {
     let body: serde_json::Value = sonic_rs::from_str(&raw_body)
         .unwrap_or_else(|error| panic!("Failed to parse count_tokens body as JSON: {error}; raw={raw_body}"));
 
-    insta::assert_json_snapshot!(body, @r###"
+    insta::assert_json_snapshot!(body, @r#"
     {
-      "type": "message_count_tokens_result",
-      "input_tokens": 8,
       "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 0
+      "cache_read_input_tokens": 0,
+      "input_tokens": 8,
+      "type": "message_count_tokens_result"
     }
-    "###);
+    "#);
 
     let clickhouse = create_clickhouse_client().await;
 

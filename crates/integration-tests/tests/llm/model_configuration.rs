@@ -27,33 +27,33 @@ async fn model_rename_works() {
         ".data[].created" => "[created]"
     }, @r#"
     {
-      "object": "list",
       "data": [
         {
+          "created": "[created]",
           "id": "gpt-3.5-turbo",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "gpt-4",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "openai/fast-model",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "openai/smart-model",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         }
-      ]
+      ],
+      "object": "list"
     }
     "#);
 
@@ -69,23 +69,23 @@ async fn model_rename_works() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "openai/fast-model",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hello! I'm a test LLM assistant. How can I help you today?"
-          },
-          "finish_reason": "stop"
+            "content": "Hello! I'm a test LLM assistant. How can I help you today?",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "openai/fast-model",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -114,27 +114,27 @@ async fn unconfigured_model_returns_404() {
         ".data[].created" => "[created]"
     }, @r#"
     {
-      "object": "list",
       "data": [
         {
+          "created": "[created]",
           "id": "gpt-3.5-turbo",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "gpt-4",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "openai/gpt-4",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         }
-      ]
+      ],
+      "object": "list"
     }
     "#);
 
@@ -149,23 +149,23 @@ async fn unconfigured_model_returns_404() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "openai/gpt-4",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hello! I'm a test LLM assistant. How can I help you today?"
-          },
-          "finish_reason": "stop"
+            "content": "Hello! I'm a test LLM assistant. How can I help you today?",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "openai/gpt-4",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -183,23 +183,23 @@ async fn unconfigured_model_returns_404() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "openai/gpt-3.5-turbo",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hello! I'm a test LLM assistant. How can I help you today?"
-          },
-          "finish_reason": "stop"
+            "content": "Hello! I'm a test LLM assistant. How can I help you today?",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "openai/gpt-3.5-turbo",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -235,57 +235,57 @@ async fn multiple_providers_with_different_models() {
         ".data[].created" => "[created]"
     }, @r#"
     {
-      "object": "list",
       "data": [
         {
+          "created": "[created]",
           "id": "claude-3-opus-20240229",
           "object": "model",
-          "created": "[created]",
           "owned_by": "anthropic"
         },
         {
+          "created": "[created]",
           "id": "gemini-pro",
           "object": "model",
-          "created": "[created]",
           "owned_by": "google"
         },
         {
+          "created": "[created]",
           "id": "gpt-3.5-turbo",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "gpt-4",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "anthropic/claude-3-opus-20240229",
           "object": "model",
-          "created": "[created]",
           "owned_by": "anthropic"
         },
         {
+          "created": "[created]",
           "id": "google/gemini-pro",
           "object": "model",
-          "created": "[created]",
           "owned_by": "google"
         },
         {
+          "created": "[created]",
           "id": "openai/gpt-3-5-turbo",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "openai/gpt-4",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         }
-      ]
+      ],
+      "object": "list"
     }
     "#);
 
@@ -300,23 +300,23 @@ async fn multiple_providers_with_different_models() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "openai/gpt-4",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hello! I'm a test LLM assistant. How can I help you today?"
-          },
-          "finish_reason": "stop"
+            "content": "Hello! I'm a test LLM assistant. How can I help you today?",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "openai/gpt-4",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -332,23 +332,23 @@ async fn multiple_providers_with_different_models() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "anthropic/claude-3-opus-20240229",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Test response to: Hello"
-          },
-          "finish_reason": "stop"
+            "content": "Test response to: Hello",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-opus-20240229",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -364,23 +364,23 @@ async fn multiple_providers_with_different_models() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "google/gemini-pro",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hello! I'm Gemini, a test assistant. How can I help you today?"
-          },
-          "finish_reason": "stop"
+            "content": "Hello! I'm Gemini, a test assistant. How can I help you today?",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "google/gemini-pro",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -436,19 +436,19 @@ async fn renamed_model_in_streaming() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion.chunk",
-      "created": "[created]",
-      "model": "openai/fast",
       "choices": [
         {
-          "index": 0,
           "delta": {
-            "role": "assistant",
-            "content": "Why don't scientists trust atoms? "
-          }
+            "content": "Why don't scientists trust atoms? ",
+            "role": "assistant"
+          },
+          "index": 0
         }
-      ]
+      ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "openai/fast",
+      "object": "chat.completion.chunk"
     }
     "#);
 }

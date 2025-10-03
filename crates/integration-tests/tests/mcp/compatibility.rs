@@ -24,25 +24,25 @@ async fn search_structured_content_enabled_by_default() {
     insta::assert_json_snapshot!(search_results, @r#"
     [
       {
-        "name": "test_server__adder",
         "description": "Adds two numbers together",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First number to add"
+              "description": "First number to add",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second number to add"
+              "description": "Second number to add",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "test_server__adder",
         "score": 0.8630462884902954
       }
     ]
@@ -75,25 +75,25 @@ async fn search_legacy_content_json_mode() {
     insta::assert_json_snapshot!(search_results, @r#"
     [
       {
-        "name": "test_server__adder",
         "description": "Adds two numbers together",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First number to add"
+              "description": "First number to add",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second number to add"
+              "description": "Second number to add",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "test_server__adder",
         "score": 0.8630463
       }
     ]
@@ -145,32 +145,32 @@ async fn test_client_search_structured_format() {
 
     let results = client.search(&["adder"]).await;
     assert!(!results.is_empty());
-    insta::assert_json_snapshot!(results, @r###"
+    insta::assert_json_snapshot!(results, @r#"
     [
       {
-        "name": "test_server__adder",
         "description": "Adds two numbers together",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First number to add"
+              "description": "First number to add",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second number to add"
+              "description": "Second number to add",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "test_server__adder",
         "score": 0.8630462884902954
       }
     ]
-    "###);
+    "#);
 }
 
 #[tokio::test]
@@ -192,32 +192,32 @@ async fn test_client_search_legacy_format() {
 
     let results = client.search(&["adder"]).await;
     assert!(!results.is_empty());
-    insta::assert_json_snapshot!(results, @r###"
+    insta::assert_json_snapshot!(results, @r#"
     [
       {
-        "name": "test_server__adder",
         "description": "Adds two numbers together",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First number to add"
+              "description": "First number to add",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second number to add"
+              "description": "Second number to add",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "test_server__adder",
         "score": 0.8630463
       }
     ]
-    "###);
+    "#);
 }
 
 #[tokio::test]

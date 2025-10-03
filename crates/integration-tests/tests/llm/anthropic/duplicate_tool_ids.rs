@@ -83,23 +83,23 @@ async fn no_duplicate_tool_ids_in_conversion() {
         ".id" => "[id]",
         ".model" => "[model]",
         ".usage" => "[usage]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "text",
-          "text": "Test response to: can you describe me what's in the crates/config directory"
+          "text": "Test response to: can you describe me what's in the crates/config directory",
+          "type": "text"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
-    "###);
+    "#);
 }
 
 /// Test multiple tool calls in a single message to ensure IDs remain unique
@@ -190,21 +190,21 @@ async fn multiple_tool_calls_remain_unique() {
         ".id" => "[id]",
         ".model" => "[model]",
         ".usage" => "[usage]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "text",
-          "text": "Test response to: test multiple tools"
+          "text": "Test response to: test multiple tools",
+          "type": "text"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
-    "###);
+    "#);
 }

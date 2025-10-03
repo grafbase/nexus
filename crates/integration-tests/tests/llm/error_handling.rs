@@ -22,23 +22,23 @@ async fn model_without_provider_prefix_routes_successfully() {
     }
     insta::assert_json_snapshot!(body, @r#"
     {
-      "id": "chatcmpl-test-redacted",
-      "object": "chat.completion",
-      "created": 1677651200,
-      "model": "gpt-4",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "This is a test response from the mock LLM server"
-          },
-          "finish_reason": "stop"
+            "content": "This is a test response from the mock LLM server",
+            "role": "assistant"
+          }
         }
       ],
+      "created": 1677651200,
+      "id": "chatcmpl-test-redacted",
+      "model": "gpt-4",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -63,9 +63,9 @@ async fn provider_not_found_returns_404() {
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
+        "code": 404,
         "message": "Provider 'nonexistent' not found",
-        "type": "not_found_error",
-        "code": 404
+        "type": "not_found_error"
       }
     }
     "#);
@@ -91,9 +91,9 @@ async fn authentication_error_returns_401() {
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
+        "code": 401,
         "message": "Authentication failed: Invalid API key",
-        "type": "authentication_error",
-        "code": 401
+        "type": "authentication_error"
       }
     }
     "#);
@@ -119,9 +119,9 @@ async fn model_not_found_returns_404() {
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
+        "code": 404,
         "message": "The model 'gpt-5' does not exist",
-        "type": "not_found_error",
-        "code": 404
+        "type": "not_found_error"
       }
     }
     "#);
@@ -147,9 +147,9 @@ async fn rate_limit_error_returns_429() {
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
+        "code": 429,
         "message": "Rate limit exceeded: Rate limit exceeded. Please retry after 1 second.",
-        "type": "rate_limit_error",
-        "code": 429
+        "type": "rate_limit_error"
       }
     }
     "#);
@@ -175,9 +175,9 @@ async fn insufficient_quota_returns_403() {
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
+        "code": 403,
         "message": "Insufficient quota: You have exceeded your monthly quota",
-        "type": "insufficient_quota",
-        "code": 403
+        "type": "insufficient_quota"
       }
     }
     "#);
@@ -206,9 +206,9 @@ async fn streaming_mock_not_implemented_returns_error() {
         insta::assert_json_snapshot!(body, @r#"
         {
           "error": {
+            "code": 400,
             "message": "Invalid request: Streaming is not yet supported",
-            "type": "invalid_request_error",
-            "code": 400
+            "type": "invalid_request_error"
           }
         }
         "#);
@@ -234,39 +234,39 @@ async fn list_models_with_auth_error_returns_empty_list() {
     let body = server.openai_list_models().await;
     insta::assert_json_snapshot!(body, @r#"
     {
-      "object": "list",
       "data": [
         {
+          "created": 1677651200,
           "id": "gpt-3.5-turbo",
           "object": "model",
-          "created": 1677651200,
           "owned_by": "openai"
         },
         {
+          "created": 1677651201,
           "id": "gpt-4",
           "object": "model",
-          "created": 1677651201,
           "owned_by": "openai"
         },
         {
+          "created": 1677651202,
           "id": "gpt-4-turbo",
           "object": "model",
-          "created": 1677651202,
           "owned_by": "openai"
         },
         {
+          "created": 1719475200,
           "id": "openai/gpt-3.5-turbo",
           "object": "model",
-          "created": 1719475200,
           "owned_by": "openai"
         },
         {
+          "created": 1719475200,
           "id": "openai/gpt-4",
           "object": "model",
-          "created": 1719475200,
           "owned_by": "openai"
         }
-      ]
+      ],
+      "object": "list"
     }
     "#);
 }
@@ -291,9 +291,9 @@ async fn bad_request_returns_400() {
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
+        "code": 400,
         "message": "Invalid request: Invalid request: messages array cannot be empty",
-        "type": "invalid_request_error",
-        "code": 400
+        "type": "invalid_request_error"
       }
     }
     "#);
@@ -320,9 +320,9 @@ async fn provider_internal_error_returns_500_with_message() {
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
+        "code": 500,
         "message": "OpenAI service temporarily unavailable",
-        "type": "internal_error",
-        "code": 500
+        "type": "internal_error"
       }
     }
     "#);
@@ -364,9 +364,9 @@ path = "/llm"
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
+        "code": 500,
         "message": "Connection lost mid-stream",
-        "type": "internal_error",
-        "code": 500
+        "type": "internal_error"
       }
     }
     "#);
@@ -394,9 +394,9 @@ async fn provider_other_error_returns_502() {
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
+        "code": 502,
         "message": "Provider API error (503): Service unavailable",
-        "type": "api_error",
-        "code": 502
+        "type": "api_error"
       }
     }
     "#);
