@@ -1,4 +1,5 @@
-{pkgs, ...}: {
+{ pkgs, ... }:
+{
   packages = with pkgs; [
     rustup
     taplo
@@ -8,5 +9,6 @@
     cargo-make
 
     python3
+    openapi-generator-cli
   ];
 }

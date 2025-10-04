@@ -319,18 +319,18 @@ pub struct CountTokensResponse {
 
 /// Error response in Anthropic format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnthropicError {
+pub struct ErrorResponse {
     /// The type of error (always "error")
     #[serde(rename = "type")]
     pub error_type: String,
 
     /// Error details
-    pub error: AnthropicErrorDetails,
+    pub error: Error,
 }
 
 /// Error details in Anthropic format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnthropicErrorDetails {
+pub struct Error {
     /// The type of error that occurred
     #[serde(rename = "type")]
     pub error_type: String,
@@ -351,11 +351,11 @@ pub struct AnthropicErrorDetails {
     pub metadata: BTreeMap<String, serde_json::Value>,
 }
 
-impl AnthropicError {
+impl ErrorResponse {
     fn from_parts(error_type: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             error_type: "error".to_string(),
-            error: AnthropicErrorDetails {
+            error: Error {
                 error_type: error_type.into(),
                 message: message.into(),
                 code: None,
@@ -366,14 +366,14 @@ impl AnthropicError {
     }
 }
 
-impl From<LlmError> for AnthropicError {
+impl From<LlmError> for ErrorResponse {
     fn from(error: LlmError) -> Self {
         match error {
             LlmError::ProviderApiError { status: _, message } => {
                 // Try to decode Anthropic-native error payloads and forward them verbatim
                 if let Ok(value) = serde_json::from_str::<serde_json::Value>(&message)
                     && let Some(error_value) = value.get("error")
-                    && let Ok(details) = serde_json::from_value::<AnthropicErrorDetails>(error_value.clone())
+                    && let Ok(details) = serde_json::from_value::<Error>(error_value.clone())
                 {
                     let outer_type = value
                         .get("type")
@@ -483,7 +483,7 @@ pub enum AnthropicStreamEvent {
     #[serde(rename = "error")]
     Error {
         /// The error that occurred
-        error: AnthropicErrorDetails,
+        error: Error,
     },
 }
 
@@ -962,7 +962,7 @@ mod tests {
             }
         });
 
-        let error: AnthropicError = serde_json::from_value(json).unwrap();
+        let error: ErrorResponse = serde_json::from_value(json).unwrap();
 
         assert_eq!(error.error_type, "error");
         assert_eq!(error.error.error_type, "invalid_request_error");

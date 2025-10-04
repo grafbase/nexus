@@ -23,6 +23,7 @@ pub(crate) struct RequestContext {
     /// Client identity information for rate limiting and access control.
     pub client_identity: Option<ClientIdentity>,
 
+    #[allow(dead_code)]
     pub authentication: Authentication,
 }
 
@@ -34,12 +35,12 @@ impl RequestContext {
 
 // It's very easy to inadvertently clone the headers and other parts of the request with axum extractors and
 // it also hides the implicit body limit.
-pub struct Extract<T>(pub RequestContext, pub T);
+pub struct ExtractPayload<T>(pub RequestContext, pub T);
 
 // TODO: Should come from the state which should expose the config.
-const BODY_LIMIT_BYTES: usize = 10 << 20; // 10 MiB
+const BODY_LIMIT_BYTES: usize = 32 << 20; // 32 MiB like Anthropic
 
-impl<S, T: DeserializeOwned> axum::extract::FromRequest<S> for Extract<T>
+impl<S, T: DeserializeOwned> axum::extract::FromRequest<S> for ExtractPayload<T>
 where
     S: Send + Sync,
 {
@@ -61,12 +62,20 @@ where
                 .into_response());
         }
 
-        let bytes = axum::body::to_bytes(body, BODY_LIMIT_BYTES).await.map_err(|e| {
-            (
-                axum::http::StatusCode::BAD_REQUEST,
-                format!("Failed to read request body: {}", e),
-            )
-                .into_response()
+        let bytes = axum::body::to_bytes(body, BODY_LIMIT_BYTES).await.map_err(|err| {
+            let source = std::error::Error::source(&err).unwrap();
+            if source.is::<http_body_util::LengthLimitError>() {
+                (
+                    axum::http::StatusCode::PAYLOAD_TOO_LARGE,
+                    format!("Request body is too large, limit is {} bytes", BODY_LIMIT_BYTES),
+                )
+            } else {
+                (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    format!("Failed to read request body: {}", err),
+                )
+            }
+            .into_response()
         })?;
 
         let body = match sonic_rs::from_slice::<T>(&bytes) {
@@ -94,6 +103,6 @@ where
             parts,
         };
 
-        Ok(Extract(ctx, body))
+        Ok(ExtractPayload(ctx, body))
     }
 }

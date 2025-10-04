@@ -13,6 +13,7 @@ mod llm;
 mod loader;
 mod mcp;
 mod oauth;
+mod proxy;
 mod rate_limit;
 mod server;
 mod telemetry;
@@ -136,6 +137,12 @@ mod tests {
             },
             llm: LlmConfig {
                 enabled: true,
+                proxy: ProxyConfig {
+                    anthropic: AnthropicProxyConfig {
+                        enabled: false,
+                        path: "/proxy/anthropic",
+                    },
+                },
                 protocols: LlmProtocolsConfig {
                     openai: OpenAIProtocolConfig {
                         enabled: true,

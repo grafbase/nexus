@@ -1,3 +1,13 @@
+mod error;
+mod http_client;
+mod messages;
+mod protocol;
+pub mod provider;
+pub mod proxy;
+mod request;
+mod server;
+pub mod token_counter;
+
 use std::{convert::Infallible, sync::Arc};
 
 use axum::{
@@ -10,18 +20,10 @@ use axum::{
 use futures::StreamExt;
 use messages::{anthropic, openai};
 
-mod error;
-mod messages;
-pub mod provider;
-mod provider_mode;
-mod request;
-mod server;
-pub mod token_counter;
-
 pub use error::{AnthropicResult, LlmError, LlmResult as Result};
 use server::{LlmServerBuilder, Server};
 
-use crate::{error::AnthropicErrorResponse, messages::unified, request::Extract};
+use crate::{error::AnthropicErrorResponse, messages::unified, request::ExtractPayload};
 
 pub async fn build_server(config: &config::Config) -> anyhow::Result<Arc<Server>> {
     let server = Arc::new(
@@ -53,7 +55,7 @@ pub fn openai_endpoint_router() -> Router<Arc<Server>> {
 /// Server-Sent Events (SSE). Otherwise, a standard JSON response is returned.
 async fn chat_completions(
     State(server): State<Arc<Server>>,
-    Extract(context, request): Extract<openai::ChatCompletionRequest>,
+    ExtractPayload(context, request): ExtractPayload<openai::ChatCompletionRequest>,
 ) -> Result<impl IntoResponse> {
     log::debug!("OpenAI chat completions handler called for model: {}", request.model);
     log::debug!("Request has {} messages", request.messages.len());
@@ -125,7 +127,7 @@ async fn list_models(State(server): State<Arc<Server>>) -> Result<impl IntoRespo
 /// Server-Sent Events (SSE). Otherwise, a standard JSON response is returned.
 async fn anthropic_messages(
     State(server): State<Arc<Server>>,
-    Extract(context, request): Extract<anthropic::AnthropicChatRequest>,
+    ExtractPayload(context, request): ExtractPayload<anthropic::AnthropicChatRequest>,
 ) -> AnthropicResult<impl IntoResponse> {
     log::debug!("Anthropic messages handler called for model: {}", request.model);
     log::debug!("Request has {} messages", request.messages.len());
@@ -152,7 +154,7 @@ async fn anthropic_messages(
                 }
                 Err(e) => {
                     log::error!("Stream error: {e}");
-                    let anthropic_error = anthropic::AnthropicError::from(e);
+                    let anthropic_error = anthropic::ErrorResponse::from(e);
                     let error_event = anthropic::AnthropicStreamEvent::Error {
                         error: anthropic_error.error,
                     };
@@ -187,7 +189,7 @@ async fn anthropic_messages(
 /// Handle Anthropic count tokens requests.
 async fn count_tokens(
     State(server): State<Arc<Server>>,
-    Extract(context, request): Extract<anthropic::AnthropicChatRequest>,
+    ExtractPayload(context, request): ExtractPayload<anthropic::AnthropicChatRequest>,
 ) -> AnthropicResult<impl IntoResponse> {
     let mut unified_request = unified::UnifiedRequest::from(request);
     unified_request.stream = Some(false);
