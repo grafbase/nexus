@@ -58,7 +58,7 @@ jiff = "0.2.13"
 jwt-compact = "0.8.0"
 llm = { version = "0.1.0", path = "crates/llm" }
 log = "0.4.27"
-logforth = "0.27.0"
+logforth = "0.28.0"
 mcp = { version = "0.1.0", path = "crates/mcp" }
 md5 = "0.8"
 mini-moka = "0.10"
