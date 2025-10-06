@@ -6,6 +6,7 @@ pub mod provider;
 pub mod proxy;
 mod request;
 mod server;
+mod telemetry;
 pub mod token_counter;
 
 use std::{convert::Infallible, sync::Arc};

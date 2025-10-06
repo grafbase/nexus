@@ -31,6 +31,7 @@ http-body-util.workspace = true
 itertools.workspace = true
 log.workspace = true
 opentelemetry.workspace = true
+pin-project.workspace = true
 rate-limit.workspace = true
 regex.workspace = true
 reqwest = { workspace = true, features = ["json", "stream", "gzip"] }

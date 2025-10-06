@@ -11,9 +11,12 @@ use axum::{
 };
 use reqwest::Url;
 use serde::de::DeserializeOwned;
-use tower::Service as _;
+use tower::{Service as _, ServiceExt as _};
 
-use crate::{http_client::http_client, protocol::anthropic as protocol, request::RequestContext};
+use crate::{
+    http_client::http_client, protocol::anthropic as protocol, proxy::anthropic::forward::Forward,
+    request::RequestContext,
+};
 
 const ANTHROPIC_API_URL: &str = "https://api.anthropic.com/";
 
@@ -29,8 +32,16 @@ pub fn router(base_path: &str) -> Router<()> {
     let mut router = Router::new().route(
         "/v1/messages",
         post({
-            let mut handler = v1_messages::Handler(proxy.clone());
-            move |req| handler.call(req)
+            use crate::telemetry::chat::{metrics::Metrics, tracing::Tracing};
+            let mut service = tower::ServiceBuilder::new()
+                .layer(v1_messages::Axum)
+                .layer(Metrics)
+                .layer(Tracing)
+                .service(proxy.clone())
+                .map_err(|(status_code, error)| {
+                    (status_code, axum::Json(protocol::messages::Response::from(error))).into_response()
+                });
+            move |req| service.call(req)
         }),
     );
 
@@ -49,7 +60,7 @@ pub fn router(base_path: &str) -> Router<()> {
         (MethodFilter::GET, "/v1/files/{file_id}/content"),
         (MethodFilter::DELETE, "/v1/files/{file_id}"),
     ] {
-        router = router.route(route, on_service(method, proxy.clone()));
+        router = router.route(route, on_service(method, Forward(proxy.clone())));
     }
 
     Router::new().nest(base_path, router.with_state(proxy))

@@ -7,7 +7,10 @@ use tower::Service;
 
 use crate::proxy::utils::headers::insert_proxied_headers_and_content_accept_into;
 
-impl Service<axum::extract::Request> for super::Proxy {
+#[derive(Clone, Debug)]
+pub struct Forward(pub super::Proxy);
+
+impl Service<axum::extract::Request> for Forward {
     type Response = Response;
     type Error = Infallible;
     type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
@@ -17,25 +20,24 @@ impl Service<axum::extract::Request> for super::Proxy {
     }
 
     fn call(&mut self, request: axum::extract::Request) -> Self::Future {
-        let proxy = self.clone();
+        let path = request
+            .uri()
+            .path()
+            .strip_prefix(&self.0.base_path)
+            .expect("Invalid URL, should not be reachable.");
+        let mut url = self
+            .0
+            .anthropic_base_url
+            .join(path.strip_prefix('/').unwrap_or(path))
+            .unwrap();
+        url.set_query(request.uri().query());
+
+        let fut = insert_proxied_headers_and_content_accept_into(self.0.client.get(url), request.headers())
+            .body(reqwest::Body::wrap_stream(request.into_data_stream()))
+            .send();
+
         Box::pin(async move {
-            let path = request
-                .uri()
-                .path()
-                .strip_prefix(&proxy.base_path)
-                .expect("Invalid URL, should not be reachable.");
-            let mut url = proxy
-                .anthropic_base_url
-                .join(path.strip_prefix('/').unwrap_or(path))
-                .unwrap();
-            url.set_query(request.uri().query());
-
-            let response = insert_proxied_headers_and_content_accept_into(proxy.client.get(url), request.headers())
-                .body(reqwest::Body::wrap_stream(request.into_data_stream()))
-                .send()
-                .await;
-
-            let response = match response {
+            let response = match fut.await {
                 Ok(response) => http::Response::from(response).into_response(),
                 Err(err) => {
                     log::error!("Failed to send request to Anthropic: {err}");
