@@ -107,8 +107,8 @@ pub async fn serve(
     // Track which endpoints actually get initialized
     let mut mcp_actually_exposed = false;
     let mut llm_actually_exposed = false;
+    let mut proxy_actually_exposed = false;
 
-    // Apply CORS to MCP router before merging
     // Expose MCP endpoint if enabled
     if config.mcp.enabled() {
         match mcp::router(mcp::RouterConfig {
@@ -134,9 +134,30 @@ pub async fn serve(
         }
     }
 
-    // Apply CORS to LLM router before merging
+    if config.llm.enabled && config.llm.proxy.anthropic.enabled {
+        proxy_actually_exposed = true;
+        app = app.merge(
+            llm::proxy::anthropic::router(&config.llm.proxy.anthropic.path).layer(
+                tower::ServiceBuilder::new()
+                    .layer(layers_before_auth.clone())
+                    .layer(AuthLayer::new_with_native_provider(
+                        config.server.oauth.clone(),
+                        |parts: &http::request::Parts| Authentication {
+                            has_anthropic_authorization: parts.headers.contains_key(http::header::AUTHORIZATION),
+                            ..Default::default()
+                        },
+                    ))
+                    .layer(layers_after_auth.clone()),
+            ),
+        );
+        log::info!(
+            "Anthropic proxy endpoint: http://{listen_address}{}",
+            config.llm.proxy.anthropic.path
+        );
+    }
+
     // Only expose LLM endpoint if enabled AND has configured providers
-    if config.llm.enabled() && config.llm.has_providers() {
+    if config.llm.enabled && config.llm.has_providers() {
         let server = llm::build_server(&config).await.map_err(|err| {
             log::error!("Failed to initialize LLM router: {err:?}");
             anyhow!("Failed to initialize LLM router: {err}")
@@ -218,7 +239,7 @@ pub async fn serve(
     }
 
     // Check what endpoints are actually exposed
-    if !mcp_actually_exposed && !llm_actually_exposed {
+    if !mcp_actually_exposed && !llm_actually_exposed && !proxy_actually_exposed {
         log::warn!(
             "Server starting with no functional endpoints. \
             Configure MCP servers or LLM providers to enable functionality."

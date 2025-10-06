@@ -1,5 +1,3 @@
-pub(crate) mod proxy;
-
 use axum::http;
 use secrecy::{ExposeSecret, SecretString};
 

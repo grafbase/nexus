@@ -17,13 +17,13 @@ use self::{
 
 use crate::{
     error::LlmError,
+    http_client::http_client,
     messages::{
         anthropic::CountTokensResponse,
         openai::Model,
         unified::{UnifiedRequest, UnifiedResponse},
     },
-    provider::{ChatCompletionStream, HttpProvider, ModelManager, Provider, http_client::default_http_client_builder},
-    provider_mode::{ProviderMode, SupportedProviderMode, proxy::insert_proxied_headers_into},
+    provider::{ChatCompletionStream, HttpProvider, ModelManager, Provider, token},
     request::RequestContext,
 };
 use config::HeaderRule;
@@ -37,15 +37,11 @@ pub(crate) struct AnthropicProvider {
     name: String,
     config: ApiProviderConfig,
     model_manager: ModelManager,
-    supported_modes: Vec<SupportedProviderMode>,
 }
 
 impl AnthropicProvider {
     pub fn new(name: String, config: ApiProviderConfig) -> crate::Result<Self> {
-        let client = default_http_client_builder(Default::default()).build().map_err(|e| {
-            log::error!("Failed to create HTTP client for Anthropic provider: {e}");
-            LlmError::InternalError(None)
-        })?;
+        let client = http_client();
 
         let base_url = config
             .base_url
@@ -61,23 +57,12 @@ impl AnthropicProvider {
             .collect();
         let model_manager = ModelManager::new(models, "anthropic");
 
-        let mut supported_modes = vec![SupportedProviderMode::AnthropicProxy];
-        if let Some(key) = config.api_key.clone() {
-            supported_modes.push(SupportedProviderMode::RouterWithOwnKey(key));
-        }
-        if config.forward_token {
-            supported_modes.push(SupportedProviderMode::RouterWithClientKey(
-                http::HeaderName::from_static("x-provider-api-key"),
-            ));
-        }
-
         Ok(Self {
             client,
             base_url,
             name,
             model_manager,
             config,
-            supported_modes,
         })
     }
 
@@ -113,7 +98,7 @@ impl Provider for AnthropicProvider {
     ) -> crate::Result<UnifiedResponse> {
         let url = format!("{}/messages", self.base_url);
 
-        let mode = ProviderMode::determine(context, &self.supported_modes)?;
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         let original_model = request.model.clone();
 
@@ -123,16 +108,13 @@ impl Provider for AnthropicProvider {
         // Resolve model for configured aliases when discovery doesn't cover the request
         self.resolve_request_model(&mut request)?;
 
-        let request_builder = match mode {
-            ProviderMode::Proxy => {
-                let builder = self.client.post(&url);
-                insert_proxied_headers_into(builder, context.headers())
-            }
-            ProviderMode::RouterWithOwnedApiKey(api_key) | ProviderMode::RouterWithClientApiKey(api_key) => self
-                .request_builder(Method::POST, &url, context, model_config)
-                .header("anthropic-version", ANTHROPIC_VERSION)
-                .header("x-api-key", api_key),
-        };
+        // Use create_post_request to ensure headers are applied
+        let mut request_builder = self.request_builder(Method::POST, &url, context, model_config);
+
+        // Add API key header (can be overridden by header rules)
+        request_builder = request_builder
+            .header("x-api-key", api_key.expose_secret())
+            .header("anthropic-version", ANTHROPIC_VERSION);
 
         let anthropic_request = AnthropicRequest::from(request);
         let body = sonic_rs::to_vec(&anthropic_request).map_err(|e| {
@@ -243,26 +225,21 @@ impl Provider for AnthropicProvider {
         context: &RequestContext,
     ) -> crate::Result<CountTokensResponse> {
         let url = format!("{}/messages/count_tokens", self.base_url);
-
-        let mode = ProviderMode::determine(context, &self.supported_modes)?;
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         let model_config = self.model_manager.get_model_config(&request.model);
 
         self.resolve_request_model(&mut request)?;
 
+        // Use create_post_request to ensure headers are applied
+        let mut request_builder = self.request_builder(Method::POST, &url, context, model_config);
+
+        // Add API key header (can be overridden by header rules)
+        request_builder = request_builder
+            .header("x-api-key", api_key.expose_secret())
+            .header("anthropic-version", ANTHROPIC_VERSION);
+
         request.stream = Some(false);
-
-        let request_builder = match mode {
-            ProviderMode::Proxy => {
-                let builder = self.client.post(&url);
-                insert_proxied_headers_into(builder, context.headers())
-            }
-            ProviderMode::RouterWithOwnedApiKey(api_key) | ProviderMode::RouterWithClientApiKey(api_key) => self
-                .request_builder(Method::POST, &url, context, model_config)
-                .header("anthropic-version", ANTHROPIC_VERSION)
-                .header("x-api-key", api_key),
-        };
-
         let anthropic_request = AnthropicRequest::from(request);
         let body = sonic_rs::to_vec(&anthropic_request).map_err(|e| {
             log::error!("Failed to serialize Anthropic count tokens request: {e}");
@@ -315,25 +292,21 @@ impl Provider for AnthropicProvider {
         context: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
         let url = format!("{}/messages", self.base_url);
+        let api_key = token::get(self.config.forward_token, &self.config.api_key, context)?;
 
         // Get the model config BEFORE resolving, so we lookup by the original alias
         let model_config = self.model_manager.get_model_config(&request.model);
 
-        let mode = ProviderMode::determine(context, &self.supported_modes)?;
-
         // Resolve model for configured aliases when discovery doesn't cover the request
         self.resolve_request_model(&mut request)?;
 
-        let request_builder = match mode {
-            ProviderMode::Proxy => {
-                let builder = self.client.post(&url);
-                insert_proxied_headers_into(builder, context.headers())
-            }
-            ProviderMode::RouterWithOwnedApiKey(api_key) | ProviderMode::RouterWithClientApiKey(api_key) => self
-                .request_builder(Method::POST, &url, context, model_config)
-                .header("anthropic-version", ANTHROPIC_VERSION)
-                .header("x-api-key", api_key),
-        };
+        // Use create_post_request to ensure headers are applied
+        let mut request_builder = self.request_builder(Method::POST, &url, context, model_config);
+
+        // Add API key header (can be overridden by header rules)
+        request_builder = request_builder
+            .header("x-api-key", api_key.expose_secret())
+            .header("anthropic-version", ANTHROPIC_VERSION);
 
         let mut anthropic_request = AnthropicRequest::from(request);
         anthropic_request.stream = Some(true);
@@ -472,9 +445,9 @@ mod tests {
     fn dummy_request_context() -> RequestContext {
         RequestContext {
             parts: http::Request::new("").into_parts().0,
-            api_key: None,
             client_identity: None,
             authentication: context::Authentication::default(),
+            api_key: None,
         }
     }
 

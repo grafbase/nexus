@@ -16,13 +16,12 @@ use self::{
 
 use crate::{
     error::LlmError,
+    http_client::http_client,
     messages::{
         openai::Model,
         unified::{UnifiedRequest, UnifiedResponse},
     },
-    provider::{
-        ChatCompletionStream, HttpProvider, ModelManager, Provider, http_client::default_http_client_builder, token,
-    },
+    provider::{ChatCompletionStream, HttpProvider, ModelManager, Provider, token},
     request::RequestContext,
 };
 use config::HeaderRule;
@@ -39,10 +38,7 @@ pub(crate) struct OpenAIProvider {
 
 impl OpenAIProvider {
     pub fn new(name: String, config: ApiProviderConfig) -> crate::Result<Self> {
-        let client = default_http_client_builder(Default::default()).build().map_err(|e| {
-            log::error!("Failed to create HTTP client for OpenAI provider: {e}");
-            LlmError::InternalError(None)
-        })?;
+        let client = http_client();
 
         // Use custom base URL if provided, otherwise use default
         let base_url = config

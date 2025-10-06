@@ -2752,6 +2752,7 @@ dependencies = [
  "futures",
  "header-rules",
  "http 1.3.1",
+ "http-body-util",
  "indoc",
  "insta",
  "itertools 0.14.0",
@@ -2769,6 +2770,7 @@ dependencies = [
  "tiktoken-rs",
  "tokio",
  "toml",
+ "tower",
  "uuid",
 ]
 

@@ -1,9 +1,10 @@
-use std::time::Duration;
+use std::{sync::OnceLock, time::Duration};
 
 use axum::http;
 use reqwest::Client;
 
-pub(super) fn default_http_client_builder(mut headers: http::HeaderMap) -> reqwest::ClientBuilder {
+pub(crate) fn default_http_client_builder() -> reqwest::ClientBuilder {
+    let mut headers = http::HeaderMap::new();
     headers.insert(http::header::CONNECTION, http::HeaderValue::from_static("keep-alive"));
 
     Client::builder()
@@ -20,4 +21,17 @@ pub(super) fn default_http_client_builder(mut headers: http::HeaderMap) -> reqwe
         .tcp_nodelay(true)
         .tcp_keepalive(Some(Duration::from_secs(60)))
         .default_headers(headers)
+}
+
+/// Common HTTP client to re-use as much as possible the same connections.
+pub(crate) fn http_client() -> reqwest::Client {
+    static CLIENT: OnceLock<Client> = OnceLock::new();
+
+    CLIENT
+        .get_or_init(|| {
+            default_http_client_builder()
+                .build()
+                .expect("Failed to build default HTTP client")
+        })
+        .clone()
 }

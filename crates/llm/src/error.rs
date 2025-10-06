@@ -150,13 +150,13 @@ impl IntoResponse for LlmError {
 
 pub struct AnthropicErrorResponse {
     status: StatusCode,
-    body: anthropic::AnthropicError,
+    body: anthropic::ErrorResponse,
 }
 
 impl From<LlmError> for AnthropicErrorResponse {
     fn from(error: LlmError) -> Self {
         let status = error.status_code();
-        let body = anthropic::AnthropicError::from(error);
+        let body = anthropic::ErrorResponse::from(error);
 
         Self { status, body }
     }

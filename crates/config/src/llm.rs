@@ -4,8 +4,8 @@ use std::{borrow::Cow, collections::BTreeMap, fmt};
 
 use indexmap::IndexMap;
 
-use crate::headers::HeaderRule;
 use crate::rate_limit::TokenRateLimitsConfig;
+use crate::{headers::HeaderRule, proxy::ProxyConfig};
 use regex::{Regex, RegexBuilder};
 use secrecy::SecretString;
 use serde::{Deserialize, Deserializer};
@@ -195,7 +195,10 @@ pub struct LlmProtocolsConfig {
 #[serde(default, deny_unknown_fields)]
 pub struct LlmConfig {
     /// Whether the LLM functionality is enabled.
-    enabled: bool,
+    pub enabled: bool,
+
+    /// Proxy configuration for LLM requests.
+    pub proxy: ProxyConfig,
 
     /// Protocol-specific endpoint configurations.
     pub protocols: LlmProtocolsConfig,
@@ -210,16 +213,12 @@ impl Default for LlmConfig {
             enabled: true,
             protocols: LlmProtocolsConfig::default(),
             providers: IndexMap::new(),
+            proxy: Default::default(),
         }
     }
 }
 
 impl LlmConfig {
-    /// Whether the LLM functionality is enabled.
-    pub fn enabled(&self) -> bool {
-        self.enabled
-    }
-
     /// Whether there are any LLM providers configured.
     pub fn has_providers(&self) -> bool {
         !self.providers.is_empty()
@@ -494,6 +493,12 @@ mod tests {
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
+            proxy: ProxyConfig {
+                anthropic: AnthropicProxyConfig {
+                    enabled: false,
+                    path: "/proxy/anthropic",
+                },
+            },
             protocols: LlmProtocolsConfig {
                 openai: OpenAIProtocolConfig {
                     enabled: true,
@@ -532,6 +537,12 @@ mod tests {
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
+            proxy: ProxyConfig {
+                anthropic: AnthropicProxyConfig {
+                    enabled: false,
+                    path: "/proxy/anthropic",
+                },
+            },
             protocols: LlmProtocolsConfig {
                 openai: OpenAIProtocolConfig {
                     enabled: true,
@@ -595,6 +606,12 @@ mod tests {
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
+            proxy: ProxyConfig {
+                anthropic: AnthropicProxyConfig {
+                    enabled: false,
+                    path: "/proxy/anthropic",
+                },
+            },
             protocols: LlmProtocolsConfig {
                 openai: OpenAIProtocolConfig {
                     enabled: true,
@@ -656,6 +673,12 @@ mod tests {
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
+            proxy: ProxyConfig {
+                anthropic: AnthropicProxyConfig {
+                    enabled: false,
+                    path: "/proxy/anthropic",
+                },
+            },
             protocols: LlmProtocolsConfig {
                 openai: OpenAIProtocolConfig {
                     enabled: true,
@@ -728,6 +751,12 @@ path = "/ai"
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
+            proxy: ProxyConfig {
+                anthropic: AnthropicProxyConfig {
+                    enabled: false,
+                    path: "/proxy/anthropic",
+                },
+            },
             protocols: LlmProtocolsConfig {
                 openai: OpenAIProtocolConfig {
                     enabled: true,
@@ -926,6 +955,12 @@ path = "/ai"
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: false,
+            proxy: ProxyConfig {
+                anthropic: AnthropicProxyConfig {
+                    enabled: false,
+                    path: "/proxy/anthropic",
+                },
+            },
             protocols: LlmProtocolsConfig {
                 openai: OpenAIProtocolConfig {
                     enabled: true,
@@ -954,6 +989,12 @@ path = "/models"
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
+            proxy: ProxyConfig {
+                anthropic: AnthropicProxyConfig {
+                    enabled: false,
+                    path: "/proxy/anthropic",
+                },
+            },
             protocols: LlmProtocolsConfig {
                 openai: OpenAIProtocolConfig {
                     enabled: true,
@@ -1002,6 +1043,12 @@ path = "/llm"
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
+            proxy: ProxyConfig {
+                anthropic: AnthropicProxyConfig {
+                    enabled: false,
+                    path: "/proxy/anthropic",
+                },
+            },
             protocols: LlmProtocolsConfig {
                 openai: OpenAIProtocolConfig {
                     enabled: true,
@@ -1059,6 +1106,12 @@ path = "/llm"
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
+            proxy: ProxyConfig {
+                anthropic: AnthropicProxyConfig {
+                    enabled: false,
+                    path: "/proxy/anthropic",
+                },
+            },
             protocols: LlmProtocolsConfig {
                 openai: OpenAIProtocolConfig {
                     enabled: true,
@@ -1125,6 +1178,12 @@ path = "/llm"
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
+            proxy: ProxyConfig {
+                anthropic: AnthropicProxyConfig {
+                    enabled: false,
+                    path: "/proxy/anthropic",
+                },
+            },
             protocols: LlmProtocolsConfig {
                 openai: OpenAIProtocolConfig {
                     enabled: true,
@@ -1194,6 +1253,12 @@ path = "/llm"
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
+            proxy: ProxyConfig {
+                anthropic: AnthropicProxyConfig {
+                    enabled: false,
+                    path: "/proxy/anthropic",
+                },
+            },
             protocols: LlmProtocolsConfig {
                 openai: OpenAIProtocolConfig {
                     enabled: true,
@@ -1382,6 +1447,12 @@ path = "/llm"
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
+            proxy: ProxyConfig {
+                anthropic: AnthropicProxyConfig {
+                    enabled: false,
+                    path: "/proxy/anthropic",
+                },
+            },
             protocols: LlmProtocolsConfig {
                 openai: OpenAIProtocolConfig {
                     enabled: true,
@@ -1476,6 +1547,12 @@ path = "/llm"
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
+            proxy: ProxyConfig {
+                anthropic: AnthropicProxyConfig {
+                    enabled: false,
+                    path: "/proxy/anthropic",
+                },
+            },
             protocols: LlmProtocolsConfig {
                 openai: OpenAIProtocolConfig {
                     enabled: true,
@@ -1530,6 +1607,12 @@ path = "/llm"
         assert_debug_snapshot!(&config, @r#"
         LlmConfig {
             enabled: true,
+            proxy: ProxyConfig {
+                anthropic: AnthropicProxyConfig {
+                    enabled: false,
+                    path: "/proxy/anthropic",
+                },
+            },
             protocols: LlmProtocolsConfig {
                 openai: OpenAIProtocolConfig {
                     enabled: true,

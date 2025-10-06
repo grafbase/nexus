@@ -35,9 +35,9 @@ pub fn load<P: AsRef<Path>>(path: P) -> anyhow::Result<Config> {
 pub(crate) fn validate_has_downstreams(config: &Config) -> anyhow::Result<()> {
     // Check if any downstreams are actually configured (not just enabled)
     let has_mcp_servers = config.mcp.enabled() && config.mcp.has_servers();
-    let has_llm_providers = config.llm.enabled() && config.llm.has_providers();
+    let has_llm_providers = config.llm.enabled && config.llm.has_providers();
 
-    if !has_mcp_servers && !has_llm_providers {
+    if !has_mcp_servers && !has_llm_providers && !config.llm.proxy.anthropic.enabled {
         bail!(indoc! {r#"
             No downstream servers configured. Nexus requires at least one MCP server or LLM provider to function.
 
