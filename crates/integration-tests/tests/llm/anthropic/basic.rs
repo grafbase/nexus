@@ -14,69 +14,69 @@ async fn list_models() {
         ".data[].created" => "[created]"
     }, @r#"
     {
-      "object": "list",
       "data": [
         {
+          "created": "[created]",
           "id": "claude-3-5-haiku-20241022",
           "object": "model",
-          "created": "[created]",
           "owned_by": "anthropic"
         },
         {
+          "created": "[created]",
           "id": "claude-3-5-sonnet-20241022",
           "object": "model",
-          "created": "[created]",
           "owned_by": "anthropic"
         },
         {
+          "created": "[created]",
           "id": "claude-3-haiku-20240307",
           "object": "model",
-          "created": "[created]",
           "owned_by": "anthropic"
         },
         {
+          "created": "[created]",
           "id": "claude-3-opus-20240229",
           "object": "model",
-          "created": "[created]",
           "owned_by": "anthropic"
         },
         {
+          "created": "[created]",
           "id": "claude-3-sonnet-20240229",
           "object": "model",
-          "created": "[created]",
           "owned_by": "anthropic"
         },
         {
+          "created": "[created]",
           "id": "anthropic/claude-3-5-haiku-20241022",
           "object": "model",
-          "created": "[created]",
           "owned_by": "anthropic"
         },
         {
+          "created": "[created]",
           "id": "anthropic/claude-3-5-sonnet-20241022",
           "object": "model",
-          "created": "[created]",
           "owned_by": "anthropic"
         },
         {
+          "created": "[created]",
           "id": "anthropic/claude-3-haiku-20240307",
           "object": "model",
-          "created": "[created]",
           "owned_by": "anthropic"
         },
         {
+          "created": "[created]",
           "id": "anthropic/claude-3-opus-20240229",
           "object": "model",
-          "created": "[created]",
           "owned_by": "anthropic"
         },
         {
+          "created": "[created]",
           "id": "anthropic/claude-3-sonnet-20240229",
           "object": "model",
-          "created": "[created]",
           "owned_by": "anthropic"
         }
-      ]
+      ],
+      "object": "list"
     }
     "#);
 }
@@ -111,23 +111,23 @@ async fn chat_completion() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "msg_[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Test response to: Hello!"
-          },
-          "finish_reason": "stop"
+            "content": "Test response to: Hello!",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "msg_[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -163,23 +163,23 @@ async fn handles_system_messages() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "msg_[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "anthropic/claude-3-opus-20240229",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Test response to: How are you?"
-          },
-          "finish_reason": "stop"
+            "content": "Test response to: How are you?",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "msg_[id]",
+      "model": "anthropic/claude-3-opus-20240229",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -210,23 +210,23 @@ async fn simple_completion() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "msg_[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "anthropic/claude-3-5-haiku-20241022",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Test response to: Quick test"
-          },
-          "finish_reason": "stop"
+            "content": "Test response to: Quick test",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "msg_[id]",
+      "model": "anthropic/claude-3-5-haiku-20241022",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -262,23 +262,23 @@ async fn with_parameters() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "msg_[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Test response to: Test with parameters"
-          },
-          "finish_reason": "stop"
+            "content": "Test response to: Test with parameters",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "msg_[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -325,20 +325,20 @@ path = "/llm"
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion.chunk",
-      "created": "[created]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
-          "index": 0,
           "delta": {},
-          "finish_reason": "stop"
+          "finish_reason": "stop",
+          "index": 0
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion.chunk",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -386,18 +386,18 @@ path = "/llm"
         ".choices[0].delta.content" => "[content]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion.chunk",
-      "created": "[created]",
-      "model": "anthropic/claude-3-opus-20240229",
       "choices": [
         {
-          "index": 0,
           "delta": {
             "content": "[content]"
-          }
+          },
+          "index": 0
         }
-      ]
+      ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "anthropic/claude-3-opus-20240229",
+      "object": "chat.completion.chunk"
     }
     "#);
 }

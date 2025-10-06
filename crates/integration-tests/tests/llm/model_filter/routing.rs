@@ -41,23 +41,23 @@ async fn model_filter_routing_works_for_all_provider_types() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "gpt-4o",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "This is a test response from the mock LLM server"
-          },
-          "finish_reason": "stop"
+            "content": "This is a test response from the mock LLM server",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "gpt-4o",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -74,23 +74,23 @@ async fn model_filter_routing_works_for_all_provider_types() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "claude-3-opus",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Test response to: test"
-          },
-          "finish_reason": "stop"
+            "content": "Test response to: test",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "claude-3-opus",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -107,23 +107,23 @@ async fn model_filter_routing_works_for_all_provider_types() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "gemini-pro",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Test response to: test"
-          },
-          "finish_reason": "stop"
+            "content": "Test response to: test",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "gemini-pro",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -159,29 +159,29 @@ async fn model_filter_routing_respects_provider_order() {
     assert_json_snapshot!(response, {
         ".id" => "[id]",
         ".created" => "[created]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "gpt-4o-mini",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "specific provider response"
-          },
-          "finish_reason": "stop"
+            "content": "specific provider response",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "gpt-4o-mini",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
-    "###);
+    "#);
 
     let request = json!({
         "model": "gpt-4o",
@@ -193,29 +193,29 @@ async fn model_filter_routing_respects_provider_order() {
     assert_json_snapshot!(response, {
         ".id" => "[id]",
         ".created" => "[created]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "gpt-4o",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "broad provider response"
-          },
-          "finish_reason": "stop"
+            "content": "broad provider response",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "gpt-4o",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
-    "###);
+    "#);
 }
 
 #[tokio::test]
@@ -241,29 +241,29 @@ async fn model_filter_routing_is_case_insensitive() {
     assert_json_snapshot!(response, {
         ".id" => "[id]",
         ".created" => "[created]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "GPT-4O-MINI",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Case insensitive response"
-          },
-          "finish_reason": "stop"
+            "content": "Case insensitive response",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "GPT-4O-MINI",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
-    "###);
+    "#);
 }
 
 #[tokio::test]
@@ -335,29 +335,29 @@ async fn mixed_filter_and_explicit_models() {
     assert_json_snapshot!(response, {
         ".id" => "[id]",
         ".created" => "[created]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "gpt-4o-mini",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Mock response"
-          },
-          "finish_reason": "stop"
+            "content": "Mock response",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "gpt-4o-mini",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
-    "###);
+    "#);
 
     // Explicit model that doesn't match the filter
     let request = json!({
@@ -368,29 +368,29 @@ async fn mixed_filter_and_explicit_models() {
     assert_json_snapshot!(response, {
         ".id" => "[id]",
         ".created" => "[created]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "hybrid/gpt-3.5-turbo",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Mock response"
-          },
-          "finish_reason": "stop"
+            "content": "Mock response",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "hybrid/gpt-3.5-turbo",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
-    "###);
+    "#);
 
     // Custom explicit model
     let request = json!({
@@ -401,29 +401,29 @@ async fn mixed_filter_and_explicit_models() {
     assert_json_snapshot!(response, {
         ".id" => "[id]",
         ".created" => "[created]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "hybrid/custom-model",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Mock response"
-          },
-          "finish_reason": "stop"
+            "content": "Mock response",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "hybrid/custom-model",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
-    "###);
+    "#);
 
     // Model that doesn't match the filter or explicit config
     let request = json!({
@@ -431,13 +431,13 @@ async fn mixed_filter_and_explicit_models() {
         "messages": [{"role": "user", "content": "test"}]
     });
     let (_status, body) = server.openai_completions(request).send_raw().await;
-    assert_json_snapshot!(body, @r###"
+    assert_json_snapshot!(body, @r#"
     {
       "error": {
+        "code": 404,
         "message": "Model 'dall-e-3' not found",
-        "type": "not_found_error",
-        "code": 404
+        "type": "not_found_error"
       }
     }
-    "###);
+    "#);
 }

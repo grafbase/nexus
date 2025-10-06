@@ -70,23 +70,23 @@ async fn mixed_tool_result_and_text_no_duplicates() {
         ".id" => "[id]",
         ".model" => "[model]",
         ".usage" => "[usage]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "text",
-          "text": "Test response to: Run some tools"
+          "text": "Test response to: Run some tools",
+          "type": "text"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
-    "###);
+    "#);
 }
 
 /// Test multiple tool results with different IDs remain separate
@@ -163,21 +163,21 @@ async fn multiple_tool_results_different_ids() {
         ".id" => "[id]",
         ".model" => "[model]",
         ".usage" => "[usage]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "text",
-          "text": "Test response to: Run multiple tools"
+          "text": "Test response to: Run multiple tools",
+          "type": "text"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
-    "###);
+    "#);
 }

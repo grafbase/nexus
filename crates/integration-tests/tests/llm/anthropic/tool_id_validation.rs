@@ -94,15 +94,15 @@ async fn duplicate_tool_ids_fail_as_expected() {
     let body = response.json::<serde_json::Value>().await.unwrap();
 
     // Verify the error message using insta snapshot
-    insta::assert_json_snapshot!(body, @r###"
+    insta::assert_json_snapshot!(body, @r#"
     {
-      "type": "error",
       "error": {
-        "type": "invalid_request_error",
-        "message": "messages: `tool_use` ids must be unique (duplicate id: toolu_01XyzAbc123)"
-      }
+        "message": "messages: `tool_use` ids must be unique (duplicate id: toolu_01XyzAbc123)",
+        "type": "invalid_request_error"
+      },
+      "type": "error"
     }
-    "###);
+    "#);
 }
 
 /// Test that unique tool_use IDs are preserved and work correctly
@@ -173,23 +173,23 @@ async fn unique_tool_ids_work_correctly() {
     insta::assert_json_snapshot!(response, {
         ".id" => "[id]",
         ".usage" => "[usage]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "text",
-          "text": "Test response to: "
+          "text": "Test response to: ",
+          "type": "text"
         }
       ],
+      "id": "[id]",
       "model": "anthropic/claude-3-5-haiku-latest",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
-    "###);
+    "#);
 }
 
 /// Test that the mock properly validates duplicate tool_use IDs like the real Anthropic API
@@ -238,14 +238,14 @@ async fn mock_validates_duplicate_tool_ids() {
     let error_body = response.json::<serde_json::Value>().await.unwrap();
 
     // Verify error response using insta snapshot
-    insta::assert_json_snapshot!(error_body, @r###"
+    insta::assert_json_snapshot!(error_body, @r#"
     {
       "error": {
-        "type": "invalid_request_error",
-        "message": "messages: `tool_use` ids must be unique (duplicate id: duplicate_id)"
+        "message": "messages: `tool_use` ids must be unique (duplicate id: duplicate_id)",
+        "type": "invalid_request_error"
       }
     }
-    "###);
+    "#);
 }
 
 /// Test that we don't accidentally duplicate tool_calls when converting
@@ -325,21 +325,21 @@ async fn no_duplicate_tool_calls_when_already_in_content() {
     insta::assert_json_snapshot!(response, {
         ".id" => "[id]",
         ".usage" => "[usage]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "text",
-          "text": "Test response to: Can you help me?"
+          "text": "Test response to: Can you help me?",
+          "type": "text"
         }
       ],
+      "id": "[id]",
       "model": "anthropic/claude-3-opus-20240229",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
-    "###);
+    "#);
 }

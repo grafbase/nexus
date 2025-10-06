@@ -30,54 +30,39 @@ async fn list_tools() {
           "name": "search",
           "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "type": "object",
             "properties": {
               "keywords": {
-                "type": "array",
+                "description": "A list of keywords to search with.",
                 "items": {
                   "type": "string"
                 },
-                "description": "A list of keywords to search with."
+                "type": "array"
               }
             },
             "required": [
               "keywords"
             ],
-            "title": "SearchParameters"
+            "title": "SearchParameters",
+            "type": "object"
           },
           "outputSchema": {
-            "type": "object",
-            "properties": {
-              "results": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/SearchResult"
-                },
-                "description": "The list of search results"
-              }
-            },
-            "required": [
-              "results"
-            ],
-            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
-                "type": "object",
                 "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "The name of the tool (format: \"server__tool\")"
-                  },
                   "description": {
-                    "type": "string",
-                    "description": "Description of what the tool does"
+                    "description": "Description of what the tool does",
+                    "type": "string"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
                   "score": {
-                    "type": "number",
-                    "description": "The relevance score for this result (higher is more relevant)"
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number"
                   }
                 },
                 "required": [
@@ -85,9 +70,24 @@ async fn list_tools() {
                   "description",
                   "input_schema",
                   "score"
-                ]
+                ],
+                "type": "object"
               }
-            }
+            },
+            "properties": {
+              "results": {
+                "description": "The list of search results",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
+            "type": "object"
           },
           "annotations": {
             "readOnlyHint": true
@@ -98,22 +98,22 @@ async fn list_tools() {
           "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
-            "type": "object",
             "properties": {
+              "arguments": {
+                "additionalProperties": true,
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
+                "type": "object"
+              },
               "name": {
                 "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
-              },
-              "arguments": {
-                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
-                "type": "object",
-                "additionalProperties": true
               }
             },
             "required": [
               "name",
               "arguments"
-            ]
+            ],
+            "type": "object"
           },
           "annotations": {
             "destructiveHint": true,
@@ -326,54 +326,39 @@ async fn multiple_services_multiple_tools() {
           "name": "search",
           "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "type": "object",
             "properties": {
               "keywords": {
-                "type": "array",
+                "description": "A list of keywords to search with.",
                 "items": {
                   "type": "string"
                 },
-                "description": "A list of keywords to search with."
+                "type": "array"
               }
             },
             "required": [
               "keywords"
             ],
-            "title": "SearchParameters"
+            "title": "SearchParameters",
+            "type": "object"
           },
           "outputSchema": {
-            "type": "object",
-            "properties": {
-              "results": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/SearchResult"
-                },
-                "description": "The list of search results"
-              }
-            },
-            "required": [
-              "results"
-            ],
-            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
-                "type": "object",
                 "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "The name of the tool (format: \"server__tool\")"
-                  },
                   "description": {
-                    "type": "string",
-                    "description": "Description of what the tool does"
+                    "description": "Description of what the tool does",
+                    "type": "string"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
                   "score": {
-                    "type": "number",
-                    "description": "The relevance score for this result (higher is more relevant)"
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number"
                   }
                 },
                 "required": [
@@ -381,9 +366,24 @@ async fn multiple_services_multiple_tools() {
                   "description",
                   "input_schema",
                   "score"
-                ]
+                ],
+                "type": "object"
               }
-            }
+            },
+            "properties": {
+              "results": {
+                "description": "The list of search results",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
+            "type": "object"
           },
           "annotations": {
             "readOnlyHint": true
@@ -394,22 +394,22 @@ async fn multiple_services_multiple_tools() {
           "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
-            "type": "object",
             "properties": {
+              "arguments": {
+                "additionalProperties": true,
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
+                "type": "object"
+              },
               "name": {
                 "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
-              },
-              "arguments": {
-                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
-                "type": "object",
-                "additionalProperties": true
               }
             },
             "required": [
               "name",
               "arguments"
-            ]
+            ],
+            "type": "object"
           },
           "annotations": {
             "destructiveHint": true,
@@ -471,54 +471,39 @@ async fn custom_mcp_path_with_tools() {
           "name": "search",
           "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "type": "object",
             "properties": {
               "keywords": {
-                "type": "array",
+                "description": "A list of keywords to search with.",
                 "items": {
                   "type": "string"
                 },
-                "description": "A list of keywords to search with."
+                "type": "array"
               }
             },
             "required": [
               "keywords"
             ],
-            "title": "SearchParameters"
+            "title": "SearchParameters",
+            "type": "object"
           },
           "outputSchema": {
-            "type": "object",
-            "properties": {
-              "results": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/SearchResult"
-                },
-                "description": "The list of search results"
-              }
-            },
-            "required": [
-              "results"
-            ],
-            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
-                "type": "object",
                 "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "The name of the tool (format: \"server__tool\")"
-                  },
                   "description": {
-                    "type": "string",
-                    "description": "Description of what the tool does"
+                    "description": "Description of what the tool does",
+                    "type": "string"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
                   "score": {
-                    "type": "number",
-                    "description": "The relevance score for this result (higher is more relevant)"
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number"
                   }
                 },
                 "required": [
@@ -526,9 +511,24 @@ async fn custom_mcp_path_with_tools() {
                   "description",
                   "input_schema",
                   "score"
-                ]
+                ],
+                "type": "object"
               }
-            }
+            },
+            "properties": {
+              "results": {
+                "description": "The list of search results",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
+            "type": "object"
           },
           "annotations": {
             "readOnlyHint": true
@@ -539,22 +539,22 @@ async fn custom_mcp_path_with_tools() {
           "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
-            "type": "object",
             "properties": {
+              "arguments": {
+                "additionalProperties": true,
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
+                "type": "object"
+              },
               "name": {
                 "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
-              },
-              "arguments": {
-                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
-                "type": "object",
-                "additionalProperties": true
               }
             },
             "required": [
               "name",
               "arguments"
-            ]
+            ],
+            "type": "object"
           },
           "annotations": {
             "destructiveHint": true,
@@ -613,54 +613,39 @@ async fn tools_with_tls() {
           "name": "search",
           "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "type": "object",
             "properties": {
               "keywords": {
-                "type": "array",
+                "description": "A list of keywords to search with.",
                 "items": {
                   "type": "string"
                 },
-                "description": "A list of keywords to search with."
+                "type": "array"
               }
             },
             "required": [
               "keywords"
             ],
-            "title": "SearchParameters"
+            "title": "SearchParameters",
+            "type": "object"
           },
           "outputSchema": {
-            "type": "object",
-            "properties": {
-              "results": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/SearchResult"
-                },
-                "description": "The list of search results"
-              }
-            },
-            "required": [
-              "results"
-            ],
-            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
-                "type": "object",
                 "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "The name of the tool (format: \"server__tool\")"
-                  },
                   "description": {
-                    "type": "string",
-                    "description": "Description of what the tool does"
+                    "description": "Description of what the tool does",
+                    "type": "string"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
                   "score": {
-                    "type": "number",
-                    "description": "The relevance score for this result (higher is more relevant)"
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number"
                   }
                 },
                 "required": [
@@ -668,9 +653,24 @@ async fn tools_with_tls() {
                   "description",
                   "input_schema",
                   "score"
-                ]
+                ],
+                "type": "object"
               }
-            }
+            },
+            "properties": {
+              "results": {
+                "description": "The list of search results",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
+            "type": "object"
           },
           "annotations": {
             "readOnlyHint": true
@@ -681,22 +681,22 @@ async fn tools_with_tls() {
           "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
-            "type": "object",
             "properties": {
+              "arguments": {
+                "additionalProperties": true,
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
+                "type": "object"
+              },
               "name": {
                 "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
-              },
-              "arguments": {
-                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
-                "type": "object",
-                "additionalProperties": true
               }
             },
             "required": [
               "name",
               "arguments"
-            ]
+            ],
+            "type": "object"
           },
           "annotations": {
             "destructiveHint": true,
@@ -751,54 +751,39 @@ async fn tls_downstream_service() {
           "name": "search",
           "description": "Search for relevant tools. A list of matching tools with their\\nscore is returned with a map of input fields and their types.\n\nUsing this information, you can call the execute tool with the\\nname of the tool you want to execute, and defining the input parameters.\n\nTool names are in the format \"server__tool\" where \"server\" is the name of the MCP server providing\nthe tool.\n",
           "inputSchema": {
-            "type": "object",
             "properties": {
               "keywords": {
-                "type": "array",
+                "description": "A list of keywords to search with.",
                 "items": {
                   "type": "string"
                 },
-                "description": "A list of keywords to search with."
+                "type": "array"
               }
             },
             "required": [
               "keywords"
             ],
-            "title": "SearchParameters"
+            "title": "SearchParameters",
+            "type": "object"
           },
           "outputSchema": {
-            "type": "object",
-            "properties": {
-              "results": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/SearchResult"
-                },
-                "description": "The list of search results"
-              }
-            },
-            "required": [
-              "results"
-            ],
-            "title": "SearchResponse",
             "$defs": {
               "SearchResult": {
-                "type": "object",
                 "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "The name of the tool (format: \"server__tool\")"
-                  },
                   "description": {
-                    "type": "string",
-                    "description": "Description of what the tool does"
+                    "description": "Description of what the tool does",
+                    "type": "string"
                   },
                   "input_schema": {
                     "description": "The input schema for the tool's parameters"
                   },
+                  "name": {
+                    "description": "The name of the tool (format: \"server__tool\")",
+                    "type": "string"
+                  },
                   "score": {
-                    "type": "number",
-                    "description": "The relevance score for this result (higher is more relevant)"
+                    "description": "The relevance score for this result (higher is more relevant)",
+                    "type": "number"
                   }
                 },
                 "required": [
@@ -806,9 +791,24 @@ async fn tls_downstream_service() {
                   "description",
                   "input_schema",
                   "score"
-                ]
+                ],
+                "type": "object"
               }
-            }
+            },
+            "properties": {
+              "results": {
+                "description": "The list of search results",
+                "items": {
+                  "$ref": "#/$defs/SearchResult"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "results"
+            ],
+            "title": "SearchResponse",
+            "type": "object"
           },
           "annotations": {
             "readOnlyHint": true
@@ -819,22 +819,22 @@ async fn tls_downstream_service() {
           "description": "Executes a tool with the given parameters. Before using, you must call the search function to retrieve the tools you need for your task. If you do not know how to call this tool, call search first.\n\nThe tool name and parameters are specified in the request body. The tool name must be a string,\nand the parameters must be a map of strings to JSON values.\n",
           "inputSchema": {
             "description": "Parameters for executing a tool. You must call search if you have trouble finding the right arguments here.",
-            "type": "object",
             "properties": {
+              "arguments": {
+                "additionalProperties": true,
+                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
+                "type": "object"
+              },
               "name": {
                 "description": "The exact name of the tool to execute. This must match the tool name returned by the search function. For example: 'calculator__adder', 'web_search__search', or 'file_reader__read'.",
                 "type": "string"
-              },
-              "arguments": {
-                "description": "The arguments to pass to the tool, as a JSON object. Each tool expects specific arguments - use the search function to discover what arguments each tool requires. For example: {\"query\": \"weather in NYC\"} or {\"x\": 5, \"y\": 10}.",
-                "type": "object",
-                "additionalProperties": true
               }
             },
             "required": [
               "name",
               "arguments"
-            ]
+            ],
+            "type": "object"
           },
           "annotations": {
             "destructiveHint": true,
@@ -885,25 +885,25 @@ async fn search_exact_matching() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "name": "math_service__adder",
         "description": "Adds two numbers together",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First number to add"
+              "description": "First number to add",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second number to add"
+              "description": "Second number to add",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "math_service__adder",
         "score": 0.8630462884902954
       }
     ]
@@ -933,31 +933,31 @@ async fn search_fuzzy_matching() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "name": "text_service__text_processor",
         "description": "Processes text with various string manipulation operations like case conversion and reversal",
         "input_schema": {
-          "type": "object",
           "properties": {
-            "text": {
-              "type": "string",
-              "description": "Input text to process"
-            },
             "action": {
-              "type": "string",
+              "description": "Action to perform on the text",
               "enum": [
                 "uppercase",
                 "lowercase",
                 "reverse",
                 "word_count"
               ],
-              "description": "Action to perform on the text"
+              "type": "string"
+            },
+            "text": {
+              "description": "Input text to process",
+              "type": "string"
             }
           },
           "required": [
             "text",
             "action"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "text_service__text_processor",
         "score": 0.6000000238418579
       }
     ]
@@ -987,25 +987,25 @@ async fn search_multiple_keywords() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "name": "math_service__adder",
         "description": "Adds two numbers together",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First number to add"
+              "description": "First number to add",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second number to add"
+              "description": "Second number to add",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "math_service__adder",
         "score": 0.6000000238418579
       }
     ]
@@ -1036,34 +1036,34 @@ async fn search_two() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "name": "math_service__adder",
         "description": "Adds two numbers together",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First number to add"
+              "description": "First number to add",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second number to add"
+              "description": "Second number to add",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "math_service__adder",
         "score": 2.4077742099761963
       },
       {
-        "name": "math_service__failing_tool",
         "description": "A tool that always fails for testing error handling",
         "input_schema": {
-          "type": "object",
-          "properties": {}
+          "properties": {},
+          "type": "object"
         },
+        "name": "math_service__failing_tool",
         "score": 1.8299086093902588
       }
     ]
@@ -1093,25 +1093,25 @@ async fn search_case_insensitive() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "name": "math_service__adder",
         "description": "Adds two numbers together",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First number to add"
+              "description": "First number to add",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second number to add"
+              "description": "Second number to add",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "math_service__adder",
         "score": 0.8630462884902954
       }
     ]
@@ -1141,25 +1141,25 @@ async fn search_by_description() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "name": "math_service__adder",
         "description": "Adds two numbers together",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First number to add"
+              "description": "First number to add",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second number to add"
+              "description": "Second number to add",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "math_service__adder",
         "score": 0.6000000238418579
       }
     ]
@@ -1189,25 +1189,25 @@ async fn search_by_server_name() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "name": "math_service__adder",
         "description": "Adds two numbers together",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First number to add"
+              "description": "First number to add",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second number to add"
+              "description": "Second number to add",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "math_service__adder",
         "score": 0.23014569282531736
       }
     ]
@@ -1265,12 +1265,12 @@ async fn search_multiple_tools_ranking() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "name": "error_service__failing_tool",
         "description": "A tool that always fails for testing error handling",
         "input_schema": {
-          "type": "object",
-          "properties": {}
+          "properties": {},
+          "type": "object"
         },
+        "name": "error_service__failing_tool",
         "score": 1.8299086093902588
       }
     ]
@@ -1300,25 +1300,25 @@ async fn search_parameter_fields() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "name": "math_service__adder",
         "description": "Adds two numbers together",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First number to add"
+              "description": "First number to add",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second number to add"
+              "description": "Second number to add",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "math_service__adder",
         "score": 0.4000000059604645
       }
     ]
@@ -1371,25 +1371,25 @@ async fn search_whitespace_handling() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "name": "math_service__adder",
         "description": "Adds two numbers together",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First number to add"
+              "description": "First number to add",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second number to add"
+              "description": "Second number to add",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "math_service__adder",
         "score": 0.6000000238418579
       }
     ]
@@ -1419,36 +1419,36 @@ async fn search_tool_annotations() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "name": "math_service__calculator",
         "description": "Performs basic mathematical calculations including addition, subtraction, multiplication and division",
         "input_schema": {
-          "type": "object",
           "properties": {
             "operation": {
-              "type": "string",
+              "description": "Mathematical operation to perform",
               "enum": [
                 "add",
                 "subtract",
                 "multiply",
                 "divide"
               ],
-              "description": "Mathematical operation to perform"
+              "type": "string"
             },
             "x": {
-              "type": "number",
-              "description": "First operand"
+              "description": "First operand",
+              "type": "number"
             },
             "y": {
-              "type": "number",
-              "description": "Second operand"
+              "description": "Second operand",
+              "type": "number"
             }
           },
           "required": [
             "operation",
             "x",
             "y"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "math_service__calculator",
         "score": 0.5753642320632935
       }
     ]
@@ -1484,31 +1484,31 @@ async fn search_relevance_scoring_with_different_tools() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "name": "text_service__text_processor",
         "description": "Processes text with various string manipulation operations like case conversion and reversal",
         "input_schema": {
-          "type": "object",
           "properties": {
-            "text": {
-              "type": "string",
-              "description": "Input text to process"
-            },
             "action": {
-              "type": "string",
+              "description": "Action to perform on the text",
               "enum": [
                 "uppercase",
                 "lowercase",
                 "reverse",
                 "word_count"
               ],
-              "description": "Action to perform on the text"
+              "type": "string"
+            },
+            "text": {
+              "description": "Input text to process",
+              "type": "string"
             }
           },
           "required": [
             "text",
             "action"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "text_service__text_processor",
         "score": 2.442819595336914
       }
     ]
@@ -1538,31 +1538,31 @@ async fn search_partial_word_matching() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "name": "text_service__text_processor",
         "description": "Processes text with various string manipulation operations like case conversion and reversal",
         "input_schema": {
-          "type": "object",
           "properties": {
-            "text": {
-              "type": "string",
-              "description": "Input text to process"
-            },
             "action": {
-              "type": "string",
+              "description": "Action to perform on the text",
               "enum": [
                 "uppercase",
                 "lowercase",
                 "reverse",
                 "word_count"
               ],
-              "description": "Action to perform on the text"
+              "type": "string"
+            },
+            "text": {
+              "description": "Input text to process",
+              "type": "string"
             }
           },
           "required": [
             "text",
             "action"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "text_service__text_processor",
         "score": 0.4000000059604645
       }
     ]
@@ -1592,31 +1592,31 @@ async fn search_compound_words() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "name": "file_service__filesystem",
         "description": "Manages files and directories with operations like listing, creating, and deleting",
         "input_schema": {
-          "type": "object",
           "properties": {
-            "path": {
-              "type": "string",
-              "description": "File or directory path"
-            },
             "operation": {
-              "type": "string",
+              "description": "Filesystem operation to perform",
               "enum": [
                 "list",
                 "create",
                 "delete",
                 "exists"
               ],
-              "description": "Filesystem operation to perform"
+              "type": "string"
+            },
+            "path": {
+              "description": "File or directory path",
+              "type": "string"
             }
           },
           "required": [
             "path",
             "operation"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "file_service__filesystem",
         "score": 0.8630462884902954
       }
     ]
@@ -1645,36 +1645,36 @@ async fn search_enum_values() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "name": "math_service__calculator",
         "description": "Performs basic mathematical calculations including addition, subtraction, multiplication and division",
         "input_schema": {
-          "type": "object",
           "properties": {
             "operation": {
-              "type": "string",
+              "description": "Mathematical operation to perform",
               "enum": [
                 "add",
                 "subtract",
                 "multiply",
                 "divide"
               ],
-              "description": "Mathematical operation to perform"
+              "type": "string"
             },
             "x": {
-              "type": "number",
-              "description": "First operand"
+              "description": "First operand",
+              "type": "number"
             },
             "y": {
-              "type": "number",
-              "description": "Second operand"
+              "description": "Second operand",
+              "type": "number"
             }
           },
           "required": [
             "operation",
             "x",
             "y"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "math_service__calculator",
         "score": 0.4000000059604645
       }
     ]
@@ -1704,25 +1704,25 @@ async fn search_deduplication_test() {
     insta::assert_json_snapshot!(result, @r#"
     [
       {
-        "name": "math_service__adder",
         "description": "Adds two numbers together",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First number to add"
+              "description": "First number to add",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second number to add"
+              "description": "Second number to add",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "math_service__adder",
         "score": 0.6000000238418579
       }
     ]

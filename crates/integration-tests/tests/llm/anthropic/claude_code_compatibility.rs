@@ -64,23 +64,23 @@ async fn claude_code_mixed_content_formats() {
         ".id" => "[id]",
         ".model" => "[model]",
         ".usage" => "[usage]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "text",
-          "text": "Test response to: hey, what's up"
+          "text": "Test response to: hey, what's up",
+          "type": "text"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
-    "###);
+    "#);
 }
 
 /// Test that we handle conversations with alternating message content formats
@@ -145,21 +145,21 @@ async fn claude_code_conversation_flow() {
         ".id" => "[id]",
         ".model" => "[model]",
         ".usage" => "[usage]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "type": "message",
-      "role": "assistant",
       "content": [
         {
-          "type": "text",
-          "text": "Test response to: what's the story, morning glory?"
+          "text": "Test response to: what's the story, morning glory?",
+          "type": "text"
         }
       ],
+      "id": "[id]",
       "model": "[model]",
+      "role": "assistant",
       "stop_reason": null,
       "stop_sequence": null,
+      "type": "message",
       "usage": "[usage]"
     }
-    "###);
+    "#);
 }

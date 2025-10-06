@@ -86,44 +86,44 @@ async fn x_real_ip() {
       {
         "ip": "192.168.1.1",
         "request": 1,
-        "status": 200,
-        "retry_after": null
+        "retry_after": null,
+        "status": 200
       },
       {
         "ip": "192.168.1.1",
         "request": 2,
-        "status": 200,
-        "retry_after": null
+        "retry_after": null,
+        "status": 200
       },
       {
         "ip": "192.168.1.1",
         "request": 3,
-        "status": 429,
-        "retry_after": null
+        "retry_after": null,
+        "status": 429
       },
       {
         "ip": "192.168.1.1",
         "request": 4,
-        "status": 429,
-        "retry_after": null
+        "retry_after": null,
+        "status": 429
       },
       {
         "ip": "192.168.1.2",
         "request": 1,
-        "status": 406,
-        "retry_after": null
+        "retry_after": null,
+        "status": 406
       },
       {
         "ip": "192.168.1.2",
         "request": 2,
-        "status": 406,
-        "retry_after": null
+        "retry_after": null,
+        "status": 406
       },
       {
         "ip": "192.168.1.2",
         "request": 3,
-        "status": 429,
-        "retry_after": null
+        "retry_after": null,
+        "status": 429
       }
     ]
     "#);
@@ -231,52 +231,52 @@ async fn x_forwarded_for_ip() {
     insta::assert_json_snapshot!(results, @r#"
     [
       {
+        "ip": "10.0.0.1",
         "request": 1,
-        "ip": "10.0.0.1",
-        "status": 406,
-        "retry_after": null
+        "retry_after": null,
+        "status": 406
       },
       {
+        "ip": "10.0.0.1",
         "request": 2,
-        "ip": "10.0.0.1",
-        "status": 406,
-        "retry_after": null
+        "retry_after": null,
+        "status": 406
       },
       {
+        "ip": "10.0.0.1",
         "request": 3,
-        "ip": "10.0.0.1",
-        "status": 429,
-        "retry_after": null
+        "retry_after": null,
+        "status": 429
       },
       {
+        "ip": "10.0.0.1",
         "request": 4,
-        "ip": "10.0.0.1",
-        "status": 429,
-        "retry_after": null
+        "retry_after": null,
+        "status": 429
       },
       {
+        "ip": "10.0.0.1",
         "request": 5,
-        "ip": "10.0.0.1",
-        "status": 429,
-        "retry_after": null
+        "retry_after": null,
+        "status": 429
       },
       {
+        "ip": "10.0.0.2",
         "request": 1,
-        "ip": "10.0.0.2",
-        "status": 406,
-        "retry_after": null
+        "retry_after": null,
+        "status": 406
       },
       {
+        "ip": "10.0.0.2",
         "request": 2,
-        "ip": "10.0.0.2",
-        "status": 406,
-        "retry_after": null
+        "retry_after": null,
+        "status": 406
       },
       {
-        "request": 3,
         "ip": "10.0.0.2",
-        "status": 429,
-        "retry_after": null
+        "request": 3,
+        "retry_after": null,
+        "status": 429
       }
     ]
     "#);
@@ -356,28 +356,28 @@ async fn default_connection_based_ip() {
     [
       {
         "request": 1,
-        "status": 406,
-        "retry_after": null
+        "retry_after": null,
+        "status": 406
       },
       {
         "request": 2,
-        "status": 406,
-        "retry_after": null
+        "retry_after": null,
+        "status": 406
       },
       {
         "request": 3,
-        "status": 429,
-        "retry_after": null
+        "retry_after": null,
+        "status": 429
       },
       {
         "request": 4,
-        "status": 429,
-        "retry_after": null
+        "retry_after": null,
+        "status": 429
       },
       {
         "request": 5,
-        "status": 429,
-        "retry_after": null
+        "retry_after": null,
+        "status": 429
       }
     ]
     "#);

@@ -45,29 +45,29 @@ async fn rate_limiting_works_with_filter_routing() {
     insta::assert_json_snapshot!(response, {
         ".id" => "[id]",
         ".created" => "[created]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "gpt-4o-mini",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Response"
-          },
-          "finish_reason": "stop"
+            "content": "Response",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "gpt-4o-mini",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
-    "###);
+    "#);
 
     // Repeated filter requests should eventually exhaust the provider-level bucket
     let mut filter_rate_limited_body = None;
@@ -87,15 +87,15 @@ async fn rate_limiting_works_with_filter_routing() {
     let filter_rate_limited_body =
         filter_rate_limited_body.expect("expected filter-based routing to hit the provider token limit");
 
-    insta::assert_json_snapshot!(filter_rate_limited_body, @r###"
+    insta::assert_json_snapshot!(filter_rate_limited_body, @r#"
     {
       "error": {
+        "code": 429,
         "message": "Rate limit exceeded: Token rate limit exceeded. Please try again later.",
-        "type": "rate_limit_error",
-        "code": 429
+        "type": "rate_limit_error"
       }
     }
-    "###);
+    "#);
 
     // Legacy-prefixed requests must share the same bucket and remain rate limited
     let legacy_request = json!({
@@ -110,15 +110,15 @@ async fn rate_limiting_works_with_filter_routing() {
         .await;
 
     assert_eq!(status, 429);
-    insta::assert_json_snapshot!(legacy_body, @r###"
+    insta::assert_json_snapshot!(legacy_body, @r#"
     {
       "error": {
+        "code": 429,
         "message": "Rate limit exceeded: Token rate limit exceeded. Please try again later.",
-        "type": "rate_limit_error",
-        "code": 429
+        "type": "rate_limit_error"
       }
     }
-    "###);
+    "#);
 
     // Different user should work
     let request = json!({
@@ -136,29 +136,29 @@ async fn rate_limiting_works_with_filter_routing() {
     insta::assert_json_snapshot!(response, {
         ".id" => "[id]",
         ".created" => "[created]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "gpt-4o-mini",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Response"
-          },
-          "finish_reason": "stop"
+            "content": "Response",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "gpt-4o-mini",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
-    "###);
+    "#);
 }
 
 #[tokio::test]
@@ -217,15 +217,15 @@ async fn rate_limiting_with_model_specific_limits() {
     let model_rate_limited_body =
         model_rate_limited_body.expect("expected model-specific token limit to trigger for gpt-4o");
 
-    insta::assert_json_snapshot!(model_rate_limited_body, @r###"
+    insta::assert_json_snapshot!(model_rate_limited_body, @r#"
     {
       "error": {
+        "code": 429,
         "message": "Rate limit exceeded: Token rate limit exceeded. Please try again later.",
-        "type": "rate_limit_error",
-        "code": 429
+        "type": "rate_limit_error"
       }
     }
-    "###);
+    "#);
 
     // Test that other filter-matched models use provider default (1000 tokens)
     let small_content = "Hello, world!";
@@ -244,27 +244,27 @@ async fn rate_limiting_with_model_specific_limits() {
     insta::assert_json_snapshot!(response, {
         ".id" => "[id]",
         ".created" => "[created]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "gpt-3.5-turbo",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Response"
-          },
-          "finish_reason": "stop"
+            "content": "Response",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "gpt-3.5-turbo",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
-    "###);
+    "#);
 }

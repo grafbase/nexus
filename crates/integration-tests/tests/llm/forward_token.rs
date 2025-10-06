@@ -37,23 +37,23 @@ async fn forward_token_disabled_uses_configured_key() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "test_openai/gpt-4",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hi from configured key!"
-          },
-          "finish_reason": "stop"
+            "content": "Hi from configured key!",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "test_openai/gpt-4",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -98,23 +98,23 @@ async fn forward_token_enabled_uses_provided_key() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "test_openai_forward_token/gpt-4",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hi from token forwarding!"
-          },
-          "finish_reason": "stop"
+            "content": "Hi from token forwarding!",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "test_openai_forward_token/gpt-4",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -159,23 +159,23 @@ async fn forward_token_enabled_falls_back_to_configured_key() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "test_openai_fallback/gpt-4",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hi from fallback!"
-          },
-          "finish_reason": "stop"
+            "content": "Hi from fallback!",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "test_openai_fallback/gpt-4",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -210,9 +210,9 @@ async fn forward_token_enabled_no_keys_returns_error() {
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
+        "code": 401,
         "message": "Authentication failed: Token forwarding is enabled but no API key was provided",
-        "type": "authentication_error",
-        "code": 401
+        "type": "authentication_error"
       }
     }
     "#);
@@ -257,23 +257,23 @@ async fn forward_token_works_with_anthropic() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "test_anthropic_forward_token/claude-3-opus-20240229",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hi from Anthropic token forwarding!"
-          },
-          "finish_reason": "stop"
+            "content": "Hi from Anthropic token forwarding!",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "test_anthropic_forward_token/claude-3-opus-20240229",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -318,23 +318,23 @@ async fn forward_token_works_with_google() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "test_google_forward_token/gemini-pro",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hi from Google token forwarding!"
-          },
-          "finish_reason": "stop"
+            "content": "Hi from Google token forwarding!",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "test_google_forward_token/gemini-pro",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -370,23 +370,23 @@ async fn forward_token_disabled_ignores_header() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "test_openai/gpt-4",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Using configured key"
-          },
-          "finish_reason": "stop"
+            "content": "Using configured key",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "test_openai/gpt-4",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }

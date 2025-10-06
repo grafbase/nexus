@@ -214,9 +214,9 @@ async fn rate_limit_exceeded_response_format() {
     insta::assert_json_snapshot!(body, @r#"
     {
       "error": {
+        "code": 429,
         "message": "Rate limit exceeded: Token rate limit exceeded. Please try again later.",
-        "type": "rate_limit_error",
-        "code": 429
+        "type": "rate_limit_error"
       }
     }
     "#);

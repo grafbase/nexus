@@ -41,38 +41,23 @@ async fn search_tool_output_schema_validation() {
     // 4. Proper $defs structure for SearchResult type reference
     insta::assert_json_snapshot!(output_schema, @r##"
     {
-      "type": "object",
-      "properties": {
-        "results": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/SearchResult"
-          },
-          "description": "The list of search results"
-        }
-      },
-      "required": [
-        "results"
-      ],
-      "title": "SearchResponse",
       "$defs": {
         "SearchResult": {
-          "type": "object",
           "properties": {
-            "name": {
-              "type": "string",
-              "description": "The name of the tool (format: \"server__tool\")"
-            },
             "description": {
-              "type": "string",
-              "description": "Description of what the tool does"
+              "description": "Description of what the tool does",
+              "type": "string"
             },
             "input_schema": {
               "description": "The input schema for the tool's parameters"
             },
+            "name": {
+              "description": "The name of the tool (format: \"server__tool\")",
+              "type": "string"
+            },
             "score": {
-              "type": "number",
-              "description": "The relevance score for this result (higher is more relevant)"
+              "description": "The relevance score for this result (higher is more relevant)",
+              "type": "number"
             }
           },
           "required": [
@@ -80,9 +65,24 @@ async fn search_tool_output_schema_validation() {
             "description",
             "input_schema",
             "score"
-          ]
+          ],
+          "type": "object"
         }
-      }
+      },
+      "properties": {
+        "results": {
+          "description": "The list of search results",
+          "items": {
+            "$ref": "#/$defs/SearchResult"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "results"
+      ],
+      "title": "SearchResponse",
+      "type": "object"
     }
     "##);
 }

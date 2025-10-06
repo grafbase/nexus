@@ -40,14 +40,14 @@ async fn count_tokens_returns_success() {
 
     let body = server.count_tokens(request.clone()).send().await;
 
-    insta::assert_json_snapshot!(body, @r###"
+    insta::assert_json_snapshot!(body, @r#"
     {
-      "type": "message_count_tokens_result",
-      "input_tokens": 8,
       "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 0
+      "cache_read_input_tokens": 0,
+      "input_tokens": 8,
+      "type": "message_count_tokens_result"
     }
-    "###);
+    "#);
 
     let headers = header_recorder.all_headers();
     assert!(
@@ -65,14 +65,14 @@ async fn count_tokens_returns_success() {
     let (status, body) = server.count_tokens(request).send_raw().await;
 
     assert_eq!(status, 200);
-    insta::assert_json_snapshot!(body, @r###"
+    insta::assert_json_snapshot!(body, @r#"
     {
-      "type": "message_count_tokens_result",
-      "input_tokens": 8,
       "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 0
+      "cache_read_input_tokens": 0,
+      "input_tokens": 8,
+      "type": "message_count_tokens_result"
     }
-    "###);
+    "#);
 }
 
 #[tokio::test]
@@ -112,11 +112,11 @@ async fn count_tokens_rejects_non_anthropic_provider() {
     assert_eq!(status, 500);
     insta::assert_json_snapshot!(body, @r#"
     {
-      "type": "error",
       "error": {
-        "type": "internal_error",
-        "message": "Provider 'openai' does not implement token counting"
-      }
+        "message": "Provider 'openai' does not implement token counting",
+        "type": "internal_error"
+      },
+      "type": "error"
     }
     "#);
 }

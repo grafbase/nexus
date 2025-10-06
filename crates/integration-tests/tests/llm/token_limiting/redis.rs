@@ -68,9 +68,9 @@ async fn rate_limiting_with_headers() {
     }, @r#"
     {
       "error": {
+        "code": 429,
         "message": "[rate limit message]",
-        "type": "rate_limit_error",
-        "code": 429
+        "type": "rate_limit_error"
       }
     }
     "#);

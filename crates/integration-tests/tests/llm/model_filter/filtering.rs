@@ -60,39 +60,39 @@ async fn models_filtered_by_regex_and_static_models_included() {
         ".data[].created" => "[created]",
     }, @r#"
     {
-      "object": "list",
       "data": [
         {
+          "created": "[created]",
           "id": "gpt-3.5-turbo",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "gpt-4",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "gpt-4-turbo",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "openai/custom-gpt",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "openai/legacy-model",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         }
-      ]
+      ],
+      "object": "list"
     }
     "#);
 }
@@ -147,39 +147,39 @@ async fn multiple_providers_with_filters_and_static_models() {
         ".data[].created" => "[created]",
     }, @r#"
     {
-      "object": "list",
       "data": [
         {
+          "created": "[created]",
           "id": "claude-3-opus",
           "object": "model",
-          "created": "[created]",
           "owned_by": "anthropic"
         },
         {
+          "created": "[created]",
           "id": "gpt-3.5-turbo",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "gpt-4",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "anthropic/custom-anthropic",
           "object": "model",
-          "created": "[created]",
           "owned_by": "anthropic"
         },
         {
+          "created": "[created]",
           "id": "openai/custom-openai",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         }
-      ]
+      ],
+      "object": "list"
     }
     "#);
 }
@@ -212,27 +212,27 @@ async fn no_filter_only_static_models() {
         ".data[].created" => "[created]",
     }, @r#"
     {
-      "object": "list",
       "data": [
         {
+          "created": "[created]",
           "id": "custom/model-a",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "custom/model-b",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "custom/model-c",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         }
-      ]
+      ],
+      "object": "list"
     }
     "#);
 }

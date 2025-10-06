@@ -54,25 +54,25 @@ async fn google_strips_schema_field_from_tools() {
         ".id" => "[id]",
         ".created" => "[created]",
         ".usage" => "[usage]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "google/gemini-2.0-flash",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hello! I'm Gemini, a test assistant. How can I help you today?"
-          },
-          "finish_reason": "stop"
+            "content": "Hello! I'm Gemini, a test assistant. How can I help you today?",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "google/gemini-2.0-flash",
+      "object": "chat.completion",
       "usage": "[usage]"
     }
-    "###);
+    "#);
 }
 
 /// Test that nested $schema fields are also stripped
@@ -141,23 +141,23 @@ async fn google_strips_nested_schema_fields() {
         ".id" => "[id]",
         ".created" => "[created]",
         ".usage" => "[usage]"
-    }, @r###"
+    }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "google/gemini-2.0-flash",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Test response to: Test nested schemas"
-          },
-          "finish_reason": "stop"
+            "content": "Test response to: Test nested schemas",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "google/gemini-2.0-flash",
+      "object": "chat.completion",
       "usage": "[usage]"
     }
-    "###);
+    "#);
 }

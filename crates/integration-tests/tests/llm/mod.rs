@@ -78,23 +78,23 @@ async fn multiple_providers_work_together() {
         ".id" => "chatcmpl-test-[uuid]"
     }, @r#"
     {
-      "id": "chatcmpl-test-[uuid]",
-      "object": "chat.completion",
-      "created": 1677651200,
-      "model": "openai/gpt-3.5-turbo",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hello! I'm a test LLM assistant. How can I help you today?"
-          },
-          "finish_reason": "stop"
+            "content": "Hello! I'm a test LLM assistant. How can I help you today?",
+            "role": "assistant"
+          }
         }
       ],
+      "created": 1677651200,
+      "id": "chatcmpl-test-[uuid]",
+      "model": "openai/gpt-3.5-turbo",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -113,23 +113,23 @@ async fn multiple_providers_work_together() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "msg_[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "anthropic/claude-3-5-sonnet-20241022",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Test response to: Hello from Anthropic"
-          },
-          "finish_reason": "stop"
+            "content": "Test response to: Hello from Anthropic",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "msg_[id]",
+      "model": "anthropic/claude-3-5-sonnet-20241022",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -148,23 +148,23 @@ async fn multiple_providers_work_together() {
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion",
-      "created": "[created]",
-      "model": "google/gemini-1.5-flash",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hello! I'm Gemini, a test assistant. How can I help you today?"
-          },
-          "finish_reason": "stop"
+            "content": "Hello! I'm Gemini, a test assistant. How can I help you today?",
+            "role": "assistant"
+          }
         }
       ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "google/gemini-1.5-flash",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }

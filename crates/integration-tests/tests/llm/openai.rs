@@ -30,39 +30,39 @@ async fn list_models() {
         ".data[].created" => "[created]"
     }, @r#"
     {
-      "object": "list",
       "data": [
         {
+          "created": "[created]",
           "id": "gpt-3.5-turbo",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "gpt-4",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "gpt-4-turbo",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "test_openai/gpt-3.5-turbo",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "test_openai/gpt-4",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         }
-      ]
+      ],
+      "object": "list"
     }
     "#);
 }
@@ -87,39 +87,39 @@ path = "/custom"
         ".data[].created" => "[created]"
     }, @r#"
     {
-      "object": "list",
       "data": [
         {
+          "created": "[created]",
           "id": "gpt-3.5-turbo",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "gpt-4",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "gpt-4-turbo",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "test_openai/gpt-3.5-turbo",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         },
         {
+          "created": "[created]",
           "id": "test_openai/gpt-4",
           "object": "model",
-          "created": "[created]",
           "owned_by": "openai"
         }
-      ]
+      ],
+      "object": "list"
     }
     "#);
 }
@@ -147,23 +147,23 @@ async fn chat_completions() {
         ".id" => "chatcmpl-test-[uuid]"
     }, @r#"
     {
-      "id": "chatcmpl-test-[uuid]",
-      "object": "chat.completion",
-      "created": 1677651200,
-      "model": "test_openai/gpt-3.5-turbo",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hello! I'm a test LLM assistant. How can I help you today?"
-          },
-          "finish_reason": "stop"
+            "content": "Hello! I'm a test LLM assistant. How can I help you today?",
+            "role": "assistant"
+          }
         }
       ],
+      "created": 1677651200,
+      "id": "chatcmpl-test-[uuid]",
+      "model": "test_openai/gpt-3.5-turbo",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -192,23 +192,23 @@ async fn chat_completions_simple() {
         ".id" => "chatcmpl-test-[uuid]"
     }, @r#"
     {
-      "id": "chatcmpl-test-[uuid]",
-      "object": "chat.completion",
-      "created": 1677651200,
-      "model": "test_openai/gpt-3.5-turbo",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "Hello! I'm a test LLM assistant. How can I help you today?"
-          },
-          "finish_reason": "stop"
+            "content": "Hello! I'm a test LLM assistant. How can I help you today?",
+            "role": "assistant"
+          }
         }
       ],
+      "created": 1677651200,
+      "id": "chatcmpl-test-[uuid]",
+      "model": "test_openai/gpt-3.5-turbo",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -244,23 +244,23 @@ async fn chat_completions_with_parameters() {
         ".id" => "chatcmpl-test-[uuid]"
     }, @r#"
     {
-      "id": "chatcmpl-test-[uuid]",
-      "object": "chat.completion",
-      "created": 1677651200,
-      "model": "test_openai/gpt-3.5-turbo",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "This is a creative response due to high temperature"
-          },
-          "finish_reason": "stop"
+            "content": "This is a creative response due to high temperature",
+            "role": "assistant"
+          }
         }
       ],
+      "created": 1677651200,
+      "id": "chatcmpl-test-[uuid]",
+      "model": "test_openai/gpt-3.5-turbo",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -310,20 +310,20 @@ async fn streaming_includes_usage_in_final_chunk() {
         ".id" => "[id]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion.chunk",
-      "created": 1677651200,
-      "model": "openai/gpt-4",
       "choices": [
         {
-          "index": 0,
           "delta": {},
-          "finish_reason": "stop"
+          "finish_reason": "stop",
+          "index": 0
         }
       ],
+      "created": 1677651200,
+      "id": "[id]",
+      "model": "openai/gpt-4",
+      "object": "chat.completion.chunk",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }
@@ -432,19 +432,19 @@ path = "/llm"
         ".created" => "[created]"
     }, @r#"
     {
-      "id": "[id]",
-      "object": "chat.completion.chunk",
-      "created": "[created]",
-      "model": "openai/gpt-3.5-turbo",
       "choices": [
         {
-          "index": 0,
           "delta": {
-            "role": "assistant",
-            "content": "Why don't scientists trust atoms? "
-          }
+            "content": "Why don't scientists trust atoms? ",
+            "role": "assistant"
+          },
+          "index": 0
         }
-      ]
+      ],
+      "created": "[created]",
+      "id": "[id]",
+      "model": "openai/gpt-3.5-turbo",
+      "object": "chat.completion.chunk"
     }
     "#);
 
@@ -523,23 +523,23 @@ async fn model_filter_routing_respects_config_order() {
         ".id" => "chatcmpl-test-[uuid]",
     }, @r#"
     {
-      "id": "chatcmpl-test-[uuid]",
-      "object": "chat.completion",
-      "created": 1677651200,
-      "model": "gpt-4-super",
       "choices": [
         {
+          "finish_reason": "stop",
           "index": 0,
           "message": {
-            "role": "assistant",
-            "content": "alpha handled"
-          },
-          "finish_reason": "stop"
+            "content": "alpha handled",
+            "role": "assistant"
+          }
         }
       ],
+      "created": 1677651200,
+      "id": "chatcmpl-test-[uuid]",
+      "model": "gpt-4-super",
+      "object": "chat.completion",
       "usage": {
-        "prompt_tokens": 10,
         "completion_tokens": 15,
+        "prompt_tokens": 10,
         "total_tokens": 25
       }
     }

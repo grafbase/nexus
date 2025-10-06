@@ -522,45 +522,45 @@ mod tests {
         let anthropic_request = AnthropicRequest::from(request);
         let value = serde_json::to_value(&anthropic_request).unwrap();
 
-        assert_json_snapshot!(value, @r###"
+        assert_json_snapshot!(value, @r#"
         {
-          "model": "anthropic/claude-3-5-haiku-latest",
+          "max_tokens": 200,
           "messages": [
             {
-              "role": "user",
-              "content": "List files in crates/config"
+              "content": "List files in crates/config",
+              "role": "user"
             },
             {
-              "role": "assistant",
               "content": [
                 {
-                  "type": "text",
-                  "text": "Let me inspect the repository."
+                  "text": "Let me inspect the repository.",
+                  "type": "text"
                 },
                 {
-                  "type": "tool_use",
                   "id": "toolu_list_files",
-                  "name": "list_files",
                   "input": {
                     "path": "crates/config"
-                  }
+                  },
+                  "name": "list_files",
+                  "type": "tool_use"
                 }
-              ]
+              ],
+              "role": "assistant"
             },
             {
-              "role": "user",
               "content": [
                 {
-                  "type": "tool_result",
+                  "content": "[\"Cargo.toml\", \"src/lib.rs\"]",
                   "tool_use_id": "toolu_list_files",
-                  "content": "[\"Cargo.toml\", \"src/lib.rs\"]"
+                  "type": "tool_result"
                 }
-              ]
+              ],
+              "role": "user"
             }
           ],
-          "max_tokens": 200
+          "model": "anthropic/claude-3-5-haiku-latest"
         }
-        "###);
+        "#);
     }
 
     #[test]

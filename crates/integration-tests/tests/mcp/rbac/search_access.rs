@@ -43,37 +43,37 @@ async fn search_returns_group_specific_tools() {
     insta::assert_json_snapshot!(premium_search, @r#"
     [
       {
-        "name": "premium_only__echo",
         "description": "Echoes back the input text message verbatim for testing and debugging purposes",
         "input_schema": {
-          "type": "object",
           "properties": {
             "text": {
-              "type": "string",
-              "description": "Text message to echo back verbatim"
+              "description": "Text message to echo back verbatim",
+              "type": "string"
             }
           },
           "required": [
             "text"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "premium_only__echo",
         "score": 3.842801570892334
       },
       {
-        "name": "unrestricted__echo",
         "description": "Echoes back the input text message verbatim for testing and debugging purposes",
         "input_schema": {
-          "type": "object",
           "properties": {
             "text": {
-              "type": "string",
-              "description": "Text message to echo back verbatim"
+              "description": "Text message to echo back verbatim",
+              "type": "string"
             }
           },
           "required": [
             "text"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "unrestricted__echo",
         "score": 3.842801570892334
       }
     ]
@@ -91,37 +91,37 @@ async fn search_returns_group_specific_tools() {
     insta::assert_json_snapshot!(basic_search, @r#"
     [
       {
-        "name": "basic_only__echo",
         "description": "Echoes back the input text message verbatim for testing and debugging purposes",
         "input_schema": {
-          "type": "object",
           "properties": {
             "text": {
-              "type": "string",
-              "description": "Text message to echo back verbatim"
+              "description": "Text message to echo back verbatim",
+              "type": "string"
             }
           },
           "required": [
             "text"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "basic_only__echo",
         "score": 3.842801570892334
       },
       {
-        "name": "unrestricted__echo",
         "description": "Echoes back the input text message verbatim for testing and debugging purposes",
         "input_schema": {
-          "type": "object",
           "properties": {
             "text": {
-              "type": "string",
-              "description": "Text message to echo back verbatim"
+              "description": "Text message to echo back verbatim",
+              "type": "string"
             }
           },
           "required": [
             "text"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "unrestricted__echo",
         "score": 3.842801570892334
       }
     ]
@@ -188,31 +188,31 @@ async fn search_respects_tool_level_overrides() {
     insta::assert_json_snapshot!(basic_search, @r#"
     [
       {
-        "name": "text__text_processor",
         "description": "Processes text with various string manipulation operations like case conversion and reversal",
         "input_schema": {
-          "type": "object",
           "properties": {
-            "text": {
-              "type": "string",
-              "description": "Input text to process"
-            },
             "action": {
-              "type": "string",
+              "description": "Action to perform on the text",
               "enum": [
                 "uppercase",
                 "lowercase",
                 "reverse",
                 "word_count"
               ],
-              "description": "Action to perform on the text"
+              "type": "string"
+            },
+            "text": {
+              "description": "Input text to process",
+              "type": "string"
             }
           },
           "required": [
             "text",
             "action"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "text__text_processor",
         "score": 0.4000000059604645
       }
     ]
@@ -231,36 +231,36 @@ async fn search_respects_tool_level_overrides() {
     insta::assert_json_snapshot!(premium_search, @r#"
     [
       {
-        "name": "calc__calculator",
         "description": "Performs basic mathematical calculations including addition, subtraction, multiplication and division with advanced error handling for edge cases",
         "input_schema": {
-          "type": "object",
           "properties": {
             "operation": {
-              "type": "string",
+              "description": "Mathematical operation to perform",
               "enum": [
                 "add",
                 "subtract",
                 "multiply",
                 "divide"
               ],
-              "description": "Mathematical operation to perform"
+              "type": "string"
             },
             "x": {
-              "type": "number",
-              "description": "First operand"
+              "description": "First operand",
+              "type": "number"
             },
             "y": {
-              "type": "number",
-              "description": "Second operand"
+              "description": "Second operand",
+              "type": "number"
             }
           },
           "required": [
             "operation",
             "x",
             "y"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "calc__calculator",
         "score": 0.8630462884902954
       }
     ]
@@ -301,68 +301,68 @@ async fn empty_search_respects_access_control() {
     insta::assert_json_snapshot!(premium_search, @r#"
     [
       {
-        "name": "no_suspended__add",
         "description": "Performs mathematical addition operation on two numerical values and returns the sum",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First numerical value for addition"
+              "description": "First numerical value for addition",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second numerical value for addition"
+              "description": "Second numerical value for addition",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "no_suspended__add",
         "score": 0.30000001192092896
       },
       {
-        "name": "no_suspended__echo",
         "description": "Echoes back the input text message verbatim for testing and debugging purposes",
         "input_schema": {
-          "type": "object",
           "properties": {
             "text": {
-              "type": "string",
-              "description": "Text message to echo back verbatim"
+              "description": "Text message to echo back verbatim",
+              "type": "string"
             }
           },
           "required": [
             "text"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "no_suspended__echo",
         "score": 0.30000001192092896
       },
       {
-        "name": "no_suspended__environment",
         "description": "Retrieves system environment variable values from the operating system configuration",
         "input_schema": {
-          "type": "object",
           "properties": {
             "var": {
-              "type": "string",
-              "description": "System environment variable name to retrieve"
+              "description": "System environment variable name to retrieve",
+              "type": "string"
             }
           },
           "required": [
             "var"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "no_suspended__environment",
         "score": 0.30000001192092896
       },
       {
-        "name": "no_suspended__fail",
         "description": "Always fails for testing error handling",
         "input_schema": {
-          "type": "object",
-          "properties": {}
+          "properties": {},
+          "type": "object"
         },
+        "name": "no_suspended__fail",
         "score": 0.30000001192092896
       }
     ]
@@ -426,37 +426,37 @@ async fn search_complex_allow_deny_rules() {
     insta::assert_json_snapshot!(premium_search, @r#"
     [
       {
-        "name": "general_features__echo",
         "description": "Echoes back the input text message verbatim for testing and debugging purposes",
         "input_schema": {
-          "type": "object",
           "properties": {
             "text": {
-              "type": "string",
-              "description": "Text message to echo back verbatim"
+              "description": "Text message to echo back verbatim",
+              "type": "string"
             }
           },
           "required": [
             "text"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "general_features__echo",
         "score": 3.842801570892334
       },
       {
-        "name": "premium_features__echo",
         "description": "Echoes back the input text message verbatim for testing and debugging purposes",
         "input_schema": {
-          "type": "object",
           "properties": {
             "text": {
-              "type": "string",
-              "description": "Text message to echo back verbatim"
+              "description": "Text message to echo back verbatim",
+              "type": "string"
             }
           },
           "required": [
             "text"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "premium_features__echo",
         "score": 3.842801570892334
       }
     ]
@@ -474,37 +474,37 @@ async fn search_complex_allow_deny_rules() {
     insta::assert_json_snapshot!(basic_search, @r#"
     [
       {
-        "name": "general_features__echo",
         "description": "Echoes back the input text message verbatim for testing and debugging purposes",
         "input_schema": {
-          "type": "object",
           "properties": {
             "text": {
-              "type": "string",
-              "description": "Text message to echo back verbatim"
+              "description": "Text message to echo back verbatim",
+              "type": "string"
             }
           },
           "required": [
             "text"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "general_features__echo",
         "score": 3.842801570892334
       },
       {
-        "name": "limited_features__echo",
         "description": "Echoes back the input text message verbatim for testing and debugging purposes",
         "input_schema": {
-          "type": "object",
           "properties": {
             "text": {
-              "type": "string",
-              "description": "Text message to echo back verbatim"
+              "description": "Text message to echo back verbatim",
+              "type": "string"
             }
           },
           "required": [
             "text"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "limited_features__echo",
         "score": 3.842801570892334
       }
     ]
@@ -560,25 +560,25 @@ async fn search_group_isolation_verified() {
     insta::assert_json_snapshot!(group_a_search, @r#"
     [
       {
-        "name": "group_a_only__add",
         "description": "Performs mathematical addition operation on two numerical values and returns the sum",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First numerical value for addition"
+              "description": "First numerical value for addition",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second numerical value for addition"
+              "description": "Second numerical value for addition",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "group_a_only__add",
         "score": 3.611918449401855
       }
     ]
@@ -596,25 +596,25 @@ async fn search_group_isolation_verified() {
     insta::assert_json_snapshot!(group_b_search, @r#"
     [
       {
-        "name": "group_b_only__add",
         "description": "Performs mathematical addition operation on two numerical values and returns the sum",
         "input_schema": {
-          "type": "object",
           "properties": {
             "a": {
-              "type": "number",
-              "description": "First numerical value for addition"
+              "description": "First numerical value for addition",
+              "type": "number"
             },
             "b": {
-              "type": "number",
-              "description": "Second numerical value for addition"
+              "description": "Second numerical value for addition",
+              "type": "number"
             }
           },
           "required": [
             "a",
             "b"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "group_b_only__add",
         "score": 3.611918449401855
       }
     ]
@@ -666,36 +666,36 @@ async fn search_mixed_permission_levels() {
     insta::assert_json_snapshot!(basic_search, @r#"
     [
       {
-        "name": "calc__calculator",
         "description": "Performs basic mathematical calculations including addition, subtraction, multiplication and division with advanced error handling for edge cases",
         "input_schema": {
-          "type": "object",
           "properties": {
             "operation": {
-              "type": "string",
+              "description": "Mathematical operation to perform",
               "enum": [
                 "add",
                 "subtract",
                 "multiply",
                 "divide"
               ],
-              "description": "Mathematical operation to perform"
+              "type": "string"
             },
             "x": {
-              "type": "number",
-              "description": "First operand"
+              "description": "First operand",
+              "type": "number"
             },
             "y": {
-              "type": "number",
-              "description": "Second operand"
+              "description": "Second operand",
+              "type": "number"
             }
           },
           "required": [
             "operation",
             "x",
             "y"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "calc__calculator",
         "score": 0.8630462884902954
       }
     ]
@@ -713,31 +713,31 @@ async fn search_mixed_permission_levels() {
     insta::assert_json_snapshot!(premium_search, @r#"
     [
       {
-        "name": "text__text_processor",
         "description": "Processes text with various string manipulation operations like case conversion and reversal",
         "input_schema": {
-          "type": "object",
           "properties": {
-            "text": {
-              "type": "string",
-              "description": "Input text to process"
-            },
             "action": {
-              "type": "string",
+              "description": "Action to perform on the text",
               "enum": [
                 "uppercase",
                 "lowercase",
                 "reverse",
                 "word_count"
               ],
-              "description": "Action to perform on the text"
+              "type": "string"
+            },
+            "text": {
+              "description": "Input text to process",
+              "type": "string"
             }
           },
           "required": [
             "text",
             "action"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "text__text_processor",
         "score": 0.4000000059604645
       }
     ]
@@ -756,31 +756,31 @@ async fn search_mixed_permission_levels() {
     insta::assert_json_snapshot!(admin_search, @r#"
     [
       {
-        "name": "fs__filesystem",
         "description": "Manages files and directories with operations like listing, creating, and deleting",
         "input_schema": {
-          "type": "object",
           "properties": {
-            "path": {
-              "type": "string",
-              "description": "File or directory path"
-            },
             "operation": {
-              "type": "string",
+              "description": "Filesystem operation to perform",
               "enum": [
                 "list",
                 "create",
                 "delete",
                 "exists"
               ],
-              "description": "Filesystem operation to perform"
+              "type": "string"
+            },
+            "path": {
+              "description": "File or directory path",
+              "type": "string"
             }
           },
           "required": [
             "path",
             "operation"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "fs__filesystem",
         "score": 3.277707576751709
       }
     ]
@@ -808,20 +808,20 @@ async fn search_no_groups_configured() {
     insta::assert_json_snapshot!(search_result, @r#"
     [
       {
-        "name": "tools__echo",
         "description": "Echoes back the input text message verbatim for testing and debugging purposes",
         "input_schema": {
-          "type": "object",
           "properties": {
             "text": {
-              "type": "string",
-              "description": "Text message to echo back verbatim"
+              "description": "Text message to echo back verbatim",
+              "type": "string"
             }
           },
           "required": [
             "text"
-          ]
+          ],
+          "type": "object"
         },
+        "name": "tools__echo",
         "score": 3.611918449401855
       }
     ]
