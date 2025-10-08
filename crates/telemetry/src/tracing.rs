@@ -1,5 +1,7 @@
 //! Distributed tracing implementation using fastrace with OpenTelemetry export
 
+mod console;
+
 use anyhow::Context;
 use config::TelemetryConfig;
 use fastrace::Span;
@@ -13,6 +15,13 @@ use std::borrow::Cow;
 use std::time::Duration;
 
 use crate::metadata;
+
+pub use console::{
+    TraceEvent, TraceExportReceiver, TraceExportSender, TuiExponentialBucket, TuiExponentialHistogramMetric,
+    TuiExponentialHistogramPoint, TuiGaugeMetric, TuiGaugePoint, TuiHistogramMetric, TuiHistogramPoint,
+    TuiInstrumentationScope, TuiKeyValue, TuiMetric, TuiMetricData, TuiMetricNumber, TuiMetricSnapshot, TuiReporter,
+    TuiScopeMetrics, TuiSumMetric, TuiSumPoint, TuiTemporality,
+};
 
 /// Guard that ensures proper cleanup of tracing resources
 pub struct TracingGuard;
@@ -33,14 +42,23 @@ impl Drop for TracingGuard {
 }
 
 /// Initialize distributed tracing with fastrace and OpenTelemetry export
-pub async fn init_tracing(config: &TelemetryConfig) -> anyhow::Result<TracingGuard> {
+pub async fn init_tracing(
+    config: &TelemetryConfig,
+    tui_sender: Option<TraceExportSender>,
+) -> anyhow::Result<Option<TracingGuard>> {
+    if let Some(channel) = tui_sender {
+        log::info!("Tracing enabled via TUI reporter");
+        fastrace::set_reporter(TuiReporter::new(channel), CollectorConfig::default());
+        return Ok(Some(TracingGuard));
+    }
+
     log::info!("init_tracing called");
     let tracing_config = config.tracing();
 
     // Only initialize if tracing is enabled (has exporters configured)
     if !config.tracing_enabled() {
         log::debug!("Tracing is disabled (no exporters configured)");
-        return Ok(TracingGuard);
+        return Ok(None);
     }
 
     log::info!("Tracing is enabled, checking for OTLP exporter configuration");
@@ -52,7 +70,7 @@ pub async fn init_tracing(config: &TelemetryConfig) -> anyhow::Result<TracingGua
             config.global_exporters().otlp.enabled
         );
 
-        return Ok(TracingGuard);
+        return Ok(None);
     };
 
     log::debug!("Initializing tracing with OTLP export to {}", otlp_config.endpoint);
@@ -132,7 +150,7 @@ pub async fn init_tracing(config: &TelemetryConfig) -> anyhow::Result<TracingGua
         config.service_name().unwrap_or("nexus")
     );
 
-    Ok(TracingGuard)
+    Ok(Some(TracingGuard))
 }
 
 /// Creates a child span if the parent is sampled, otherwise returns a no-op span.

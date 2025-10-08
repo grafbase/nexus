@@ -2,12 +2,16 @@
 
 use jiff::{Zoned, tz::TimeZone};
 use logforth::{
-    append::{FastraceEvent, Stderr},
+    append::{Append, FastraceEvent, Stderr},
     filter::EnvFilter,
     layout::Layout,
 };
 use std::{fmt::Write, io::IsTerminal, str::FromStr, sync::Once};
-use telemetry::logs::OtelLogsAppender;
+use telemetry::{
+    logs::OtelLogsAppender,
+    tracing::{TraceEvent, TraceExportSender},
+};
+use tokio::sync::mpsc::error::TrySendError;
 
 static INIT: Once = Once::new();
 
@@ -67,49 +71,110 @@ impl Layout for UtcLayout {
 /// Initialize the logger with optional OTEL appender
 /// The log_filter should be a string like "info" or "server=debug,mcp=debug"
 pub fn init(log_filter: &str, otel_appender: Option<OtelLogsAppender>) {
-    INIT.call_once(|| {
-        // Create filters for each appender
-        let mut builder = logforth::builder();
+    let log_filter = log_filter.to_owned();
+    INIT.call_once(move || apply_logger(log_filter, otel_appender, None));
+}
 
-        // Add FastraceEvent appender
-        builder = builder.dispatch(|d| {
-            let filter = EnvFilter::from_str(log_filter)
-                .unwrap_or_else(|_| EnvFilter::from_str("info").expect("default filter should be valid"));
+/// Initialize the logger for TUI mode; replaces stderr output with a channel-based appender.
+pub fn init_with_tui(log_filter: &str, otel_appender: Option<OtelLogsAppender>, tui_channel: TraceExportSender) {
+    let log_filter = log_filter.to_owned();
+    INIT.call_once(move || apply_logger(log_filter, otel_appender, Some(tui_channel)));
+}
 
-            d.filter(filter).append(FastraceEvent::default())
+fn apply_logger(log_filter: String, otel_appender: Option<OtelLogsAppender>, tui_channel: Option<TraceExportSender>) {
+    let mut builder = logforth::builder();
+
+    // Add FastraceEvent appender
+    let filter_for_fastrace = log_filter.clone();
+    builder = builder.dispatch(move |d| {
+        let filter = EnvFilter::from_str(&filter_for_fastrace)
+            .unwrap_or_else(|_| EnvFilter::from_str("info").expect("default filter should be valid"));
+
+        d.filter(filter).append(FastraceEvent::default())
+    });
+
+    // Add OTEL appender if provided
+    if let Some(appender) = otel_appender {
+        let filter_for_otel = log_filter.clone();
+        builder = builder.dispatch(move |d| {
+            let filter_str =
+                format!("{filter_for_otel},opentelemetry=off,opentelemetry_sdk=off,opentelemetry_otlp=off");
+
+            let filter = EnvFilter::from_str(&filter_str).unwrap_or_else(|_| {
+                EnvFilter::from_str("info,opentelemetry=off,opentelemetry_sdk=off,opentelemetry_otlp=off")
+                    .expect("default filter should be valid")
+            });
+
+            d.filter(filter).append(appender)
         });
+    }
 
-        // Add OTEL appender if provided
-        if let Some(appender) = otel_appender {
-            builder = builder.dispatch(|d| {
-                // For OTEL appender, exclude opentelemetry crates to prevent recursion
-                let filter_str =
-                    format!("{log_filter},opentelemetry=off,opentelemetry_sdk=off,opentelemetry_otlp=off",);
+    match tui_channel {
+        Some(channel) => {
+            let filter_for_tui = log_filter.clone();
+            builder = builder.dispatch(move |d| {
+                let filter = EnvFilter::from_str(&filter_for_tui)
+                    .unwrap_or_else(|_| EnvFilter::from_str("info").expect("default filter should be valid"));
 
-                let filter = EnvFilter::from_str(&filter_str).unwrap_or_else(|_| {
-                    EnvFilter::from_str("info,opentelemetry=off,opentelemetry_sdk=off,opentelemetry_otlp=off")
-                        .expect("default filter should be valid")
-                });
-
-                d.filter(filter).append(appender)
+                d.filter(filter).append(TuiAppender::new(channel))
             });
         }
+        None => {
+            let filter_for_stderr = log_filter.clone();
+            builder = builder.dispatch(move |d| {
+                let filter = EnvFilter::from_str(&filter_for_stderr)
+                    .unwrap_or_else(|_| EnvFilter::from_str("info").expect("default filter should be valid"));
 
-        // Add stderr appender for local logging with UTC timestamps
-        builder = builder.dispatch(|d| {
-            let filter = EnvFilter::from_str(log_filter)
-                .unwrap_or_else(|_| EnvFilter::from_str("info").expect("default filter should be valid"));
+                let layout = if std::io::stderr().is_terminal() {
+                    UtcLayout::new()
+                } else {
+                    UtcLayout::new().no_color()
+                };
 
-            // Detect if stderr is a TTY to determine if colors should be used
-            let layout = if std::io::stderr().is_terminal() {
-                UtcLayout::new()
-            } else {
-                UtcLayout::new().no_color()
-            };
+                d.filter(filter).append(Stderr::default().with_layout(layout))
+            });
+        }
+    }
 
-            d.filter(filter).append(Stderr::default().with_layout(layout))
-        });
+    builder.apply();
+}
 
-        builder.apply();
-    });
+#[derive(Debug)]
+struct TuiAppender {
+    channel: TraceExportSender,
+}
+
+impl TuiAppender {
+    fn new(channel: TraceExportSender) -> Self {
+        Self { channel }
+    }
+}
+
+impl Append for TuiAppender {
+    fn append(
+        &self,
+        record: &log::Record<'_>,
+        _diagnostics: &[Box<dyn logforth::diagnostic::Diagnostic>],
+    ) -> anyhow::Result<()> {
+        let timestamp = Zoned::now()
+            .with_time_zone(TimeZone::UTC)
+            .strftime("%Y-%m-%dT%H:%M:%S%.6fZ");
+
+        let message = record.args().to_string();
+
+        if let Err(err) = self.channel.try_send(TraceEvent::Log {
+            timestamp: timestamp.to_string(),
+            level: record.level(),
+            message,
+        }) {
+            match err {
+                TrySendError::Full(_) => eprintln!("Dropping log event for TUI: channel full"),
+                TrySendError::Closed(_) => {
+                    // Receiver has been dropped; ignore without spamming stderr during shutdown.
+                }
+            }
+        }
+
+        Ok(())
+    }
 }

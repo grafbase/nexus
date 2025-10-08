@@ -19,6 +19,9 @@ pub struct Args {
     /// Set the style of log output
     #[arg(long, env = "NEXUS_LOG_STYLE", default_value_t = LogStyle::default())]
     pub log_style: LogStyle,
+    /// Launch the Nexus terminal user interface alongside the server
+    #[arg(long)]
+    pub tui: bool,
 }
 
 impl Args {
@@ -96,7 +99,7 @@ impl LogLevel {
             // For other levels, set the default to 'warn' for all crates,
             // but use the selected level for workspace crates
             level => format!(
-                "warn,nexus={level},server={level},mcp={level},config={level},llm={level},telemetry={level},rate_limit={level}"
+                "warn,nexus={level},server={level},mcp={level},config={level},llm={level},telemetry={level},rate_limit={level},tui={level}"
             ),
         }
     }
