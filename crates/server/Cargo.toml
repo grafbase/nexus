@@ -15,6 +15,7 @@ config.workspace = true
 context.workspace = true
 fast-glob.workspace = true
 fastrace = { workspace = true, features = ["enable"] }
+fastrace-utils.workspace = true
 http.workspace = true
 http-body.workspace = true
 jiff.workspace = true
@@ -23,6 +24,7 @@ llm.workspace = true
 log = { workspace = true, features = ["kv"] }
 logforth = { workspace = true, features = ["append-fastrace"] }
 mcp.workspace = true
+pin-project.workspace = true
 rand.workspace = true
 rate-limit.workspace = true
 reqwest = { workspace = true, features = ["rustls-tls"] }

@@ -111,7 +111,11 @@ where
         context: &RequestContext,
     ) -> crate::Result<ChatCompletionStream> {
         // Create span for the stream with all request attributes
-        let span = tracing::create_child_span_if_sampled("llm:chat_completion_stream");
+        let trace_context = context.span_context();
+        if trace_context.is_none() {
+            log::debug!("llm tracing: missing parent context for chat completion stream");
+        }
+        let span = tracing::create_child_span("llm:chat_completion_stream", trace_context);
 
         // Add request attributes
         span.add_property(|| ("gen_ai.request.model", request.model.clone()));
@@ -175,7 +179,11 @@ where
         request: UnifiedRequest,
         context: &RequestContext,
     ) -> crate::Result<CountTokensResponse> {
-        let span = tracing::create_child_span_if_sampled("llm:count_tokens");
+        let trace_context = context.span_context();
+        if trace_context.is_none() {
+            log::debug!("llm tracing: missing parent context for count tokens");
+        }
+        let span = tracing::create_child_span("llm:count_tokens", trace_context);
 
         span.add_property(|| ("gen_ai.request.model", request.model.clone()));
 

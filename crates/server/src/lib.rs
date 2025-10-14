@@ -28,6 +28,7 @@ use context::Authentication;
 use rate_limit::RateLimitLayer;
 use std::sync::Arc;
 use telemetry::TelemetryGuard;
+use telemetry::tracing::TraceExportSender;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tower_http::cors::CorsLayer;
@@ -48,6 +49,8 @@ pub struct ServeConfig {
     pub version: String,
     /// Optional oneshot sender to send back the bound address (useful if port 0 was specified)
     pub bound_addr_sender: Option<tokio::sync::oneshot::Sender<SocketAddr>>,
+    /// Optional channel to forward spans to an interactive TUI instead of OTLP
+    pub trace_export_sender: Option<TraceExportSender>,
 }
 
 /// Starts and runs the Nexus server with the provided configuration.
@@ -59,9 +62,12 @@ pub async fn serve(
         log_filter,
         version,
         bound_addr_sender,
+        trace_export_sender,
     }: ServeConfig,
 ) -> anyhow::Result<()> {
-    let _telemetry_guard = init_otel(&config, log_filter).await;
+    let force_tracing = trace_export_sender.is_some();
+    let force_metrics = force_tracing;
+    let _telemetry_guard = init_otel(&config, log_filter, trace_export_sender.clone()).await;
 
     // Log the version as the first message after logger initialization
     log::info!("Nexus {version}");
@@ -100,7 +106,10 @@ pub async fn serve(
 
         tower::ServiceBuilder::new()
             .layer(client_identification)
-            .layer(TracingLayer::with_config(Arc::new(config.telemetry.clone())))
+            .layer(TracingLayer::with_config(
+                Arc::new(config.telemetry.clone()),
+                force_tracing,
+            ))
             .layer(rate_limit)
     };
 
@@ -158,10 +167,12 @@ pub async fn serve(
 
     // Only expose LLM endpoint if enabled AND has configured providers
     if config.llm.enabled && config.llm.has_providers() {
-        let server = llm::build_server(&config).await.map_err(|err| {
-            log::error!("Failed to initialize LLM router: {err:?}");
-            anyhow!("Failed to initialize LLM router: {err}")
-        })?;
+        let server = llm::build_server(&config, force_tracing, force_metrics)
+            .await
+            .map_err(|err| {
+                log::error!("Failed to initialize LLM router: {err:?}");
+                anyhow!("Failed to initialize LLM router: {err}")
+            })?;
 
         if config.llm.protocols.openai.enabled {
             app = app.nest(
@@ -321,20 +332,33 @@ pub async fn serve(
     Ok(())
 }
 
-async fn init_otel(config: &Config, log_filter: String) -> Option<TelemetryGuard> {
+async fn init_otel(
+    config: &Config,
+    log_filter: String,
+    trace_export_sender: Option<TraceExportSender>,
+) -> Option<TelemetryGuard> {
     // Don't let telemetry code log during initialization to avoid recursion
-    match telemetry::init(&config.telemetry).await {
+    match telemetry::init(&config.telemetry, trace_export_sender.clone()).await {
         Ok(guard) => {
             // Initialize logger with OTEL appender if logs are enabled
             let otel_appender = guard.logs_appender().cloned();
-            logger::init(&log_filter, otel_appender);
+
+            if let Some(channel) = trace_export_sender {
+                logger::init_with_tui(&log_filter, otel_appender, channel);
+            } else {
+                logger::init(&log_filter, otel_appender);
+            }
 
             Some(guard)
         }
         Err(e) => {
             eprintln!("Failed to initialize telemetry: {e}");
             // Initialize logger without OTEL
-            logger::init(&log_filter, None);
+            if let Some(channel) = trace_export_sender {
+                logger::init_with_tui(&log_filter, None, channel);
+            } else {
+                logger::init(&log_filter, None);
+            }
 
             None
         }

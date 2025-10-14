@@ -19,6 +19,7 @@ server.workspace = true
 telemetry.workspace = true
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "tokio-macros"] }
 tokio-util.workspace = true
+tui = { version = "0.1.0", path = "../crates/tui" }
 
 [lints]
 workspace = true

@@ -4,6 +4,7 @@ use args::Args;
 use clap::Parser;
 use config::Config;
 use server::ServeConfig;
+use telemetry::tracing::{TraceExportReceiver, TraceExportSender};
 use tokio_util::sync::CancellationToken;
 
 mod args;
@@ -11,12 +12,14 @@ mod args;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
+    let shutdown_signal = CancellationToken::new();
+    let trace_export_sender = tui_channel(&args, shutdown_signal.clone());
+
     let config = args.config()?;
 
     // The server crate will handle telemetry and logger initialization
 
     // Create a cancellation token for graceful shutdown
-    let shutdown_signal = CancellationToken::new();
     let shutdown_signal_clone = shutdown_signal.clone();
 
     // Spawn a task to listen for shutdown signals
@@ -26,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
         shutdown_signal_clone.cancel();
     });
 
-    if let Err(e) = server::serve(serve_config(&args, config, shutdown_signal)).await {
+    if let Err(e) = server::serve(serve_config(&args, config, shutdown_signal, trace_export_sender)).await {
         log::error!("Server failed to start: {e}");
         std::process::exit(1);
     }
@@ -59,7 +62,12 @@ async fn shutdown_signal_handler() {
     }
 }
 
-fn serve_config(args: &Args, config: Config, shutdown_signal: CancellationToken) -> ServeConfig {
+fn serve_config(
+    args: &Args,
+    config: Config,
+    shutdown_signal: CancellationToken,
+    trace_export_sender: Option<TraceExportSender>,
+) -> ServeConfig {
     let listen_address = args
         .listen_address
         .or(config.server.listen_address)
@@ -75,5 +83,17 @@ fn serve_config(args: &Args, config: Config, shutdown_signal: CancellationToken)
         log_filter,
         version: env!("CARGO_PKG_VERSION").to_string(),
         bound_addr_sender: None,
+        trace_export_sender,
     }
+}
+
+fn tui_channel(args: &Args, shutdown: CancellationToken) -> Option<TraceExportSender> {
+    if !args.tui {
+        return None;
+    }
+
+    let (sender, receiver): (TraceExportSender, TraceExportReceiver) = tokio::sync::mpsc::channel(1024);
+    let version = env!("CARGO_PKG_VERSION").to_string();
+    tokio::spawn(tui::spawn(receiver, shutdown, version));
+    Some(sender)
 }

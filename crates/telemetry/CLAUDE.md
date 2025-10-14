@@ -54,7 +54,7 @@ async fn handle_request() -> Result<Response, Error> {
 
 ```rust
 // Initialize at startup, keep guard alive for app lifetime
-let _guard = telemetry::init(&config).await?;
+let _guard = telemetry::init(&config, None).await?;
 // Metrics are now available globally
 // Guard ensures proper shutdown when dropped
 ```
