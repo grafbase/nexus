@@ -2758,6 +2758,7 @@ dependencies = [
  "itertools 0.14.0",
  "log",
  "opentelemetry",
+ "pin-project",
  "rate-limit",
  "regex",
  "reqwest",

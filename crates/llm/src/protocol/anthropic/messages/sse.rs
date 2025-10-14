@@ -58,12 +58,12 @@ pub enum StreamEvent {
 pub struct MessageDelta {
     /// Top-level changes applied to the in-flight message (for example updated
     /// `stop_reason` or `stop_sequence`).
-    delta: Delta,
+    pub delta: Delta,
     #[serde(default)]
-    usage: Option<StreamUsage>,
+    pub usage: Option<StreamUsage>,
 
     #[serde(flatten)]
-    unknown_fields: UnknownFields,
+    pub unknown_fields: UnknownFields,
 }
 
 /// Information provided alongside the initial `message_start` event.

@@ -36,6 +36,18 @@ pub struct Error {
     pub unknown_fields: UnknownFields,
 }
 
+impl crate::telemetry::Error for Error {
+    fn error_type(&self) -> &str {
+        self.r#type.as_str()
+    }
+}
+
+impl crate::telemetry::Error for (http::StatusCode, Error) {
+    fn error_type(&self) -> &str {
+        self.1.r#type.as_str()
+    }
+}
+
 #[allow(dead_code)]
 impl Error {
     fn new(r#type: impl Into<String>, message: impl Into<String>) -> Self {
