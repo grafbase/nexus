@@ -1,5 +1,6 @@
 use axum::{body::Body, http::HeaderMap, response::IntoResponse as _};
 use context::{Authentication, ClientIdentity};
+use fastrace::collector::SpanContext;
 use secrecy::SecretString;
 use serde::de::DeserializeOwned;
 
@@ -30,6 +31,10 @@ pub(crate) struct RequestContext {
 impl RequestContext {
     pub fn headers(&self) -> &HeaderMap {
         &self.parts.headers
+    }
+
+    pub fn span_context(&self) -> Option<SpanContext> {
+        self.parts.extensions.get::<SpanContext>().copied()
     }
 }
 

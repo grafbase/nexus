@@ -25,9 +25,13 @@ use server::{LlmServerBuilder, Server};
 
 use crate::{error::AnthropicErrorResponse, messages::unified, request::ExtractPayload};
 
-pub async fn build_server(config: &config::Config) -> anyhow::Result<Arc<Server>> {
+pub async fn build_server(
+    config: &config::Config,
+    force_tracing: bool,
+    force_metrics: bool,
+) -> anyhow::Result<Arc<Server>> {
     let server = Arc::new(
-        LlmServerBuilder::new(config)
+        LlmServerBuilder::new(config, force_tracing, force_metrics)
             .build()
             .await
             .map_err(|e| anyhow::anyhow!("Failed to initialize LLM server: {e}"))?,

@@ -793,7 +793,8 @@ impl TestServer {
             shutdown_signal: nexus_shutdown_signal_clone,
             log_filter: "server=debug,mcp=debug,telemetry=debug,rate_limit=debug,llm=debug,config=debug,integration_tests=debug,nexus=debug".to_string(),
             version: "test".to_string(),
-            bound_addr_sender: Some(tx)
+            bound_addr_sender: Some(tx),
+            trace_export_sender: None,
         };
 
         // Start the server in a background task

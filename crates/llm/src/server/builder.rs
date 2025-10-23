@@ -19,11 +19,17 @@ use super::model_discovery::{ModelDiscovery, ModelMap};
 
 pub(crate) struct LlmServerBuilder<'a> {
     config: &'a Config,
+    force_tracing: bool,
+    force_metrics: bool,
 }
 
 impl<'a> LlmServerBuilder<'a> {
-    pub fn new(config: &'a Config) -> Self {
-        Self { config }
+    pub fn new(config: &'a Config, force_tracing: bool, force_metrics: bool) -> Self {
+        Self {
+            config,
+            force_tracing,
+            force_metrics,
+        }
     }
 
     pub async fn build(self) -> crate::Result<Server> {
@@ -113,8 +119,8 @@ impl<'a> LlmServerBuilder<'a> {
         };
 
         // Create handler with metrics and/or tracing based on configuration
-        let has_metrics = self.config.telemetry.metrics_enabled();
-        let has_tracing = self.config.telemetry.tracing_enabled();
+        let has_metrics = self.config.telemetry.metrics_enabled() || self.force_metrics;
+        let has_tracing = self.config.telemetry.tracing_enabled() || self.force_tracing;
 
         let handler = match (has_metrics, has_tracing) {
             (true, true) => {

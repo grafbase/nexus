@@ -5,13 +5,14 @@
 use axum::{body::Body, extract::MatchedPath};
 use config::TelemetryConfig;
 use context::ClientIdentity;
-use fastrace::future::FutureExt;
 use fastrace::{
     Span,
     collector::{SpanId, TraceId},
     prelude::{LocalSpan, SpanContext},
 };
+use fastrace_utils::FutureExt;
 use http::{HeaderMap, Request, Response};
+use http_body::{Body as HttpBody, Frame, SizeHint};
 use std::{
     fmt::Display,
     future::Future,
@@ -25,16 +26,21 @@ use tower::Layer;
 #[derive(Clone)]
 pub struct TracingLayer {
     telemetry_config: Option<Arc<TelemetryConfig>>,
+    force_tracing: bool,
 }
 
 impl TracingLayer {
     pub fn new() -> Self {
-        Self { telemetry_config: None }
+        Self {
+            telemetry_config: None,
+            force_tracing: false,
+        }
     }
 
-    pub fn with_config(telemetry_config: Arc<TelemetryConfig>) -> Self {
+    pub fn with_config(telemetry_config: Arc<TelemetryConfig>, force_tracing: bool) -> Self {
         Self {
             telemetry_config: Some(telemetry_config),
+            force_tracing,
         }
     }
 }
@@ -55,6 +61,7 @@ where
         TracingService {
             next,
             telemetry_config: self.telemetry_config.clone(),
+            force_tracing: self.force_tracing,
         }
     }
 }
@@ -64,6 +71,7 @@ where
 pub struct TracingService<Service> {
     next: Service,
     telemetry_config: Option<Arc<TelemetryConfig>>,
+    force_tracing: bool,
 }
 
 impl<Service, ReqBody> tower::Service<Request<ReqBody>> for TracingService<Service>
@@ -106,7 +114,11 @@ where
         let span_name = format!("{} {}", method, path);
 
         // Determine if we should sample this trace
-        let should_sample = should_sample_trace(parent_sampled, self.telemetry_config.as_ref().map(|c| c.as_ref()));
+        let should_sample = should_sample_trace(
+            parent_sampled,
+            self.telemetry_config.as_ref().map(|c| c.as_ref()),
+            self.force_tracing,
+        );
 
         log::debug!(
             "Sampling decision: should_sample={}, parent_sampled={:?}, config_present={}",
@@ -191,28 +203,33 @@ where
 
         log::debug!("Created root span '{}' with parent context", span_name);
 
-        // Create the future and wrap it with the span
         let fut = async move {
             log::debug!("Executing request within tracing span for {}", span_name);
 
-            let response = next.call(req).await?;
+            let (response_result, root) = next.call(req).in_span_and_out(root).await;
+            let response = response_result?;
 
-            // Add response attributes using LocalSpan
-            let status = response.status();
-            LocalSpan::add_property(|| ("http.response.status_code", status.as_u16().to_string()));
+            {
+                let _span_guard = root.set_local_parent();
 
-            // Set error status if response indicates an error
-            if status.is_client_error() || status.is_server_error() {
-                LocalSpan::add_property(|| ("error", "true"));
+                // Add response attributes using LocalSpan
+                let status = response.status();
+                LocalSpan::add_property(|| ("http.response.status_code", status.as_u16().to_string()));
+
+                // Set error status if response indicates an error
+                if status.is_client_error() || status.is_server_error() {
+                    LocalSpan::add_property(|| ("error", "true"));
+                }
             }
+
+            let response = response.map(move |body| Body::new(TracingBody::new(body, root)));
 
             log::debug!("Completed request for {}, span will be submitted", span_name);
 
             Ok(response)
         };
 
-        // Wrap the future with the span using in_span
-        Box::pin(fut.in_span(root))
+        Box::pin(fut)
     }
 }
 
@@ -329,7 +346,15 @@ fn parse_xray_trace_id_with_sampling(xray_str: &str) -> (Option<SpanContext>, Op
 }
 
 /// Determine if a trace should be sampled based on parent sampling and configuration
-fn should_sample_trace(parent_sampled: Option<bool>, telemetry_config: Option<&TelemetryConfig>) -> bool {
+fn should_sample_trace(
+    parent_sampled: Option<bool>,
+    telemetry_config: Option<&TelemetryConfig>,
+    force_tracing: bool,
+) -> bool {
+    if force_tracing {
+        return true;
+    }
+
     // If telemetry is not configured or disabled, don't sample
     let Some(config) = telemetry_config else {
         log::debug!("No telemetry config, not sampling");
@@ -383,4 +408,46 @@ fn should_sample_trace(parent_sampled: Option<bool>, telemetry_config: Option<&T
     let sampled = rand::rng().random_bool(sample_rate);
     log::debug!("Random sampling with rate {}, sampled={}", sample_rate, sampled);
     sampled
+}
+
+#[pin_project::pin_project]
+struct TracingBody {
+    #[pin]
+    inner: Body,
+    span: Option<Span>,
+}
+
+impl TracingBody {
+    fn new(inner: Body, span: Span) -> Self {
+        Self {
+            inner,
+            span: Some(span),
+        }
+    }
+}
+
+impl HttpBody for TracingBody {
+    type Data = <Body as HttpBody>::Data;
+    type Error = <Body as HttpBody>::Error;
+
+    fn poll_frame(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<Frame<Self::Data>, Self::Error>>> {
+        let this = self.project();
+        let _guard = this.span.as_ref().map(|span| span.set_local_parent());
+
+        match this.inner.poll_frame(cx) {
+            Poll::Ready(None) => {
+                this.span.take();
+                Poll::Ready(None)
+            }
+            other => other,
+        }
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.inner.is_end_stream()
+    }
+
+    fn size_hint(&self) -> SizeHint {
+        self.inner.size_hint()
+    }
 }

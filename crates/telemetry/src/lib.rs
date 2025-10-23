@@ -67,21 +67,18 @@ impl Drop for TelemetryGuard {
 ///
 /// Returns a guard that should be kept alive for the duration of the application.
 /// When the guard is dropped, telemetry resources will be cleaned up.
-pub async fn init(config: &TelemetryConfig) -> anyhow::Result<TelemetryGuard> {
+pub async fn init(
+    config: &TelemetryConfig,
+    trace_export_sender: Option<tracing::TraceExportSender>,
+) -> anyhow::Result<TelemetryGuard> {
     log::debug!("Telemetry config: tracing enabled = {}", config.tracing_enabled());
     log::debug!("Telemetry config: logs enabled = {}", config.logs_enabled());
 
     // Initialize metrics if enabled
-    let meter_provider = metrics::init_metrics(config).await?;
+    let meter_provider = metrics::init_metrics(config, trace_export_sender.clone()).await?;
 
     // Initialize tracing if enabled (has exporters configured)
-    let tracing_guard = if config.tracing_enabled() {
-        log::info!("Tracing is enabled, initializing tracing subsystem");
-        Some(tracing::init_tracing(config).await?)
-    } else {
-        log::debug!("Tracing is disabled (no exporters configured)");
-        None
-    };
+    let tracing_guard = tracing::init_tracing(config, trace_export_sender).await?;
 
     // Initialize logs if enabled (has exporters configured)
     let (logs_appender, logs_guard) = if config.logs_enabled() {
