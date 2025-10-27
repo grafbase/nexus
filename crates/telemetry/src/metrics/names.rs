@@ -26,6 +26,8 @@ pub const MCP_RESOURCE_REQUEST_DURATION: &str = "mcp.resource.request.duration";
 /// Follows OpenTelemetry GenAI semantic conventions
 pub const GEN_AI_CLIENT_OPERATION_DURATION: &str = "gen_ai.client.operation.duration";
 
+pub const GEN_AI_CLIENT_TOKEN_USAGE: &str = "gen_ai.client.token.usage";
+
 /// LLM input token usage counter
 /// Tracks cumulative input token consumption for LLM operations
 pub const GEN_AI_CLIENT_INPUT_TOKEN_USAGE: &str = "gen_ai.client.input.token.usage";

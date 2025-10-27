@@ -166,7 +166,7 @@ pub fn create_child_span(name: &'static str, trace_context: Option<SpanContext>)
 ///
 /// This is a simpler version for cases where we only have direct calls
 /// and don't need to handle async task boundaries.
-pub fn create_child_span_if_sampled(name: &'static str) -> Span {
+pub fn create_child_span_if_sampled(name: impl Into<Cow<'static, str>>) -> Span {
     if fastrace::prelude::SpanContext::current_local_parent().is_some() {
         Span::enter_with_local_parent(name)
     } else {

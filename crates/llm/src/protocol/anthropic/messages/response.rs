@@ -19,6 +19,15 @@ pub enum Response {
     Message(Box<MessageResponse>),
 }
 
+impl Response {
+    pub fn as_message(&self) -> Option<&MessageResponse> {
+        match self {
+            Response::Message(msg) => Some(msg),
+            _ => None,
+        }
+    }
+}
+
 impl From<Error> for Response {
     fn from(error: Error) -> Self {
         Self::Error(Box::new(ErrorResponse {
